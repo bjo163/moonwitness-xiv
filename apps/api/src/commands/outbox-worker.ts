@@ -56,6 +56,7 @@ try {
       db,
       host: process.env.WORKER_HEALTH_HOST || '127.0.0.1',
       name: 'outbox-worker',
+      metricsToken: process.env.METRICS_TOKEN,
       port: readWorkerHealthPort(
         process.env.OUTBOX_WORKER_HEALTH_PORT,
         'OUTBOX_WORKER_HEALTH_PORT'

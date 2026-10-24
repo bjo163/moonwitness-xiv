@@ -1,5 +1,10 @@
-type GowaEnvelope<T> = { code?: string; message?: string; results?: T; status?: number };
 import { readWhatsAppGatewayConfig } from './config.js';
+import {
+  recordWhatsAppGatewayRequest,
+  startWhatsAppGatewayRequest,
+} from '../observability/metrics.js';
+
+type GowaEnvelope<T> = { code?: string; message?: string; results?: T; status?: number };
 
 export class GowaError extends Error {
   constructor(
@@ -79,6 +84,39 @@ async function protectedFetch(url: string, init: RequestInit): Promise<Response>
   }
 }
 
+async function measuredFetch(url: string, init: RequestInit): Promise<Response> {
+  const finish = startWhatsAppGatewayRequest();
+  const startedAt = performance.now();
+  try {
+    const response = await protectedFetch(url, init);
+    recordWhatsAppGatewayRequest(
+      init.method ?? 'GET',
+      new URL(url).pathname,
+      String(response.status),
+      (performance.now() - startedAt) / 1000
+    );
+    return response;
+  } catch (error) {
+    const outcome =
+      error instanceof GowaError && error.upstreamCode === 'CIRCUIT_OPEN'
+        ? 'circuit_open'
+        : error instanceof GowaError && error.upstreamCode === 'GATEWAY_BUSY'
+          ? 'busy'
+          : error instanceof Error && error.name === 'TimeoutError'
+            ? 'timeout'
+            : 'network_error';
+    recordWhatsAppGatewayRequest(
+      init.method ?? 'GET',
+      new URL(url).pathname,
+      outcome,
+      (performance.now() - startedAt) / 1000
+    );
+    throw error;
+  } finally {
+    finish();
+  }
+}
+
 export async function gowaRequest<T>(
   path: string,
   options: {
@@ -95,7 +133,7 @@ export async function gowaRequest<T>(
   });
   if (options.deviceId) headers.set('X-Device-Id', options.deviceId);
   if (options.contentType) headers.set('content-type', options.contentType);
-  const response = await protectedFetch(`${config.url}${path}`, {
+  const response = await measuredFetch(`${config.url}${path}`, {
     method: options.method ?? 'GET',
     headers,
     body: options.body,
@@ -124,7 +162,7 @@ export async function gowaBinary(path: string, deviceId?: string): Promise<Respo
     authorization: `Basic ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`,
   });
   if (deviceId) headers.set('X-Device-Id', deviceId);
-  const response = await protectedFetch(`${config.url}${path}`, {
+  const response = await measuredFetch(`${config.url}${path}`, {
     headers,
     signal: AbortSignal.timeout(config.timeoutMs),
   });

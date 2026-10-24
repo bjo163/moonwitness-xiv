@@ -32,6 +32,7 @@ import {
   createVideoPoster,
   type MediaThumbnail,
 } from '../whatsapp/media-thumbnail.js';
+import { recordWhatsAppMediaTransfer } from '../observability/metrics.js';
 
 type Options = {
   attachmentStorage: AttachmentStorage;
@@ -1414,6 +1415,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       });
     if (!result.created && upload.mediaKey)
       await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+    if (result.created && upload.mediaSizeBytes !== null)
+      recordWhatsAppMediaTransfer('outbound', upload.mediaSizeBytes);
     if (result.conflict)
       return reply
         .code(409)
@@ -4234,6 +4237,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           }
           return inserted;
         });
+        if (upload.mediaSizeBytes !== null)
+          recordWhatsAppMediaTransfer('outbound', upload.mediaSizeBytes);
         return reply.code(202).send({ success: true, data: message });
       } catch (error) {
         req.log.error({ error: whatsappLogErrorContext(error) }, 'WhatsApp message queue failed');
@@ -4650,6 +4655,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
     let mediaStream: Readable | null = null;
     let verifiedMime: string | null = null;
     let verifiedSize: number | null = null;
+    let downloadedFromGateway = false;
     try {
       if (message.media_key && options.attachmentStorage.getStream) {
         const cachedStream = await options.attachmentStorage.getStream(message.media_key);
@@ -4768,6 +4774,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         message.media_key = mediaKey;
         message.media_mime_type = verifiedMime;
         message.media_file_name = safeFileName(metadata.filename) ?? message.media_file_name;
+        downloadedFromGateway = true;
       } else {
         try {
           content = await readLimitedMedia(downloaded);
@@ -4822,8 +4829,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         message.media_key = mediaKey;
         message.media_mime_type = verifiedMime;
         message.media_file_name = safeFileName(metadata.filename) ?? message.media_file_name;
+        downloadedFromGateway = true;
       }
     }
+    if (downloadedFromGateway && verifiedSize !== null)
+      recordWhatsAppMediaTransfer('inbound', verifiedSize);
     verifiedMime ??= content ? (sniffMime(content) ?? 'application/octet-stream') : null;
     if (!content && !mediaStream)
       return reply.code(404).send({ success: false, error: 'Media not found' });

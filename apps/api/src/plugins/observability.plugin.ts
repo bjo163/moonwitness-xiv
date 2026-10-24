@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
-import { recordHttpRequest } from '../observability/metrics.js';
+import { recordHttpRequest, recordWhatsAppPoll } from '../observability/metrics.js';
 
 const observabilityPlugin: FastifyPluginAsync = async (fastify) => {
   const startedAt = new WeakMap<FastifyRequest, number>();
@@ -11,7 +11,17 @@ const observabilityPlugin: FastifyPluginAsync = async (fastify) => {
     const start = startedAt.get(request);
     if (start === undefined) return;
     const route = request.routeOptions.url ?? 'unmatched';
-    recordHttpRequest(request.method, route, reply.statusCode, (performance.now() - start) / 1000);
+    const seconds = (performance.now() - start) / 1000;
+    recordHttpRequest(request.method, route, reply.statusCode, seconds);
+    if (
+      request.method === 'GET' &&
+      [
+        '/whatsapp/account',
+        '/whatsapp/conversations',
+        '/whatsapp/conversations/:id/messages',
+      ].includes(route)
+    )
+      recordWhatsAppPoll(route, seconds);
   });
 };
 

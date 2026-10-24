@@ -206,6 +206,23 @@ services.
   QR. A gateway outage appears as `error` and should be resolved before pairing again. Disconnect
   from Board deliberately unlinks the GoWA device; do not use it as a connectivity retry.
 
+## Monitoring
+
+Configure a `METRICS_TOKEN` of at least 32 characters and scrape API `GET /metrics` with that value
+as a Bearer token. The endpoint includes GoWA request duration and outcome by allowlisted route,
+current in-flight requests, aggregate account state, WhatsApp message/Status outbox counts, retried
+and dead events, oldest active queue age, inbox polling endpoint duration, and inbound/outbound
+media byte counters. Outbox/account values are database aggregates; request, poll, and media
+counters are process-local and reset when a process restarts. For send-side GoWA timings, scrape the
+outbox worker's `/metrics` too: configure `OUTBOX_WORKER_HEALTH_PORT` above zero and, if a separate
+scraper container needs access, set `WORKER_HEALTH_HOST=0.0.0.0` while keeping the worker on a private
+container network and publishing no public port. The same Bearer token is required. When scraping
+both API and worker, use the API's database gauges once and aggregate process-local counters across
+instances. Poll duration covers account/inbox API reads (including user refreshes), not only
+background polling. Labels contain only bounded route/state/direction values; they never include
+company IDs, phone numbers, JIDs, message content, object keys, or credentials. Database metric
+availability is exposed separately so a failed scrape query is not mistaken for an empty queue.
+
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.

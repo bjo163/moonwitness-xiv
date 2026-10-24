@@ -4,6 +4,7 @@ import {
   validateWhatsAppProductionConfig,
 } from '../src/whatsapp/config.js';
 import { GowaError, gowaRequest } from '../src/whatsapp/gowa-client.js';
+import { renderMetrics } from '../src/observability/metrics.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -120,6 +121,9 @@ describe('WhatsApp gateway configuration', () => {
     );
 
     await expect(gowaRequest<string>('/health')).resolves.toBe('OK');
+    const metrics = renderMetrics(1);
+    expect(metrics).toContain('route="/health",outcome="2xx"');
+    expect(metrics).toContain('moonwitness_whatsapp_gateway_requests_in_flight 0');
   });
 
   it('opens the gateway circuit after repeated failures and allows one recovery probe', async () => {

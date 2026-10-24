@@ -71,6 +71,7 @@ describe('worker health endpoints', () => {
       host: '127.0.0.1',
       name: 'test-worker',
       port: await reservePort(),
+      metricsToken: 'worker-metrics-token-at-least-32-characters',
     });
     if (!health) throw new Error('A nonzero test port is required to start the probe server');
     const address = health.app.server.address();
@@ -81,6 +82,13 @@ describe('worker health endpoints', () => {
     expect(alive.headers.get('cache-control')).toBe('no-store');
     expect(await alive.json()).toMatchObject({ status: 'alive', worker: 'test-worker' });
     expect((await fetch(`${baseUrl}/readyz`)).status).toBe(200);
+    expect((await fetch(`${baseUrl}/metrics`)).status).toBe(401);
+    const metrics = await fetch(`${baseUrl}/metrics`, {
+      headers: { authorization: 'Bearer worker-metrics-token-at-least-32-characters' },
+    });
+    expect(metrics.status).toBe(200);
+    expect(metrics.headers.get('content-type')).toContain('text/plain');
+    expect(await metrics.text()).toContain('moonwitness_whatsapp_gateway_request_duration');
 
     health.setReady(false);
     expect((await fetch(`${baseUrl}/livez`)).status).toBe(200);

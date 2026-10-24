@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 import { Registry } from '@moonwitness/orm';
 import type { HealthResponse, RootInfoResponse } from '@moonwitness/types';
-import { renderMetrics } from '../observability/metrics.js';
+import { readWhatsAppDatabaseMetrics, renderMetrics } from '../observability/metrics.js';
 
 interface HealthRoutesOptions {
   metricsToken?: string;
@@ -67,7 +67,7 @@ export const healthRoutes: FastifyPluginAsync<HealthRoutesOptions> = async (fast
     return reply
       .header('Cache-Control', 'no-store')
       .type('text/plain; version=0.0.4; charset=utf-8')
-      .send(renderMetrics(process.uptime()));
+      .send(renderMetrics(process.uptime(), await readWhatsAppDatabaseMetrics(fastify.db)));
   });
 
   fastify.get<{ Reply: RootInfoResponse }>('/', async (_req, _reply) => {
