@@ -1,7 +1,9 @@
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { E2E_SUPERADMIN_PASSWORD } from './constants.js';
 
-test('company WhatsApp inbox displays chats and sends a reply', async ({ page }) => {
+test('company WhatsApp inbox displays chats and sends a reply', async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -126,6 +128,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     await route.fulfill({ json: { success: true, data: body } });
   });
   let failSearchConversationLoad = false;
+  let failInboxRefresh = false;
   let createdGroup: Record<string, unknown> | null = null;
   const groupCreateRequests: Array<{ key: string; body: Record<string, unknown> }> = [];
   const groupParticipantActions: Array<{
@@ -150,6 +153,13 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       });
     }
     if (failSearchConversationLoad && url.searchParams.get('search') === 'trigger-error') {
+      return route.fulfill({ status: 503, json: { success: false, error: 'temporary failure' } });
+    }
+    if (
+      failInboxRefresh &&
+      url.pathname === '/whatsapp/conversations' &&
+      !url.searchParams.has('search')
+    ) {
       return route.fulfill({ status: 503, json: { success: false, error: 'temporary failure' } });
     }
     if (url.searchParams.get('search')?.toLocaleLowerCase() === 'older destination') {
@@ -701,6 +711,121 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   releaseMessageResponse?.();
   releaseMessageResponse = null;
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  const inboxRefreshError = page
+    .getByRole('alert')
+    .filter({ hasText: 'WhatsApp data could not be refreshed.' });
+  failInboxRefresh = true;
+  await expect(inboxRefreshError).toContainText('Showing inbox data last updated at', {
+    timeout: 20_000,
+  });
+  await expect(page.getByRole('button', { name: /Project group/u })).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  const retryInboxButton = inboxRefreshError.getByRole('button', { name: 'Retry' });
+  await expect(retryInboxButton).toBeEnabled();
+  const initialThemeIsDark = await page
+    .locator('html')
+    .evaluate((element) => element.classList.contains('dark'));
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    const errorAccessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      errorAccessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp stale inbox/error WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+  }
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
+  failInboxRefresh = false;
+  await retryInboxButton.click();
+  await expect(inboxRefreshError).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  const originalViewport = page.viewportSize();
+  const responsiveViewports = [
+    { name: 'desktop', width: 1440, height: 1000 },
+    { name: 'tablet', width: 768, height: 1024 },
+    { name: 'mobile-390', width: 390, height: 844 },
+    { name: 'mobile-320', width: 320, height: 640 },
+  ];
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp inbox WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const viewport of responsiveViewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const dimensions = await page.evaluate(() => ({
+        width: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        clippedControls: Array.from(
+          document.querySelectorAll(
+            'main h1, main h2, main h3, main button, main input, main textarea'
+          )
+        )
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              label: element.textContent?.trim().slice(0, 60) || element.getAttribute('aria-label'),
+              left: Math.round(rect.left),
+              right: Math.round(rect.right),
+            };
+          })
+          .filter(
+            ({ left, right }) => right - left > 0 && (left < -1 || right > window.innerWidth + 1)
+          ),
+      }));
+      expect(
+        dimensions.scrollWidth,
+        `WhatsApp inbox has horizontal overflow in ${viewport.name}/${theme}: ${dimensions.scrollWidth}px > ${dimensions.width}px`
+      ).toBeLessThanOrEqual(dimensions.width);
+      expect(
+        dimensions.clippedControls,
+        `WhatsApp inbox has controls outside ${viewport.name}/${theme}`
+      ).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-${theme}-${viewport.name}.png`),
+      });
+    }
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
   await page.getByRole('button', { name: '@Rani Finance' }).click();
@@ -1310,7 +1435,8 @@ test('publishes WhatsApp text and image Status from the dedicated composer', asy
   await expect(page.getByText('GoWA rejected the Status media')).toBeVisible();
 });
 
-test('internal notes stay outside the WhatsApp message timeline', async ({ page }) => {
+test('internal notes stay outside the WhatsApp message timeline', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -1399,6 +1525,54 @@ test('internal notes stay outside the WhatsApp message timeline', async ({ page 
     page.getByRole('region', { name: 'Internal notes' }).getByText('superadmin', { exact: true })
   ).toBeVisible();
   await expect(page.locator('article')).toHaveCount(0);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp internal notes WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const notesRegion = page.getByRole('region', { name: 'Internal notes' });
+      if (width === 390 && !(await notesRegion.isVisible())) {
+        const conversationButton = page.getByRole('button', {
+          name: 'Internal notes test',
+          exact: true,
+        });
+        await conversationButton.focus();
+        await page.keyboard.press('Enter');
+      }
+      await expect(notesRegion).toBeVisible();
+      const pageWidth = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        pageWidth.document,
+        `WhatsApp internal notes overflow at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(pageWidth.viewport);
+      const notesBounds = await notesRegion.boundingBox();
+      if (!notesBounds) throw new Error('Internal notes region has no visible bounds');
+      expect(notesBounds.x + notesBounds.width).toBeLessThanOrEqual(pageWidth.viewport);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-notes-${theme}-${width}.png`),
+      });
+    }
+  }
 });
 
 test('creates labels, applies them to a conversation, and filters the inbox', async ({ page }) => {
@@ -1648,7 +1822,11 @@ test('assigns conversations to agents and teams and closes or reopens queue item
   await page.getByRole('button', { name: /Unassigned conversation/u }).click();
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await page.getByRole('button', { name: 'Assign to agent-b' }).click();
+  await expect.poll(() => assignmentRequestCount).toBe(2);
   await expect.poll(() => conversations[1]?.assigned_user_id).toBe(3);
+  await expect(page.getByRole('button', { name: /Unassigned conversation/u })).toContainText(
+    'Assigned to agent-b'
+  );
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await expect(
     page.getByRole('region', { name: 'Assign conversation' }).getByText('Assigned to agent-b')
@@ -2094,7 +2272,10 @@ test('pauses WhatsApp account polling while the Board tab is hidden', async ({ p
   await expect.poll(() => accountPolls, { timeout: 5000 }).toBeGreaterThan(1);
 });
 
-test('guides the user to connect a WhatsApp account before opening the inbox', async ({ page }) => {
+test('guides the user to connect a WhatsApp account before opening the inbox', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
   await page.route('**/whatsapp/account', (route) =>
     route.fulfill({
       json: {
@@ -2117,4 +2298,49 @@ test('guides the user to connect a WhatsApp account before opening the inbox', a
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Connect a WhatsApp account' })).toBeVisible();
   await expect(page.getByText('One WhatsApp account is available for this company.')).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 640 });
+  const connectButton = page.getByRole('button', { name: 'Connect WhatsApp' });
+  let connectButtonReachedByTab = false;
+  for (let index = 0; index < 40; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await connectButton.evaluate((element) => element === document.activeElement)) {
+      connectButtonReachedByTab = true;
+      break;
+    }
+  }
+  expect(connectButtonReachedByTab, 'Connect WhatsApp must be reachable by keyboard Tab').toBe(
+    true
+  );
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp connect state WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    const width = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+    }));
+    expect(
+      width.document,
+      `WhatsApp connect state overflows in ${theme} theme`
+    ).toBeLessThanOrEqual(width.viewport);
+    const buttonBounds = await connectButton.boundingBox();
+    if (!buttonBounds) throw new Error('Connect WhatsApp button has no visible bounds');
+    expect(buttonBounds.x + buttonBounds.width).toBeLessThanOrEqual(width.viewport);
+    await page.screenshot({ path: testInfo.outputPath(`whatsapp-connect-${theme}-320.png`) });
+  }
 });

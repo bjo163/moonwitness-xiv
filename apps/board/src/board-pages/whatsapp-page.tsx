@@ -1647,7 +1647,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
       {(accountQuery.isError || conversationsQuery.isError || messagesQuery.isError) && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-pink p-3 text-sm"
+          className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-pink p-3 text-sm dark:text-black"
         >
           <p>
             WhatsApp data could not be refreshed.
@@ -1681,7 +1681,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           </p>
           {account?.last_error && <p className="mt-2 text-sm text-red-700">{account.last_error}</p>}
           {connected && account?.webhook_configured === false && (
-            <p role="status" className="mt-2 max-w-2xl text-sm text-amber-900">
+            <p role="status" className="mt-2 max-w-2xl text-sm text-amber-900 dark:text-amber-300">
               Live callbacks are not configured. Inbound messages update through periodic refresh.
               Configure WHATSAPP_WEBHOOK_URL and WHATSAPP_WEBHOOK_SECRET on the API deployment to
               enable GoWA callbacks.
@@ -2324,7 +2324,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       </span>
                     )}
                   </span>
-                  <span className="truncate text-sm text-ink-faint">
+                  <span
+                    className={`truncate text-sm ${activeConversation?.id === conversation.id ? 'text-ink' : 'text-ink-faint'}`}
+                  >
                     {conversation.last_message}
                   </span>
                   {conversation.labels?.length ? (
@@ -2379,7 +2381,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           >
             <div className="border-b-2 border-ink p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex w-full min-w-0 flex-col items-start gap-2 md:w-auto md:flex-row md:items-center">
                   {activeConversation && (
                     <Button
                       type="button"
@@ -2391,7 +2393,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       Back to conversations
                     </Button>
                   )}
-                  <div className="min-w-0">
+                  <div className="w-full min-w-0 md:w-auto">
                     <h2 className="font-display text-lg uppercase">
                       {activeConversation?.name ?? 'Select a conversation'}
                     </h2>
@@ -2767,7 +2769,10 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                 </div>
               )}
               {messagesQuery.isError && !messagesQuery.data && (
-                <div className="space-y-3 border-2 border-ink bg-pink p-3" role="alert">
+                <div
+                  className="space-y-3 border-2 border-ink bg-pink p-3 dark:text-black"
+                  role="alert"
+                >
                   <p className="text-sm">Messages could not be loaded.</p>
                   <Button
                     type="button"
@@ -2811,7 +2816,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                   >
                     {activeConversation?.is_group &&
                       !message.provider_type?.startsWith('group_event_') && (
-                        <p className="mb-1 font-mono text-[10px] text-ink-faint">
+                        <p
+                          className={`mb-1 font-mono text-[10px] ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                        >
                           {message.direction === 'outbound'
                             ? 'You'
                             : message.sender_display_name?.trim() ||
@@ -2820,7 +2827,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         </p>
                       )}
                     <p
-                      className={`whitespace-pre-wrap break-words text-sm ${message.is_deleted || message.provider_type ? 'italic text-ink-faint' : ''}`}
+                      className={`whitespace-pre-wrap break-words text-sm ${message.is_deleted || message.provider_type ? `italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}` : ''}`}
                     >
                       {message.is_deleted
                         ? 'This message was deleted'
@@ -2831,16 +2838,24 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                             : message.content}
                     </p>
                     {message.is_edited && !message.is_deleted && (
-                      <span className="ml-2 text-[10px] italic text-ink-faint">Edited</span>
+                      <span
+                        className={`ml-2 text-[10px] italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                      >
+                        Edited
+                      </span>
                     )}
                     {message.is_forwarded && (
-                      <p className="mb-1 font-mono text-[10px] italic text-ink-faint">Forwarded</p>
+                      <p
+                        className={`mb-1 font-mono text-[10px] italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                      >
+                        Forwarded
+                      </p>
                     )}
                     {message.reply_to && (
                       <Button
                         type="button"
                         variant="link"
-                        className="mb-2 block h-auto w-full border-l-2 border-magenta pl-2 text-left text-xs text-ink-faint hover:text-ink"
+                        className={`mb-2 block h-auto w-full border-l-2 border-magenta pl-2 text-left text-xs ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'} hover:text-ink`}
                         onClick={() => void jumpToQuotedMessage(message)}
                         aria-label="Jump to quoted message"
                       >
@@ -2982,7 +2997,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                           </Button>
                         </>
                       )}
-                    <p className="mt-2 flex flex-wrap justify-end gap-x-2 text-right font-mono text-[10px] text-ink-faint">
+                    <p
+                      className={`mt-2 flex flex-wrap justify-end gap-x-2 text-right font-mono text-[10px] ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                    >
                       <time
                         dateTime={message.create_date}
                         aria-label={`Message time: ${formatDateTime(message.create_date, 'dateTime')}`}
@@ -2992,7 +3009,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       <span>{messageStatusLabel[message.status] ?? 'Status unavailable'}</span>
                     </p>
                     {message.last_error && (
-                      <p role="status" className="mt-1 text-xs text-red-700">
+                      <p role="status" className="mt-1 text-xs text-red-800 dark:text-red-200">
                         {message.last_error}
                       </p>
                     )}
@@ -3059,7 +3076,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
         </section>
       )}
       {!connected && status !== 'qr' && (
-        <section className="border-2 border-ink bg-white p-8 text-center">
+        <section className="border-2 border-ink bg-paper-raised p-8 text-center">
           <SmartphoneIcon className="mx-auto size-10" />
           <h2 className="mt-3 font-display text-xl uppercase">Connect a WhatsApp account</h2>
           <p className="mt-1 text-sm text-ink-faint">
