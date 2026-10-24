@@ -87,6 +87,8 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     })
   );
   let failSearchConversationLoad = false;
+  let createdGroup: Record<string, unknown> | null = null;
+  const groupCreateRequests: Array<{ key: string; body: Record<string, unknown> }> = [];
   let includeNewInboundMessage = false;
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
   let editedMessageContent = 'A sent reply';
@@ -162,6 +164,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
         is_group: false,
         unread_count: 0,
       })),
+      ...(createdGroup ? [createdGroup] : []),
     ];
     const search = url.searchParams.get('search')?.toLocaleLowerCase();
     return route.fulfill({
@@ -176,6 +179,32 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
           : conversations,
       },
     });
+  });
+  await page.route('**/whatsapp/groups', async (route) => {
+    groupCreateRequests.push({
+      key: route.request().headers()['idempotency-key'] ?? '',
+      body: route.request().postDataJSON() as Record<string, unknown>,
+    });
+    if (groupCreateRequests.length === 1) {
+      await route.fulfill({
+        status: 502,
+        json: {
+          success: false,
+          error: 'Group creation could not be confirmed; check the inbox before retrying',
+        },
+      });
+      return;
+    }
+    createdGroup = {
+      id: 222,
+      jid: '120363123456789@g.us',
+      name: 'Board project team',
+      is_group: true,
+      is_archived: false,
+      is_pinned: false,
+      unread_count: 0,
+    };
+    await route.fulfill({ json: { success: true, data: createdGroup } });
   });
   const sentMessages: string[] = [];
   const sentReactions: Array<{ sourceId: string; emoji: string }> = [];
@@ -822,6 +851,47 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.getByRole('button', { name: 'Back to conversations' }).click();
   await expect(conversationList).toBeVisible();
   await page.setViewportSize({ width: 320, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByLabel('Group name').fill('Board project team');
+  const participantInput = page.getByLabel('Participant phone number');
+  await participantInput.fill('not a phone');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.locator('#whatsapp-group-creator').getByRole('alert')).toContainText(
+    'valid international number'
+  );
+  await participantInput.fill('+62 811-1222-333');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('list', { name: 'Group participants' })).toContainText(
+    '+628111222333'
+  );
+  await participantInput.fill('628111222333');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.locator('#whatsapp-group-creator').getByRole('alert')).toContainText(
+    'already in the list'
+  );
+  await participantInput.fill('+62 812-3333-444');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByText('2 of 100 participants')).toBeVisible();
+  const createGroupButton = page.getByRole('button', { name: 'Create group', exact: true }).last();
+  await createGroupButton.click();
+  await expect(page.locator('#whatsapp-group-creator').getByRole('alert')).toContainText(
+    'result is not confirmed'
+  );
+  await expect(page.getByLabel('Group name')).toBeDisabled();
+  await page.getByRole('button', { name: 'Check group result' }).click();
+  await expect(page.getByRole('heading', { name: 'Board project team' })).toBeVisible();
+  expect(groupCreateRequests).toHaveLength(2);
+  expect(groupCreateRequests[0]?.key).toBeTruthy();
+  expect(groupCreateRequests[1]?.key).toBe(groupCreateRequests[0]?.key);
+  expect(groupCreateRequests[0]?.body).toEqual({
+    title: 'Board project team',
+    participants: ['+628111222333', '+628123333444'],
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );
