@@ -2,6 +2,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -11,6 +12,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { createHash } from 'node:crypto';
 import { Readable, Transform, type Readable as NodeReadable } from 'node:stream';
 import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
 import type { AttachmentStorage, StoredObjectMetadata } from './index.js';
 
@@ -29,6 +31,19 @@ export interface S3AttachmentStorageOptions {
   readonly maxObjectBytes?: number;
   /** Client override for isolated tests; production callers should leave this unset. */
   readonly client?: S3Client;
+}
+
+export interface PresignedAttachmentUpload {
+  readonly url: string;
+  readonly method: 'PUT';
+  readonly headers: Readonly<Record<string, string>>;
+  readonly expiresInSeconds: number;
+}
+
+export interface S3AttachmentObjectMetadata {
+  readonly sizeBytes: number;
+  readonly contentType: string | null;
+  readonly checksum: string | null;
 }
 
 function validateKey(key: string): string {
@@ -94,6 +109,48 @@ export class S3AttachmentStorage implements AttachmentStorage {
 
   async checkReady(): Promise<void> {
     await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+  }
+
+  async createPresignedPutUrl(
+    key: string,
+    contentType: string,
+    expiresInSeconds = 300
+  ): Promise<PresignedAttachmentUpload> {
+    const safeKey = validateKey(key);
+    if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/iu.test(contentType)) {
+      throw new Error('Invalid attachment content type');
+    }
+    if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds < 30 || expiresInSeconds > 900) {
+      throw new Error('Presigned upload expiry must be between 30 and 900 seconds');
+    }
+    const url = await getSignedUrl(
+      this.client,
+      new PutObjectCommand({ Bucket: this.bucket, Key: safeKey, ContentType: contentType }),
+      { expiresIn: expiresInSeconds, signableHeaders: new Set(['content-type']) }
+    );
+    return {
+      url,
+      method: 'PUT',
+      headers: { 'content-type': contentType },
+      expiresInSeconds,
+    };
+  }
+
+  async head(key: string): Promise<S3AttachmentObjectMetadata | null> {
+    const safeKey = validateKey(key);
+    try {
+      const result = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: safeKey })
+      );
+      return {
+        sizeBytes: result.ContentLength ?? 0,
+        contentType: result.ContentType ?? null,
+        checksum: result.Metadata?.sha256 ?? null,
+      };
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
   }
 
   async put(key: string, content: Uint8Array): Promise<StoredObjectMetadata> {

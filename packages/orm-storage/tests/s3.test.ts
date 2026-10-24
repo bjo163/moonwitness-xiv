@@ -2,6 +2,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -38,6 +39,57 @@ function provider(send: (command: unknown) => Promise<unknown>) {
 }
 
 describe('S3AttachmentStorage', () => {
+  it('creates short-lived presigned PUT URLs bound to the validated key and media type', async () => {
+    const storage = new S3AttachmentStorage({
+      endpoint: 'https://s3.example.test',
+      region: 'garage',
+      bucket: 'private-attachments',
+      accessKeyId: 'test-access',
+      secretAccessKey: 'test-secret',
+      forcePathStyle: true,
+    });
+    try {
+      const upload = await storage.createPresignedPutUrl(keyA, 'image/png', 300);
+      const url = new URL(upload.url);
+      expect(upload).toMatchObject({
+        method: 'PUT',
+        expiresInSeconds: 300,
+        headers: { 'content-type': 'image/png' },
+      });
+      expect(url.pathname).toBe('/private-attachments/11111111-1111-4111-8111-111111111111');
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+      expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/u);
+      expect(url.searchParams.get('X-Amz-SignedHeaders')).toContain('content-type');
+      await expect(storage.createPresignedPutUrl('../unsafe', 'image/png')).rejects.toThrow(
+        'Invalid attachment storage key'
+      );
+      await expect(storage.createPresignedPutUrl(keyA, 'text/html')).resolves.toHaveProperty(
+        'headers.content-type',
+        'text/html'
+      );
+      await expect(storage.createPresignedPutUrl(keyA, 'image/png', 10)).rejects.toThrow(
+        'between 30 and 900 seconds'
+      );
+    } finally {
+      await closeS3AttachmentStorage(storage);
+    }
+  });
+
+  it('reads uploaded object metadata without downloading the body', async () => {
+    const { storage, sendMock } = provider(async (command) => {
+      if (command instanceof HeadObjectCommand)
+        return { ContentLength: 68, ContentType: 'image/png', Metadata: { sha256: 'a'.repeat(64) } };
+      throw new Error('Unexpected S3 command');
+    });
+    await expect(storage.head(keyA)).resolves.toEqual({
+      sizeBytes: 68,
+      contentType: 'image/png',
+      checksum: 'a'.repeat(64),
+    });
+    expect(sendMock.mock.calls[0]?.[0]).toBeInstanceOf(HeadObjectCommand);
+    await expect(storage.head('../unsafe')).rejects.toThrow('Invalid attachment storage key');
+  });
+
   it.skipIf(process.env.ATTACHMENT_S3_ACCEPTANCE !== '1')(
     'restores an attachment object from a backup copy in the configured S3 bucket',
     async () => {
