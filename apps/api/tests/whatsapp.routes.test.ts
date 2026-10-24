@@ -91,6 +91,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerReadBodies: Array<Record<string, unknown>> = [];
   let failReadReceipt = false;
   let failPreviewFetch = false;
+  let failPreviewOffset: number | null = null;
   let failTextSend = false;
   let failTextBeforeAcceptance = false;
   let textSendFailureStatus = 503;
@@ -326,6 +327,7 @@ describe('WhatsApp API GoWA bridge', () => {
     providerReadBodies = [];
     failReadReceipt = false;
     failPreviewFetch = false;
+    failPreviewOffset = null;
     failTextSend = false;
     failTextBeforeAcceptance = false;
     textSendFailureStatus = 503;
@@ -554,9 +556,15 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname.startsWith('/chat/') && url.pathname.endsWith('/messages')) {
         providerMessageRequests.push(url);
-        return failPreviewFetch
+        return failPreviewFetch || Number(url.searchParams.get('offset') ?? 0) === failPreviewOffset
           ? json({ message: 'temporary preview failure' }, 503)
-          : json({ data: providerMessages });
+          : json({
+              data: providerMessages.slice(
+                Number(url.searchParams.get('offset') ?? 0),
+                Number(url.searchParams.get('offset') ?? 0) +
+                  Number(url.searchParams.get('limit') ?? 100)
+              ),
+            });
       }
       if (/^\/message\/[^/]+\/read$/u.test(url.pathname) && method === 'POST') {
         providerReadRequests.push(url);
@@ -2957,6 +2965,150 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(
       await db('whatsapp_conversations').where({ company_id: companyId, jid }).first()
     ).toMatchObject({ last_message_sync_at: timestamp });
+  });
+
+  it('recovers unread messages across provider pages after webhook delivery was interrupted', async () => {
+    await connectAndMarkReady();
+    const account = await db('whatsapp_accounts').where({ company_id: companyId }).first();
+    const jid = '628444444445@s.whatsapp.net';
+    const previousSync = '2026-10-24T15:00:00.000Z';
+    const latestTime = new Date(Date.parse(previousSync) + 750_000).toISOString();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid,
+        name: 'Interrupted webhook chat',
+        is_group: false,
+        unread_count: 0,
+        last_message_sync_at: previousSync,
+      })
+      .returning(['id']);
+    providerChats = [{ jid, name: 'Interrupted webhook chat', last_message_time: latestTime }];
+    providerMessages = Array.from({ length: 750 }, (_, index) => {
+      const sequence = 750 - index;
+      return {
+        id: `recovered-inbound-${sequence}`,
+        is_from_me: false,
+        media_type: 'text',
+        content: `Recovered message ${sequence}`,
+        timestamp: new Date(Date.parse(previousSync) + sequence * 1_000).toISOString(),
+      };
+    });
+
+    const inbox = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(inbox.statusCode).toBe(200);
+    expect(inbox.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 600 })
+    );
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({
+      history_sync_offset: 600,
+      last_message_sync_at: previousSync,
+    });
+
+    const nextInbox = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(nextInbox.statusCode).toBe(200);
+    expect(nextInbox.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 750 })
+    );
+    expect(providerMessageRequests.map((request) => request.searchParams.get('offset'))).toEqual([
+      '0',
+      '100',
+      '200',
+      '300',
+      '400',
+      '500',
+      '0',
+      '600',
+      '700',
+    ]);
+    await expect(
+      db('whatsapp_messages').where({ company_id: companyId, conversation_id: conversation.id })
+    ).resolves.toHaveLength(750);
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({
+      history_sync_offset: 0,
+      last_message_sync_at: latestTime,
+    });
+  });
+
+  it('retries a failed history page without advancing the unread synchronization cursor', async () => {
+    await connectAndMarkReady();
+    const account = await db('whatsapp_accounts').where({ company_id: companyId }).first();
+    const jid = '628444444446@s.whatsapp.net';
+    const previousSync = '2026-10-24T16:00:00.000Z';
+    const latestTime = new Date(Date.parse(previousSync) + 250_000).toISOString();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid,
+        name: 'History retry chat',
+        is_group: false,
+        unread_count: 0,
+        last_message_sync_at: previousSync,
+      })
+      .returning(['id']);
+    providerChats = [{ jid, name: 'History retry chat', last_message_time: latestTime }];
+    providerMessages = Array.from({ length: 250 }, (_, index) => {
+      const sequence = 250 - index;
+      return {
+        id: `retry-inbound-${sequence}`,
+        is_from_me: false,
+        media_type: 'text',
+        content: `Retry message ${sequence}`,
+        timestamp: new Date(Date.parse(previousSync) + sequence * 1_000).toISOString(),
+      };
+    });
+    failPreviewOffset = 100;
+
+    const failed = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(failed.statusCode).toBe(200);
+    expect(
+      await db('whatsapp_messages').where({
+        company_id: companyId,
+        conversation_id: conversation.id,
+      })
+    ).toHaveLength(0);
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({ history_sync_offset: 0, last_message_sync_at: previousSync });
+
+    failPreviewOffset = null;
+    const retried = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(retried.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 250 })
+    );
+    expect(providerMessageRequests.map((request) => request.searchParams.get('offset'))).toEqual([
+      '0',
+      '100',
+      '0',
+      '100',
+      '200',
+    ]);
+    await expect(
+      db('whatsapp_messages').where({ company_id: companyId, conversation_id: conversation.id })
+    ).resolves.toHaveLength(250);
   });
 
   it('archives and unarchives company-scoped conversations, and pins them in provider order', async () => {

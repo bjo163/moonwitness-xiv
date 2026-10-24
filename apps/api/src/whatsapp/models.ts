@@ -52,6 +52,7 @@ export const WhatsappConversation = defineModel('whatsapp.conversation', {
     last_message: fields.text(),
     last_message_at: fields.string(),
     last_message_sync_at: fields.string({ hidden: true }),
+    history_sync_offset: fields.integer({ required: true, default: 0, hidden: true }),
   },
 });
 
