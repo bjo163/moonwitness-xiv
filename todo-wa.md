@@ -28,6 +28,16 @@ Docker belum dapat dibaca dari API GoWA.
 
 Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media dan grup; **P3** Status/Story; **P4** bisnis dan operasi. Item backlog belum selesai atau belum diverifikasi sampai kriteria item terpenuhi.
 
+## Prioritas goal aktif — tutup WhatsApp v1 tanpa memperluas scope
+
+Goal aktif difokuskan pada inbox yang aman dan dapat diandalkan: pairing/status koneksi, kirim/terima teks dan media, percakapan pribadi/grup, isolasi perusahaan, retry/idempotensi, serta kesiapan operasi dasar. Pekerjaan yang tersisa harus berupa penutupan gap nyata, bukan menambah fitur produk baru.
+
+- **Selesaikan dalam goal ini:** P0 yang belum selesai, P1-06/P1-13/P1-28, batas dan uji media P2-01/P2-02/P2-04, retensi/kuota/pembersihan P2-13, dan gate operasi P4-26/P4-31–37/P4-40.
+- **Menunggu perangkat GoWA nyata:** pairing/restart/reconnect dan penerimaan receipt/media/grup (P0-01–06, P0-08, P0-24–25, P1-06/P1-28, P2-01–02, P2-20/P2-22–29, P3-01/P3-16, P4-36–37/P4-40). Jangan mengulang implementasi mock untuk menggantikan bukti device.
+- **⏭ NEXT — jangan kerjakan dalam goal aktif:** Status/Story selain keputusan dan composer yang sudah dibuat (P3-01, P3-03–16); multi-lampiran/album/voice note dan penyempurnaan profil (P2-16–17, P2-20); manajemen grup lanjutan (P2-22–28); automasi/bot/CRM/broadcast/ekspor bisnis (P4-01–13); presence (P4-15); tampilan admin lintas perusahaan (P4-27); serta load test skala besar (P4-30). Item tetap terbuka dan dapat diprioritaskan lagi setelah v1 diterima.
+- Fitur UI yang termasuk **NEXT** dicatat konsisten pada bagian P Board WhatsApp di `todo-ui.md` (WUI-10, WUI-15, WUI-18, WUI-19). WUI untuk pairing, inbox, percakapan, composer, dan media tetap mengikuti prioritas v1.
+- **Kriteria selesai goal ini:** semua gap P0 yang dapat diverifikasi lokal tertutup; sisa yang memerlukan device dicatat eksplisit sebagai bukti operasional tertunda; tes API/Board/storage lulus; dokumentasi dan checklist selaras; perubahan WhatsApp terpilah, di-commit, dan di-push.
+
 > Semua perubahan antarmuka juga memiliki checklist khusus di [`todo-ui.md`](./todo-ui.md), bagian **P. Board WhatsApp**. Item UI di bawah memakai ID silang `WUI-*`; aturan visual, aksesibilitas, komponen shared, serta bukti screenshot mengikuti UI Bible dan package `@moonwitness/ui`.
 
 ## P0 — pairing, status koneksi, dan pengiriman aman
