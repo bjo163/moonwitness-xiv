@@ -1127,7 +1127,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   let status = 'disconnected';
   let directUploads = false;
   let accountRequests = 0;
-  await page.route('**/whatsapp/account', (route) => {
+  await page.route('**/whatsapp/account**', (route) => {
     accountRequests++;
     return route.fulfill({
       json: {
@@ -1296,10 +1296,33 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await page.getByPlaceholder('Write a message…').fill('Test caption');
   await page.getByLabel('Attach media', { exact: true }).setInputFiles({
+    name: 'preview.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l5sAAAAASUVORK5CYII=',
+      'base64'
+    ),
+  });
+  await expect(page.getByAltText('Preview of preview.png')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.getByAltText('Preview of preview.png')).toHaveCount(0);
+  await page.getByLabel('Attach media', { exact: true }).setInputFiles({
     name: 'sample.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('test attachment'),
   });
+  await expect(page.getByText('Attached: sample.txt')).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Draft saved on this device' })
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
+  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Switch company. Current scope: MoonWitness' })
+  ).toBeVisible();
+  await page.locator('[data-wa-conversation]').click();
+  await expect(page.getByPlaceholder('Write a message…')).toHaveValue('Test caption');
   await expect(page.getByText('Attached: sample.txt')).toBeVisible();
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(
@@ -1318,6 +1341,13 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await expect(page.locator('article').getByText('sent')).toBeVisible();
   const accountPollBeforeDirectUpload = accountRequests;
   directUploads = true;
+  await page.reload();
+  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
+  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Switch company. Current scope: MoonWitness' })
+  ).toBeVisible();
+  await page.locator('[data-wa-conversation]').click();
   await expect.poll(() => accountRequests).toBeGreaterThan(accountPollBeforeDirectUpload);
   await page.getByPlaceholder('Write a message…').fill('Direct caption');
   await page.getByLabel('Attach media', { exact: true }).setInputFiles({
@@ -1334,6 +1364,13 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await expect(page.getByPlaceholder('Write a message…')).toHaveValue('Keep this draft');
   await expect(page.getByText('Service unavailable', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await expect.poll(() => status).toBe('disconnected');
+  await page.reload();
+  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
+  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Switch company. Current scope: MoonWitness' })
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
 });
 

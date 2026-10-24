@@ -175,7 +175,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-19** Keyboard shortcut dan aria/fokus untuk inbox, composer, attachment, menu. (UI: `WUI-07`)
 - [ ] **P4-20** Reduced motion, kontras, dan penanda status yang tidak bergantung pada warna. (UI: `WUI-07`)
 - [ ] **P4-21** Lokalisasi Indonesia/Inggris untuk label, error, waktu, dan nomor. (UI: `WUI-07`)
-- [ ] **P4-22** Preview draft media, remove/cancel, dan pemulihan draft setelah refresh. (UI: `WUI-06`)
+- [x] **P4-22** Composer menampilkan preview thumbnail gambar, metadata nama file, dan aksi Remove; Cancel upload mempertahankan teks/file serta idempotency key untuk retry. Draft teks dan file dipulihkan setelah refresh dari IndexedDB yang di-scope per user/company/conversation, lalu dihapus setelah pesan berhasil antre. E2E Chromium membuktikan preview/removal, refresh/recovery teks dan file, pembatalan, dan retry. (UI: `WUI-06`)
 - [ ] **P4-23** Test retry media saat storage gagal. (UI: `WUI-06`, `WUI-08`)
 - [ ] **P4-24** Test visual/responsif 390 px, tablet, keyboard-only, dan screen reader. (UI: `WUI-08`)
 - [ ] **P4-25** Metrik GoWA latency, status akun, antrean, kegagalan/retry, ukuran media, durasi poll.

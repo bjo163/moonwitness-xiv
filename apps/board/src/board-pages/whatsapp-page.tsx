@@ -22,6 +22,11 @@ import { client } from '@/lib/client';
 import { scopedQueryKey } from '@/lib/query-scope';
 import { formatDateTime } from '@/lib/date-format';
 import { MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
+import {
+  deleteWhatsappDraft,
+  readWhatsappDraft,
+  writeWhatsappDraft,
+} from '@/whatsapp-draft-storage';
 
 type Account = {
   id?: number;
@@ -2530,6 +2535,9 @@ function MessageComposer({
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const sendLock = useRef(false);
@@ -2537,6 +2545,89 @@ function MessageComposer({
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadAbortController = useRef<AbortController | null>(null);
   const previousUploadProgress = useRef({ loadedBytes: 0, sampledAt: 0 });
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftSaveWarningShown = useRef(false);
+  const companyId = client.getCompanyId();
+  const draftStorageKey =
+    client.currentUser && companyId
+      ? `whatsapp:${client.currentUser.id}:${companyId}:${conversationId}`
+      : null;
+  useEffect(() => {
+    if (!file) {
+      setFilePreviewUrl(null);
+      return;
+    }
+    const previewableImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+    if (!previewableImageTypes.has(file.type)) {
+      setFilePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFilePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  useEffect(() => {
+    let cancelled = false;
+    setDraft('');
+    setFile(null);
+    setLoadedDraftKey(null);
+    if (!draftStorageKey) return;
+    void readWhatsappDraft(draftStorageKey)
+      .then((saved) => {
+        if (cancelled) return;
+        setDraft(saved?.text ?? '');
+        setFile(
+          saved?.file
+            ? new File([saved.file.blob], saved.file.name, {
+                type: saved.file.type,
+                lastModified: saved.file.lastModified,
+              })
+            : null
+        );
+        setDraftSaved(Boolean(saved && (saved.text || saved.file)));
+        setLoadedDraftKey(draftStorageKey);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedDraftKey(draftStorageKey);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftStorageKey]);
+  useEffect(() => {
+    if (!draftStorageKey || loadedDraftKey !== draftStorageKey) return;
+    const timeout = setTimeout(() => {
+      draftSaveTimer.current = null;
+      void writeWhatsappDraft(draftStorageKey, {
+        text: draft,
+        ...(file
+          ? {
+              file: {
+                blob: file,
+                name: file.name,
+                type: file.type,
+                lastModified: file.lastModified,
+              },
+            }
+          : {}),
+      })
+        .then(() => {
+          draftSaveWarningShown.current = false;
+          setDraftSaved(Boolean(draft || file));
+        })
+        .catch(() => {
+          if (!draftSaveWarningShown.current) {
+            toast.error('Draft could not be saved on this device');
+            draftSaveWarningShown.current = true;
+          }
+        });
+    }, 300);
+    draftSaveTimer.current = timeout;
+    return () => {
+      clearTimeout(timeout);
+      if (draftSaveTimer.current === timeout) draftSaveTimer.current = null;
+    };
+  }, [draft, file, draftStorageKey, loadedDraftKey]);
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID();
   }, [replyTo?.id]);
@@ -2622,8 +2713,12 @@ function MessageComposer({
       } else {
         await client.request(`/whatsapp/conversations/${conversationId}/messages`, requestOptions);
       }
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+      draftSaveTimer.current = null;
+      if (draftStorageKey) await deleteWhatsappDraft(draftStorageKey).catch(() => undefined);
       setDraft('');
       setFile(null);
+      setDraftSaved(false);
       onCancelReply();
       idempotencyKey.current = crypto.randomUUID();
       if (fileInput.current) fileInput.current.value = '';
@@ -2687,9 +2782,11 @@ function MessageComposer({
                 toast.error('File must be 10 MiB or smaller');
                 event.target.value = '';
                 setFile(null);
+                setDraftSaved(false);
                 return;
               }
               setFile(selected);
+              setDraftSaved(false);
               idempotencyKey.current = crypto.randomUUID();
             }}
           />
@@ -2698,6 +2795,7 @@ function MessageComposer({
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
+            setDraftSaved(false);
             idempotencyKey.current = crypto.randomUUID();
           }}
           placeholder="Write a message…"
@@ -2731,20 +2829,33 @@ function MessageComposer({
         </p>
       </div>
       {file && (
-        <p className="text-xs">
-          Attached: {file.name}{' '}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {filePreviewUrl && (
+            <img
+              src={filePreviewUrl}
+              alt={`Preview of ${file.name}`}
+              className="size-16 border border-ink object-cover"
+            />
+          )}
+          <span>Attached: {file.name}</span>
           <Button
             type="button"
             variant="link"
             className="h-auto p-0 underline"
             onClick={() => {
               setFile(null);
+              setDraftSaved(false);
               idempotencyKey.current = crypto.randomUUID();
               if (fileInput.current) fileInput.current.value = '';
             }}
           >
             Remove
           </Button>
+        </div>
+      )}
+      {draftSaved && (draft || file) && (
+        <p role="status" className="text-xs text-ink-faint">
+          Draft saved on this device
         </p>
       )}
       {file && sending && uploadProgress && (
