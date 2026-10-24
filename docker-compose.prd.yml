@@ -1,0 +1,103 @@
+# Plug-and-play production stack: API, Board, and the three background workers.
+# PostgreSQL is NOT shipped here; it is expected from a managed provider.
+#
+#   docker compose --env-file .env.prd -f docker-compose.prd.yml up -d --build
+#
+# All secrets live in .env.prd next to this file (gitignored; see that file for the required keys).
+# This compose file itself is safe to commit: it carries no credentials, only non-secret defaults.
+#
+# Board is the only entry point an operator needs to expose. It proxies /api, /auth, /jsonrpc and
+# the health routes to the api service, so one HTTPS reverse proxy in front of BOARD_PORT is enough.
+# All published ports are loopback-bound; nothing else is reachable from the network.
+
+name: moonwitness-prd
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  API_HOST: 0.0.0.0
+  API_PORT: 3000
+  # Provided by .env.prd (managed PostgreSQL provider).
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL missing - put the provider URL in .env.prd}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET missing - set it in .env.prd}
+  SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:?SUPERADMIN_PASSWORD missing - set it in .env.prd}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_TO_FILE: 'false'
+  LOG_PRETTY: 'false'
+  # Point WHATSAPP_GATEWAY_URL at the real GoWA gateway; credentials come from .env.prd.
+  WHATSAPP_GATEWAY_URL: ${WHATSAPP_GATEWAY_URL:-https://wa.moonwitness.biz.id}
+  WHATSAPP_GATEWAY_USERNAME: ${WHATSAPP_GATEWAY_USERNAME:?WHATSAPP_GATEWAY_USERNAME missing - set it in .env.prd}
+  WHATSAPP_GATEWAY_PASSWORD: ${WHATSAPP_GATEWAY_PASSWORD:?WHATSAPP_GATEWAY_PASSWORD missing - set it in .env.prd}
+  ATTACHMENT_STORAGE_DIR: /var/lib/moonwitness/attachments
+  # Garage bucket endpoints are non-secret defaults; the key pair comes from .env.prd.
+  # Set ATTACHMENT_STORAGE_DRIVER=local to keep attachments on the local volume instead.
+  ATTACHMENT_STORAGE_DRIVER: ${ATTACHMENT_STORAGE_DRIVER:-s3}
+  ATTACHMENT_S3_ENDPOINT: ${ATTACHMENT_S3_ENDPOINT:-https://s3.moonwitness.biz.id}
+  ATTACHMENT_S3_REGION: ${ATTACHMENT_S3_REGION:-garage}
+  ATTACHMENT_S3_BUCKET: ${ATTACHMENT_S3_BUCKET:-default}
+  ATTACHMENT_S3_ACCESS_KEY: ${ATTACHMENT_S3_ACCESS_KEY:?ATTACHMENT_S3_ACCESS_KEY missing - set it in .env.prd}
+  ATTACHMENT_S3_SECRET_KEY: ${ATTACHMENT_S3_SECRET_KEY:?ATTACHMENT_S3_SECRET_KEY missing - set it in .env.prd}
+  ATTACHMENT_S3_FORCE_PATH_STYLE: ${ATTACHMENT_S3_FORCE_PATH_STYLE:-true}
+  JOB_HANDLERS_MODULE: ${JOB_HANDLERS_MODULE:-}
+  OUTBOX_HANDLERS_MODULE: ${OUTBOX_HANDLERS_MODULE:-}
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    image: moonwitness-api:prd
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    ports:
+      - '127.0.0.1:${API_PORT:-3000}:3000'
+    environment: *app-environment
+    volumes:
+      - attachments:/var/lib/moonwitness/attachments
+
+  board:
+    build:
+      context: .
+      target: board-runtime
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:8080}
+    image: moonwitness-board:prd
+    restart: unless-stopped
+    init: true
+    ports:
+      - '127.0.0.1:${BOARD_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+
+  jobs-worker:
+    image: moonwitness-api:prd
+    command: ['node', 'dist/commands/jobs-worker.js']
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 2m
+    environment: *app-environment
+    volumes:
+      - attachments:/var/lib/moonwitness/attachments
+
+  jobs-scheduler:
+    image: moonwitness-api:prd
+    command: ['node', 'dist/commands/jobs-scheduler.js']
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment: *app-environment
+
+  outbox-worker:
+    image: moonwitness-api:prd
+    command: ['node', 'dist/commands/outbox-worker.js']
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 2m
+    environment: *app-environment
+    volumes:
+      - attachments:/var/lib/moonwitness/attachments
+
+volumes:
+  attachments:
