@@ -2473,16 +2473,35 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       ]);
       const profile = profileResult.status === 'fulfilled' ? profileResult.value : {};
       const avatar = avatarResult.status === 'fulfilled' ? avatarResult.value : {};
+      const profileSyncedAt =
+        profileResult.status === 'fulfilled' ? new Date().toISOString() : null;
+      const verifiedName =
+        typeof profile.verified_name === 'string' ? profile.verified_name.slice(0, 255) : null;
+      const contactStatus =
+        typeof profile.status === 'string' ? profile.status.slice(0, 2000) : null;
+      const pictureId = typeof avatar.id === 'string' ? avatar.id.slice(0, 255) : null;
+      if (profileSyncedAt || pictureId) {
+        const profileUpdate: Record<string, string> = {};
+        if (verifiedName) profileUpdate.contact_verified_name = verifiedName;
+        if (contactStatus) profileUpdate.contact_status = contactStatus;
+        if (pictureId) profileUpdate.contact_picture_id = pictureId;
+        if (profileSyncedAt) profileUpdate.contact_profile_synced_at = profileSyncedAt;
+        if (Object.keys(profileUpdate).length > 0)
+          await app
+            .db('whatsapp_conversations')
+            .where({ id: conversationId, company_id: companyId })
+            .update(profileUpdate);
+      }
       return reply.send({
         success: true,
         data: {
           name: conversation.name,
           phone_number: phoneMatch[1],
-          verified_name: typeof profile.verified_name === 'string' ? profile.verified_name : null,
-          status: typeof profile.status === 'string' ? profile.status : null,
-          picture_id: typeof avatar.id === 'string' ? avatar.id : null,
+          verified_name: verifiedName ?? conversation.contact_verified_name ?? null,
+          status: contactStatus ?? conversation.contact_status ?? null,
+          picture_id: pictureId ?? conversation.contact_picture_id ?? null,
           avatar_available: trustedWhatsAppAvatarUrl(avatar.url) !== null,
-          synced_at: new Date().toISOString(),
+          synced_at: profileSyncedAt ?? conversation.contact_profile_synced_at ?? null,
         },
       });
     }
