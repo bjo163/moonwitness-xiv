@@ -269,6 +269,32 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     groupLeaveRequests.push(route.request().headers()['idempotency-key'] ?? '');
     await route.fulfill({ json: { success: true, data: { left: true } } });
   });
+  const groupInviteJoins: string[] = [];
+  await page.route('**/whatsapp/groups/invite-preview', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: { name: 'Joined by invite', topic: 'A preview topic', participant_count: 8 },
+      },
+    });
+  });
+  await page.route('**/whatsapp/groups/join', async (route) => {
+    groupInviteJoins.push(route.request().headers()['idempotency-key'] ?? '');
+    await route.fulfill({
+      status: 201,
+      json: {
+        success: true,
+        data: {
+          id: 333,
+          jid: '120363000000004@g.us',
+          name: 'Joined by invite',
+          is_group: true,
+          is_archived: false,
+          unread_count: 0,
+        },
+      },
+    });
+  });
   const sentMessages: string[] = [];
   const sentReactions: Array<{ sourceId: string; emoji: string }> = [];
   await page.route('**/whatsapp/messages/*/reaction', async (route) => {
@@ -988,7 +1014,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   });
   expect(groupParticipantActions[2]?.key).toBeTruthy();
   expect(groupParticipantActions[2]?.key).not.toBe(groupParticipantActions[0]?.key);
-  await expect(page.getByText('+628115555666')).toBeVisible();
+  await expect(page.getByText('New participant', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove', exact: true }).last().click();
   await page
     .getByRole('alertdialog', { name: 'Confirm group participant action' })
@@ -996,7 +1022,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     .click();
   await expect.poll(() => groupParticipantActions.length).toBe(4);
   expect(groupParticipantActions[3]?.action).toBe('remove');
-  await expect(page.getByText('+628115555666')).toHaveCount(0);
+  await expect(page.getByText('New participant', { exact: true })).toHaveCount(0);
   await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
   await page.getByRole('button', { name: 'Add participant' }).click();
   await page
@@ -1004,7 +1030,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     .getByRole('button', { name: 'Confirm add' })
     .click();
   await expect.poll(() => groupParticipantActions.length).toBe(5);
-  await expect(page.getByText('+628115555666')).toBeVisible();
+  await expect(page.getByText('New participant', { exact: true })).toBeVisible();
   simulateUnknownGroupRemoval = true;
   await page.getByRole('button', { name: 'Remove', exact: true }).last().click();
   await page
@@ -1015,7 +1041,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(page.getByText(/unknown; refresh group details/u)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add participant' })).toBeDisabled();
   await page.getByRole('button', { name: 'Refresh group details' }).click();
-  await expect(page.getByText('+628115555666')).toHaveCount(0);
+  await expect(page.getByText('New participant', { exact: true })).toHaveCount(0);
   await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
   await expect(page.getByRole('button', { name: 'Add participant' })).toBeEnabled();
   await page.getByRole('button', { name: 'Get invite link' }).click();
@@ -1040,7 +1066,20 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     .click();
   await expect.poll(() => groupLeaveRequests.length).toBe(1);
   expect(groupLeaveRequests[0]).toBeTruthy();
-  await expect(page.getByRole('button', { name: 'Back to conversations' })).toBeVisible();
+  await expect(conversationList).toBeVisible();
+  await page.getByRole('button', { name: 'Join group from invite link' }).click();
+  await page.getByLabel('Group invitation link').fill('https://chat.whatsapp.com/AbCdEfGh12345678');
+  await page.getByRole('button', { name: 'Preview group' }).click();
+  await expect(page.getByText('Joined by invite', { exact: true })).toBeVisible();
+  await expect(page.getByText('A preview topic')).toBeVisible();
+  await page.getByRole('button', { name: 'Join this group' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm joining WhatsApp group' })
+    .getByRole('button', { name: 'Confirm join' })
+    .click();
+  await expect.poll(() => groupInviteJoins.length).toBe(1);
+  expect(groupInviteJoins[0]).toBeTruthy();
+  await expect(page.getByRole('heading', { name: 'Joined by invite' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );

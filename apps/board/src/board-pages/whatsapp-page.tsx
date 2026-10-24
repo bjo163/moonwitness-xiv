@@ -359,6 +359,19 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   const [groupCreationError, setGroupCreationError] = useState<string | null>(null);
   const [groupCreating, setGroupCreating] = useState(false);
   const [groupRetrying, setGroupRetrying] = useState(false);
+  const [groupJoinOpen, setGroupJoinOpen] = useState(false);
+  const [groupInviteDraft, setGroupInviteDraft] = useState('');
+  const [groupInvitePreview, setGroupInvitePreview] = useState<{
+    name: string;
+    topic: string | null;
+    participant_count: number | null;
+  } | null>(null);
+  const [groupJoinError, setGroupJoinError] = useState<string | null>(null);
+  const [groupJoinPending, setGroupJoinPending] = useState<{ key: string; link: string } | null>(
+    null
+  );
+  const [groupJoining, setGroupJoining] = useState(false);
+  const [confirmGroupJoin, setConfirmGroupJoin] = useState(false);
   const [phoneCheck, setPhoneCheck] = useState<{
     phone: string;
     is_on_whatsapp: boolean;
@@ -1062,6 +1075,71 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
       setGroupRetrying(false);
     } finally {
       setGroupCreating(false);
+    }
+  };
+  const previewGroupInvite = async () => {
+    if (!groupInviteDraft.trim() || groupJoining) return;
+    setGroupJoinError(null);
+    setGroupInvitePreview(null);
+    setGroupJoinPending(null);
+    try {
+      const response = await client.request<{
+        data: { name: string; topic: string | null; participant_count: number | null };
+      }>('/whatsapp/groups/invite-preview', {
+        method: 'POST',
+        body: { link: groupInviteDraft.trim() },
+      });
+      setGroupInvitePreview(response.data);
+    } catch (error) {
+      setGroupJoinError(
+        error instanceof Error ? error.message : 'Group details could not be loaded'
+      );
+    }
+  };
+  const joinGroupFromInvite = async () => {
+    if (!groupInvitePreview || groupJoining) return;
+    const request = groupJoinPending ?? {
+      key: crypto.randomUUID(),
+      link: groupInviteDraft.trim(),
+    };
+    setGroupJoinPending(request);
+    setGroupJoining(true);
+    setGroupJoinError(null);
+    try {
+      const response = await client.request<{ data: Conversation }>('/whatsapp/groups/join', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': request.key },
+        body: { link: request.link },
+      });
+      setGroupJoinPending(null);
+      setGroupInviteDraft('');
+      setGroupInvitePreview(null);
+      setConfirmGroupJoin(false);
+      setGroupJoinOpen(false);
+      queryClient.setQueryData<ConversationPage>(conversationsQueryKey, (current) => ({
+        items: [
+          response.data,
+          ...(current?.items ?? []).filter((conversation) => conversation.id !== response.data.id),
+        ],
+        nextOffset: current?.nextOffset ?? 0,
+        hasMore: current?.hasMore ?? false,
+      }));
+      setSelected(response.data.id);
+      setMobileConversationOpen(true);
+      void queryClient.invalidateQueries({
+        queryKey: scopedQueryKey(['whatsapp', 'conversations']),
+      });
+      toast.success('Joined WhatsApp group');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not join the group';
+      if (error instanceof ApiError && /rejected the group join/iu.test(message)) {
+        setGroupJoinPending(null);
+        setGroupInvitePreview(null);
+      }
+      setGroupJoinError(message);
+      setConfirmGroupJoin(false);
+    } finally {
+      setGroupJoining(false);
     }
   };
   const checkPhone = async () => {
@@ -2031,6 +2109,105 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       </Button>
                     </form>
                   )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-expanded={groupJoinOpen}
+                    aria-controls="whatsapp-group-join"
+                    onClick={() => setGroupJoinOpen((open) => !open)}
+                  >
+                    {groupJoinOpen ? 'Close join form' : 'Join group from invite link'}
+                  </Button>
+                  {groupJoinOpen && (
+                    <section
+                      id="whatsapp-group-join"
+                      className="space-y-3 border-2 border-ink bg-paper p-3"
+                      aria-label="Join a WhatsApp group"
+                    >
+                      <h2 className="font-display text-base uppercase">Join a group</h2>
+                      <label className="block space-y-1 text-sm font-semibold">
+                        <span>Group invitation link</span>
+                        <Input
+                          aria-label="Group invitation link"
+                          type="url"
+                          placeholder="https://chat.whatsapp.com/…"
+                          value={groupInviteDraft}
+                          disabled={groupJoining || Boolean(groupJoinPending)}
+                          onChange={(event) => {
+                            setGroupInviteDraft(event.target.value);
+                            setGroupInvitePreview(null);
+                            setGroupJoinPending(null);
+                            setGroupJoinError(null);
+                          }}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          !groupInviteDraft.trim() || groupJoining || Boolean(groupJoinPending)
+                        }
+                        onClick={() => void previewGroupInvite()}
+                      >
+                        {groupInvitePreview ? 'Refresh preview' : 'Preview group'}
+                      </Button>
+                      {groupInvitePreview && (
+                        <div className="space-y-1 text-sm" role="status">
+                          <p className="font-semibold">{groupInvitePreview.name}</p>
+                          {groupInvitePreview.topic && <p>{groupInvitePreview.topic}</p>}
+                          {groupInvitePreview.participant_count !== null && (
+                            <p className="text-xs text-ink-faint">
+                              {groupInvitePreview.participant_count} participants
+                            </p>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={groupJoining}
+                            onClick={() => setConfirmGroupJoin(true)}
+                          >
+                            {groupJoinPending ? 'Check join result' : 'Join this group'}
+                          </Button>
+                        </div>
+                      )}
+                      {groupJoinError && <p role="alert">{groupJoinError}</p>}
+                      {groupJoinPending && groupJoinError && (
+                        <p role="status">
+                          Retry keeps the same request key and will check membership safely.
+                        </p>
+                      )}
+                    </section>
+                  )}
+                  {confirmGroupJoin && groupInvitePreview && (
+                    <div
+                      className="border-2 border-ink bg-pink/20 p-3"
+                      role="alertdialog"
+                      aria-label="Confirm joining WhatsApp group"
+                    >
+                      <p>Join “{groupInvitePreview.name}”?</p>
+                      <div className="mt-2 flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={groupJoining}
+                          onClick={() => void joinGroupFromInvite()}
+                        >
+                          {groupJoining ? 'Joining…' : 'Confirm join'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={groupJoining}
+                          onClick={() => setConfirmGroupJoin(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2169,7 +2346,10 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         failed={groupProfileQuery.isError}
                         refreshing={groupProfileQuery.isFetching}
                         canManage={canManageConversations}
-                        onLeft={() => setSelected(null)}
+                        onLeft={() => {
+                          setSelected(null);
+                          setMobileConversationOpen(false);
+                        }}
                         onRefresh={async () => {
                           const refreshed = await groupProfileQuery.refetch();
                           if (refreshed.isSuccess && refreshed.data?.left) return 'left';
@@ -3239,7 +3419,10 @@ function GroupProfileSummary({
         !(error instanceof ApiError) ||
         error.status >= 500 ||
         (error.status === 409 && /unresolved|unknown/iu.test(error.message));
-      if (uncertain) setRefreshRequired(true);
+      if (uncertain) {
+        setRefreshRequired(true);
+        setConfirmAction(null);
+      }
       setActionError(
         error instanceof Error ? error.message : 'Leave result could not be confirmed'
       );

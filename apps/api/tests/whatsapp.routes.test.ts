@@ -154,6 +154,9 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerGroupLeaveRequests: Array<Record<string, unknown>> = [];
   let providerGroupLeaveStatus: number | null = null;
   let providerGroupMetadataStatus: number | null = null;
+  let providerGroupInvitePreviewRequests: URL[] = [];
+  let providerGroupJoinRequests: Array<Record<string, unknown>> = [];
+  let providerGroupJoinStatus: number | null = null;
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -374,6 +377,9 @@ describe('WhatsApp API GoWA bridge', () => {
     providerGroupLeaveRequests = [];
     providerGroupLeaveStatus = null;
     providerGroupMetadataStatus = null;
+    providerGroupInvitePreviewRequests = [];
+    providerGroupJoinRequests = [];
+    providerGroupJoinStatus = null;
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -461,6 +467,21 @@ describe('WhatsApp API GoWA bridge', () => {
       if (url.pathname === '/group/invite-link' && method === 'GET') {
         providerGroupInviteRequests.push(url);
         return json({ invite_link: providerGroupInviteLink });
+      }
+      if (url.pathname === '/group/info-from-link' && method === 'GET') {
+        providerGroupInvitePreviewRequests.push(url);
+        return json({
+          group_id: '120363000000004@g.us',
+          name: 'Joined by invite',
+          topic: 'Invite preview topic',
+          participant_count: 8,
+        });
+      }
+      if (url.pathname === '/group/join-with-link' && method === 'POST') {
+        providerGroupJoinRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        if (providerGroupJoinStatus)
+          return json({ message: 'gateway failure' }, providerGroupJoinStatus);
+        return json({ message: 'joined group' });
       }
       if (url.pathname === '/group/leave' && method === 'POST') {
         providerGroupLeaveRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -666,6 +687,7 @@ describe('WhatsApp API GoWA bridge', () => {
       'outbox_events',
       'whatsapp_upload_tickets',
       'whatsapp_group_operations',
+      'whatsapp_group_joins',
       'whatsapp_group_creations',
       'whatsapp_conversation_labels',
       'whatsapp_conversation_aliases',
@@ -1222,6 +1244,91 @@ describe('WhatsApp API GoWA bridge', () => {
           .first()
       ).status
     ).toBe('completed');
+  });
+
+  it('previews and joins invite links with durable retry reconciliation', async () => {
+    const accountId = await connectAndMarkReady();
+    const previewUrl = '/whatsapp/groups/invite-preview';
+    const link = 'https://chat.whatsapp.com/AbCdEfGh12345678';
+    const invalidPreview = await app.inject({
+      method: 'POST',
+      url: previewUrl,
+      headers: { authorization: 'Bearer test' },
+      payload: { link: 'https://evil.example/AbCdEfGh12345678' },
+    });
+    expect(invalidPreview.statusCode).toBe(400);
+    const deniedPreview = await app.inject({
+      method: 'POST',
+      url: previewUrl,
+      headers: { authorization: 'Bearer test', 'x-test-role': 'user' },
+      payload: { link },
+    });
+    expect(deniedPreview.statusCode).toBe(403);
+    const preview = await app.inject({
+      method: 'POST',
+      url: previewUrl,
+      headers: { authorization: 'Bearer test' },
+      payload: { link },
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json().data).toEqual({
+      name: 'Joined by invite',
+      topic: 'Invite preview topic',
+      participant_count: 8,
+    });
+    expect(providerGroupInvitePreviewRequests[0]?.searchParams.get('link')).toBe(link);
+
+    const joinUrl = '/whatsapp/groups/join';
+    const headers = {
+      authorization: 'Bearer test',
+      'idempotency-key': 'join-whatsapp-group-001',
+    };
+    const missingKey = await app.inject({
+      method: 'POST',
+      url: joinUrl,
+      headers: { authorization: 'Bearer test' },
+      payload: { link },
+    });
+    expect(missingKey.statusCode).toBe(400);
+    const joined = await app.inject({ method: 'POST', url: joinUrl, headers, payload: { link } });
+    expect(joined.statusCode).toBe(201);
+    expect(joined.json().data).toMatchObject({
+      company_id: companyId,
+      account_id: accountId,
+      jid: '120363000000004@g.us',
+      name: 'Joined by invite',
+      is_group: true,
+    });
+    expect(providerGroupJoinRequests).toEqual([{ link }]);
+    const joinReplay = await app.inject({
+      method: 'POST',
+      url: joinUrl,
+      headers,
+      payload: { link },
+    });
+    expect(joinReplay.statusCode).toBe(200);
+    expect(joinReplay.json().replayed).toBe(true);
+    expect(providerGroupJoinRequests).toHaveLength(1);
+
+    providerGroupJoinStatus = 503;
+    const uncertainKey = 'join-whatsapp-group-002';
+    const uncertain = await app.inject({
+      method: 'POST',
+      url: joinUrl,
+      headers: { authorization: 'Bearer test', 'idempotency-key': uncertainKey },
+      payload: { link: `${link} ` },
+    });
+    expect(uncertain.statusCode).toBe(502);
+    providerGroupJoinStatus = null;
+    const recovered = await app.inject({
+      method: 'POST',
+      url: joinUrl,
+      headers: { authorization: 'Bearer test', 'idempotency-key': uncertainKey },
+      payload: { link },
+    });
+    expect(recovered.statusCode).toBe(200);
+    expect(recovered.json().replayed).toBe(true);
+    expect(providerGroupJoinRequests).toHaveLength(2);
   });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {

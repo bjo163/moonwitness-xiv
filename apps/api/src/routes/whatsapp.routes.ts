@@ -12,6 +12,7 @@ import {
   WhatsappStatus,
   WhatsappUploadTicket,
   WhatsappGroupCreation,
+  WhatsappGroupJoin,
   WhatsappGroupOperation,
 } from '../whatsapp/models.js';
 import { attachPrivateLidAlias } from '../whatsapp/conversation-identity.js';
@@ -734,6 +735,27 @@ function requireCompany(
 }
 
 type WhatsappAction = 'create' | 'write';
+
+function parseGroupInviteLink(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 512) return null;
+  try {
+    const url = new URL(value.trim());
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'chat.whatsapp.com' ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !/^\/[A-Za-z0-9_-]{8,128}$/u.test(url.pathname)
+    )
+      return null;
+    return `https://chat.whatsapp.com${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 type WhatsappModel =
   | 'whatsapp.account'
   | 'whatsapp.conversation'
@@ -2500,6 +2522,305 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       })),
     };
   });
+
+  app.post<{ Body: unknown }>(
+    '/whatsapp/groups/invite-preview',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'create')) return;
+      const body = isRecord(req.body) ? req.body : null;
+      const link = parseGroupInviteLink(body?.link);
+      if (!body || Object.keys(body).some((key) => key !== 'link') || !link)
+        return reply
+          .code(400)
+          .send({ success: false, error: 'Enter a valid WhatsApp group invite link' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+      try {
+        const result = await gowaRequest<unknown>(
+          `/group/info-from-link?link=${encodeURIComponent(link)}`,
+          { deviceId: account.gateway_device_id }
+        );
+        const info = isRecord(result) && isRecord(result.results) ? result.results : result;
+        if (
+          !isRecord(info) ||
+          typeof info.group_id !== 'string' ||
+          !/^[^\s@]{1,200}@g\.us$/u.test(info.group_id)
+        )
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned invalid group details' });
+        const name =
+          typeof info.name === 'string'
+            ? info.name
+                .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '')
+                .trim()
+                .slice(0, 255)
+            : '';
+        const topicValue =
+          typeof info.topic === 'string'
+            ? info.topic
+                .replace(
+                  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
+                  ''
+                )
+                .slice(0, 4000)
+            : '';
+        const participantCount = Number(info.participant_count);
+        return reply.send({
+          success: true,
+          data: {
+            name: name || 'WhatsApp group',
+            topic: topicValue || null,
+            participant_count:
+              Number.isSafeInteger(participantCount) && participantCount >= 0
+                ? Math.min(participantCount, 100_000)
+                : null,
+          },
+        });
+      } catch (error) {
+        req.log.warn({ error: whatsappLogErrorContext(error) }, 'WhatsApp invite preview failed');
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Group invite details could not be loaded' });
+      }
+    }
+  );
+
+  app.post<{ Body: unknown }>(
+    '/whatsapp/groups/join',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'create')) return;
+      const body = isRecord(req.body) ? req.body : null;
+      const link = parseGroupInviteLink(body?.link);
+      if (!body || Object.keys(body).some((key) => key !== 'link') || !link)
+        return reply
+          .code(400)
+          .send({ success: false, error: 'Enter a valid WhatsApp group invite link' });
+      const rawKey = req.headers['idempotency-key'];
+      const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+      if (!/^[\x21-\x7e]{16,128}$/u.test(key))
+        return reply
+          .code(400)
+          .send({ success: false, error: 'A valid Idempotency-Key header is required' });
+      const idempotencyHash = createHash('sha256').update(key).digest('hex');
+      const requestHash = createHash('sha256').update(link).digest('hex');
+      const existing = await WhatsappGroupJoin.query().findOne({
+        company_id: companyId,
+        idempotency_key: idempotencyHash,
+      });
+      if (existing) {
+        if (existing.request_hash !== requestHash)
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Idempotency-Key was used for a different request' });
+        if (existing.status === 'completed' && existing.group_jid) {
+          const conversation = await WhatsappConversation.query().findOne({
+            company_id: companyId,
+            jid: existing.group_jid,
+            is_group: true,
+          });
+          if (conversation)
+            return reply.send({ success: true, data: conversation, replayed: true });
+        }
+        if (existing.status === 'unknown' && existing.group_jid) {
+          const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+          if (account?.status === 'connected' && account.gateway_device_id) {
+            try {
+              await gowaRequest<unknown>(
+                `/group/participants?group_id=${encodeURIComponent(existing.group_jid)}`,
+                { deviceId: account.gateway_device_id }
+              );
+              const [conversation] = await app.db.transaction(async (trx) => {
+                const [joined] = await trx('whatsapp_conversations')
+                  .insert({
+                    company_id: companyId,
+                    account_id: account.id,
+                    jid: existing.group_jid,
+                    name: existing.group_name || 'WhatsApp group',
+                    is_group: true,
+                    unread_count: 0,
+                    write_date: new Date().toISOString(),
+                  })
+                  .onConflict(['company_id', 'jid'])
+                  .merge({
+                    name: existing.group_name || 'WhatsApp group',
+                    is_group: true,
+                    write_date: new Date().toISOString(),
+                  })
+                  .returning('*');
+                await WhatsappGroupJoin.query(trx)
+                  .where({ id: existing.id })
+                  .patch({ status: 'completed' });
+                await recordWhatsAppAudit(
+                  req,
+                  'whatsapp.conversation',
+                  'group_join_reconciled',
+                  Number(joined.id),
+                  companyId,
+                  trx
+                );
+                return [joined];
+              });
+              return reply.send({ success: true, data: conversation, replayed: true });
+            } catch {
+              // The original result remains unresolved; do not issue another join call.
+            }
+          }
+        }
+        return reply.code(409).send({
+          success: false,
+          error:
+            existing.status === 'failed'
+              ? 'WhatsApp rejected joining this group; use a new request key after checking the link'
+              : 'Group join result is unresolved; retry with the same request key to check safely',
+        });
+      }
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+      let info: Record<string, unknown>;
+      try {
+        const result = await gowaRequest<unknown>(
+          `/group/info-from-link?link=${encodeURIComponent(link)}`,
+          { deviceId: account.gateway_device_id }
+        );
+        const value = isRecord(result) && isRecord(result.results) ? result.results : result;
+        if (
+          !isRecord(value) ||
+          typeof value.group_id !== 'string' ||
+          !/^[^\s@]{1,200}@g\.us$/u.test(value.group_id)
+        )
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned invalid group details' });
+        info = value;
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group join preview failed'
+        );
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Group invite details could not be loaded' });
+      }
+      const groupJid = typeof info.group_id === 'string' ? info.group_id : '';
+      const name =
+        typeof info.name === 'string'
+          ? info.name
+              .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '')
+              .trim()
+              .slice(0, 255)
+          : 'WhatsApp group';
+      const topic =
+        typeof info.topic === 'string'
+          ? info.topic
+              .replace(
+                /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
+                ''
+              )
+              .slice(0, 4000)
+          : null;
+      const reportedParticipantCount = Number(info.participant_count);
+      const participantCount = Number.isSafeInteger(reportedParticipantCount)
+        ? Math.max(0, Math.min(reportedParticipantCount, 100_000))
+        : null;
+      let joinId: number;
+      try {
+        const operation = await WhatsappGroupJoin.query().insert({
+          company_id: companyId,
+          idempotency_key: idempotencyHash,
+          request_hash: requestHash,
+          group_jid: groupJid,
+          group_name: name || 'WhatsApp group',
+          status: 'started',
+        });
+        joinId = Number(operation.id);
+      } catch (error) {
+        const raced = await WhatsappGroupJoin.query().findOne({
+          company_id: companyId,
+          idempotency_key: idempotencyHash,
+        });
+        if (raced)
+          return reply.code(409).send({
+            success: false,
+            error:
+              'Group join result is unresolved; retry with the same request key to check safely',
+          });
+        throw error;
+      }
+      try {
+        await gowaRequest<unknown>('/group/join-with-link', {
+          method: 'POST',
+          deviceId: account.gateway_device_id,
+          contentType: 'application/json',
+          body: JSON.stringify({ link }),
+        });
+        const now = new Date().toISOString();
+        const conversation = await app.db.transaction(async (trx) => {
+          const [joined] = await trx('whatsapp_conversations')
+            .insert({
+              company_id: companyId,
+              account_id: account.id,
+              jid: groupJid,
+              name: name || 'WhatsApp group',
+              group_topic: topic,
+              group_participant_count: participantCount,
+              is_group: true,
+              unread_count: 0,
+              write_date: now,
+            })
+            .onConflict(['company_id', 'jid'])
+            .merge({
+              name: name || 'WhatsApp group',
+              group_topic: topic,
+              group_participant_count: participantCount,
+              is_group: true,
+              is_archived: false,
+              write_date: now,
+            })
+            .returning('*');
+          await WhatsappGroupJoin.query(trx).where({ id: joinId }).patch({ status: 'completed' });
+          await recordWhatsAppAudit(
+            req,
+            'whatsapp.conversation',
+            'group_join',
+            Number(joined.id),
+            companyId,
+            trx
+          );
+          return joined;
+        });
+        return reply.code(201).send({ success: true, data: conversation });
+      } catch (error) {
+        const rejected =
+          error instanceof GowaError && error.statusCode >= 400 && error.statusCode < 500;
+        await WhatsappGroupJoin.query()
+          .where({ id: joinId })
+          .patch({ status: rejected ? 'failed' : 'unknown' });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          rejected ? 'group_join_failed' : 'group_join_unknown',
+          joinId,
+          companyId
+        );
+        req.log.warn({ error: whatsappLogErrorContext(error) }, 'WhatsApp group join failed');
+        return reply.code(502).send({
+          success: false,
+          error: rejected
+            ? 'WhatsApp rejected the group join'
+            : 'Group join result is unknown; retry with the same request key to check safely',
+        });
+      }
+    }
+  );
 
   app.post<{ Body: unknown }>(
     '/whatsapp/contacts/check',

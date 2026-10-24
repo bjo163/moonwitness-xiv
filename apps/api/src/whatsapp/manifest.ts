@@ -6,6 +6,7 @@ import {
   WhatsappConversationRead,
   WhatsappConversationAlias,
   WhatsappGroupCreation,
+  WhatsappGroupJoin,
   WhatsappGroupOperation,
   WhatsappInternalNote,
   WhatsappLabel,
@@ -24,6 +25,7 @@ const models = [
   WhatsappConversationRead,
   WhatsappConversationAlias,
   WhatsappGroupCreation,
+  WhatsappGroupJoin,
   WhatsappGroupOperation,
   WhatsappInternalNote,
   WhatsappLabel,
@@ -38,7 +40,7 @@ const userFacingModels = [
 export const whatsappManifest = defineAddon({
   // Preserve the installed addon identity and seed IDs used by earlier builds.
   name: 'orm-whatsapp',
-  version: '1.12.0',
+  version: '1.13.0',
   depends: ['base'],
   models: [...models],
   data: userFacingModels.flatMap((model) => [

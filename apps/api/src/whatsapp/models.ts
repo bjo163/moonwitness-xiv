@@ -224,6 +224,23 @@ export const WhatsappGroupCreation = defineModel('whatsapp.group.creation', {
   },
 });
 
+export const WhatsappGroupJoin = defineModel('whatsapp.group.join', {
+  table: 'whatsapp_group_joins',
+  order: 'id desc',
+  unique: [['company', 'idempotency_key']],
+  fields: {
+    company: fields.belongsTo(Company, { required: true }),
+    idempotency_key: fields.string({ required: true, hidden: true, sensitive: true }),
+    request_hash: fields.string({ required: true, hidden: true, sensitive: true }),
+    status: fields.enum(['started', 'completed', 'unknown', 'failed'], {
+      required: true,
+      default: 'started',
+    }),
+    group_jid: fields.string({ hidden: true, sensitive: true }),
+    group_name: fields.string(),
+  },
+});
+
 export const WhatsappGroupOperation = defineModel('whatsapp.group.operation', {
   table: 'whatsapp_group_operations',
   order: 'id desc',
