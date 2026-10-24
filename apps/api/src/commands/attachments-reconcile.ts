@@ -12,6 +12,7 @@ import {
 } from '@moonwitness/orm-storage';
 import { createAttachmentStorage } from '../storage/attachment-storage.js';
 import { whatsappManifest } from '../whatsapp/manifest.js';
+import { whatsappAttachmentReferences } from './whatsapp-attachment-references.js';
 
 export interface AttachmentReconcileOptions {
   readonly apply: boolean;
@@ -36,21 +37,7 @@ export async function reconcileAttachments(options: AttachmentReconcileOptions) 
           ...(typeof row.checksum === 'string' ? { checksum: row.checksum } : {}),
         };
       }
-      const mediaRows = await db('whatsapp_messages')
-        .where((query) => query.whereNotNull('media_key').orWhereNotNull('media_thumbnail_key'))
-        .select('media_key', 'media_thumbnail_key');
-      for (const row of mediaRows) {
-        if (typeof row.media_key === 'string') yield { storageKey: row.media_key };
-        if (typeof row.media_thumbnail_key === 'string')
-          yield { storageKey: row.media_thumbnail_key };
-      }
-      const conversationRows = await db('whatsapp_conversations')
-        .whereNotNull('contact_avatar_key')
-        .select('contact_avatar_key');
-      for (const row of conversationRows) {
-        if (typeof row.contact_avatar_key === 'string')
-          yield { storageKey: row.contact_avatar_key };
-      }
+      yield* whatsappAttachmentReferences(db);
       const now = new Date().toISOString();
       const pendingUploadRows = await db('whatsapp_upload_tickets')
         .where('expires_at', '>', now)
