@@ -5156,7 +5156,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       let upload: OutgoingUpload;
       try {
         if (!attachmentScanner) throw new MalwareScannerUnavailableError();
-        upload = await parseOutgoingUpload(req, options.attachmentStorage, attachmentScanner);
+        upload = await parseOutgoingUpload(req, options.attachmentStorage, attachmentScanner, [
+          'mentions',
+        ]);
       } catch (error) {
         if (error instanceof MediaScanInfectedError)
           return reply
@@ -5284,6 +5286,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       const body = {
         ...upload.fields,
         content: upload.fields.content ?? '',
+        mentions: upload.fields.mentions ?? '[]',
         ...(upload.fields.reply_to_message_id
           ? { reply_to_message_id: Number(upload.fields.reply_to_message_id) }
           : {}),
@@ -5299,6 +5302,25 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         if (upload.mediaKey && !directUploadTicketId)
           await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
         return reply.code(400).send({ success: false, error: 'Invalid message payload' });
+      }
+      let mentions: string[];
+      try {
+        const parsed: unknown = JSON.parse(String(body.mentions));
+        if (
+          !Array.isArray(parsed) ||
+          parsed.length > 100 ||
+          parsed.some(
+            (mention) =>
+              typeof mention !== 'string' ||
+              (mention !== '@everyone' && !/^\d{7,15}$/u.test(mention))
+          )
+        )
+          throw new Error('invalid mention list');
+        mentions = [...new Set(parsed as string[])];
+      } catch {
+        if (upload.mediaKey && !directUploadTicketId)
+          await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+        return reply.code(400).send({ success: false, error: 'Invalid group mentions' });
       }
       const idempotencyKey = req.headers['idempotency-key'];
       if (
@@ -5321,6 +5343,59 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         if (upload.mediaKey && !directUploadTicketId)
           await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
         return reply.code(404).send({ success: false, error: 'Conversation not found' });
+      }
+      if (mentions.length) {
+        const allowedPhones = new Set<string>();
+        const snapshotAt = Date.parse(String(conversation.group_metadata_synced_at ?? ''));
+        const snapshotAgeMs = Date.now() - snapshotAt;
+        const participantSnapshotFresh =
+          Number.isFinite(snapshotAt) && snapshotAgeMs >= 0 && snapshotAgeMs <= 5 * 60_000;
+        if (
+          conversation.is_group &&
+          participantSnapshotFresh &&
+          typeof conversation.group_participants_json === 'string'
+        ) {
+          try {
+            const participants: unknown = JSON.parse(conversation.group_participants_json);
+            if (Array.isArray(participants)) {
+              for (const participant of participants) {
+                if (!isRecord(participant)) continue;
+                for (const candidate of [participant.jid, participant.phone_number]) {
+                  if (
+                    typeof candidate === 'string' &&
+                    /^(\+?\d{7,15})@s\.whatsapp\.net$/u.test(candidate)
+                  )
+                    allowedPhones.add(candidate.replace(/\D/gu, ''));
+                  else if (typeof candidate === 'string' && /^\+?\d{7,15}$/u.test(candidate))
+                    allowedPhones.add(candidate.replace(/\D/gu, ''));
+                }
+              }
+            }
+          } catch {
+            // A malformed participant snapshot cannot authorize a mention.
+          }
+        }
+        const validTargets =
+          conversation.is_group &&
+          participantSnapshotFresh &&
+          (mentions.includes('@everyone')
+            ? mentions.length === 1 && Number(conversation.group_participant_count ?? 0) > 0
+            : mentions.every((mention) => allowedPhones.has(mention)));
+        const messageType = upload.mediaKey ? mediaType(upload.mediaMime) : 'text';
+        const mentionError = !conversation.is_group
+          ? 'Mentions can only be used in group conversations'
+          : !participantSnapshotFresh
+            ? 'Refresh group details before mentioning participants'
+            : !validTargets
+              ? 'Select a current group participant or @everyone'
+              : !['text', 'image', 'video', 'document'].includes(messageType)
+                ? 'This media type does not support mentions'
+                : null;
+        if (mentionError) {
+          if (upload.mediaKey && !directUploadTicketId)
+            await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+          return reply.code(400).send({ success: false, error: mentionError });
+        }
       }
       let quotedMessage: { id: number; external_id: string } | undefined;
       if (body.reply_to_message_id !== undefined) {
@@ -5358,6 +5433,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             content: body.content,
             reply_to_message_id: quotedMessage?.id ?? null,
             reply_to_external_id: quotedMessage?.external_id ?? null,
+            mentions,
             media_mime_type: mediaMime,
             media_file_name: fileName,
           })
@@ -5423,7 +5499,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             aggregate_model: 'whatsapp.message',
             aggregate_id: inserted.id,
             company_id: companyId,
-            payload: JSON.stringify({ message_id: inserted.id }),
+            payload: JSON.stringify({ message_id: inserted.id, mentions }),
             status: 'pending',
             attempts: 0,
             max_attempts: 4,

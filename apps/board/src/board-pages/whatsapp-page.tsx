@@ -2948,6 +2948,11 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
               <MessageComposer
                 key={activeConversation.id}
                 conversationId={activeConversation.id}
+                groupParticipants={
+                  activeConversation.is_group && !groupProfileQuery.data?.stale
+                    ? (groupProfileQuery.data?.participants ?? [])
+                    : []
+                }
                 directUploads={account?.direct_uploads === true}
                 replyTo={replyingTo}
                 onCancelReply={() => setReplyingTo(null)}
@@ -2979,6 +2984,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
 
 function MessageComposer({
   conversationId,
+  groupParticipants,
   directUploads,
   replyTo,
   onCancelReply,
@@ -2986,6 +2992,7 @@ function MessageComposer({
   onSendOnEnterChange,
 }: {
   conversationId: number;
+  groupParticipants: GroupProfile['participants'];
   directUploads: boolean;
   replyTo: Message | null;
   onCancelReply: () => void;
@@ -2994,6 +3001,8 @@ function MessageComposer({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
+  const [selectedMentions, setSelectedMentions] = useState<string[]>([]);
+  const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
@@ -3008,6 +3017,24 @@ function MessageComposer({
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSaveWarningShown = useRef(false);
   const companyId = client.getCompanyId();
+  const mentionOptions = groupParticipants.flatMap((participant) => {
+    const phone = participant.phone_number?.replace(/@.*$/u, '').replace(/\D/gu, '') ?? '';
+    return /^\d{7,15}$/u.test(phone)
+      ? [{ phone, label: participant.display_name?.trim() || `+${phone}` }]
+      : [];
+  });
+  const mentionableMedia = !file || !/^audio\//u.test(file.type);
+  const toggleMention = (mention: string) => {
+    setSelectedMentions((current) => {
+      const next = current.includes(mention)
+        ? current.filter((item) => item !== mention)
+        : mention === '@everyone'
+          ? ['@everyone']
+          : [...current.filter((item) => item !== '@everyone'), mention];
+      idempotencyKey.current = crypto.randomUUID();
+      return next;
+    });
+  };
   const draftStorageKey =
     client.currentUser && companyId
       ? `whatsapp:${client.currentUser.id}:${companyId}:${conversationId}`
@@ -3109,10 +3136,12 @@ function MessageComposer({
         ? new FormData()
         : {
             content: draft.trim(),
+            mentions: JSON.stringify(selectedMentions),
             ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
           };
       if (body instanceof FormData) {
         body.set('content', draft.trim());
+        body.set('mentions', JSON.stringify(selectedMentions));
         if (replyTo) body.set('reply_to_message_id', String(replyTo.id));
         body.set('media', file!, file!.name);
       }
@@ -3157,6 +3186,7 @@ function MessageComposer({
           body: {
             content: draft.trim(),
             upload_ticket_id: ticket.upload_id,
+            mentions: JSON.stringify(selectedMentions),
             ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
           },
         });
@@ -3178,6 +3208,7 @@ function MessageComposer({
       if (draftStorageKey) await deleteWhatsappDraft(draftStorageKey).catch(() => undefined);
       setDraft('');
       setFile(null);
+      setSelectedMentions([]);
       setDraftSaved(false);
       onCancelReply();
       idempotencyKey.current = crypto.randomUUID();
@@ -3207,6 +3238,67 @@ function MessageComposer({
 
   return (
     <form onSubmit={send} className="flex flex-col gap-2 border-t-2 border-ink p-3">
+      {groupParticipants.length > 0 && (
+        <div className="flex flex-col items-start gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!mentionableMedia || sending}
+            aria-expanded={mentionPickerOpen}
+            onClick={() => setMentionPickerOpen((open) => !open)}
+          >
+            {mentionPickerOpen ? 'Hide mentions' : 'Mention participants'}
+          </Button>
+          {mentionPickerOpen && (
+            <div
+              role="group"
+              aria-label="Mention picker"
+              className="flex max-h-32 flex-wrap gap-2 overflow-y-auto"
+            >
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedMentions.includes('@everyone') ? 'default' : 'outline'}
+                aria-pressed={selectedMentions.includes('@everyone')}
+                onClick={() => toggleMention('@everyone')}
+              >
+                @everyone
+              </Button>
+              {mentionOptions.map((participant) => (
+                <Button
+                  key={participant.phone}
+                  type="button"
+                  size="sm"
+                  variant={selectedMentions.includes(participant.phone) ? 'default' : 'outline'}
+                  aria-pressed={selectedMentions.includes(participant.phone)}
+                disabled={
+                  sending ||
+                  (selectedMentions.length >= 100 && !selectedMentions.includes(participant.phone))
+                }
+                  onClick={() => toggleMention(participant.phone)}
+                >
+                  @{participant.label}
+                </Button>
+              ))}
+            </div>
+          )}
+          {selectedMentions.length > 0 && (
+            <p role="status" className="text-xs text-ink-faint">
+              Mention preview ({selectedMentions.length}/100): {selectedMentions
+                .map((mention) =>
+                  mention === '@everyone'
+                    ? mention
+                    : `@${mentionOptions.find((item) => item.phone === mention)?.label ?? mention}`
+                )
+                .join(', ')}
+            </p>
+          )}
+          {!mentionableMedia && (
+            <p className="text-xs text-ink-faint">Mentions are not supported for audio messages.</p>
+          )}
+        </div>
+      )}
       {replyTo && (
         <div className="flex items-start justify-between gap-3 border-l-2 border-magenta bg-cream p-2 text-xs">
           <p className="min-w-0 truncate">

@@ -665,6 +665,17 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(page.getByText('+6281234567890')).toBeVisible();
   await page.getByRole('button', { name: /Project group/u }).click();
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mention participants' }).click();
+  await page.getByRole('button', { name: '@Rani Finance' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Mention preview (1/100): @Rani Finance' })
+  ).toBeVisible();
+  await page.getByRole('button', { name: '@everyone' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Mention preview (1/100): @everyone' })
+  ).toBeVisible();
+  await page.getByRole('button', { name: '@everyone' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Mention preview' })).toHaveCount(0);
   await expect(page.getByText('2 participants')).toBeVisible();
   await page.getByText('Show participants').click();
   await expect(page.getByText('Rani Finance · admin')).toBeVisible();

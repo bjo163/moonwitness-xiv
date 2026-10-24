@@ -265,7 +265,8 @@ export async function dispatchQueuedWhatsAppMessage(
   companyId: number,
   eventId: number,
   storage: AttachmentStorage,
-  providerAck?: { external_id: string; accepted_at?: string }
+  providerAck?: { external_id: string; accepted_at?: string },
+  mentions: string[] = []
 ): Promise<void> {
   const message = await WhatsappMessage.query().findOne({ id: messageId, company_id: companyId });
   if (!message) return;
@@ -397,6 +398,7 @@ export async function dispatchQueuedWhatsAppMessage(
       form.set('phone', conversation.jid);
       if (message.reply_to_external_id) form.set('reply_message_id', message.reply_to_external_id);
       if (message.content?.trim()) form.set('caption', message.content);
+      for (const mention of mentions) form.append('mentions', mention);
       form.set(
         field,
         new Blob([bytes], { type: message.media_mime_type || 'application/octet-stream' }),
@@ -420,6 +422,7 @@ export async function dispatchQueuedWhatsAppMessage(
           ...(message.reply_to_external_id
             ? { reply_message_id: message.reply_to_external_id }
             : {}),
+          ...(mentions.length ? { mentions } : {}),
         }),
       });
     }
@@ -510,6 +513,18 @@ export function registerWhatsAppOutboxConsumer(storage: AttachmentStorage): () =
       ) {
         throw new PermanentJobError('Invalid WhatsApp delivery event', 'INVALID_WHATSAPP_EVENT');
       }
+      const rawMentions = (payload as { mentions?: unknown }).mentions;
+      if (
+        rawMentions !== undefined &&
+        (!Array.isArray(rawMentions) ||
+          rawMentions.length > 100 ||
+          rawMentions.some(
+            (mention) =>
+              typeof mention !== 'string' ||
+              (mention !== '@everyone' && !/^\d{7,15}$/u.test(mention))
+          ))
+      )
+        throw new PermanentJobError('Invalid WhatsApp mention event', 'INVALID_WHATSAPP_MENTIONS');
       await dispatchQueuedWhatsAppMessage(
         (payload as { message_id: number }).message_id,
         context.companyId,
@@ -521,7 +536,8 @@ export function registerWhatsAppOutboxConsumer(storage: AttachmentStorage): () =
           'external_id' in payload.provider_ack &&
           typeof payload.provider_ack.external_id === 'string'
           ? (payload.provider_ack as { external_id: string; accepted_at?: string })
-          : undefined
+          : undefined,
+        Array.isArray(rawMentions) ? (rawMentions as string[]) : []
       );
     }
   );

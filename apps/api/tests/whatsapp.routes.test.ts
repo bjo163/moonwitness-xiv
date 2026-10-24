@@ -101,6 +101,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let scanAsInfected = false;
   let scannerUnavailable = false;
   let providerImageSendCount = 0;
+  let providerImageMentions: string[] = [];
   let providerVideoSendCount = 0;
   let providerImageReplyIds: string[] = [];
   let providerAudioSendCount = 0;
@@ -330,6 +331,7 @@ describe('WhatsApp API GoWA bridge', () => {
     scanAsInfected = false;
     scannerUnavailable = false;
     providerImageSendCount = 0;
+    providerImageMentions = [];
     providerVideoSendCount = 0;
     providerImageReplyIds = [];
     providerAudioSendCount = 0;
@@ -564,10 +566,12 @@ describe('WhatsApp API GoWA bridge', () => {
       if (url.pathname === '/send/image') {
         providerImageSendCount++;
         const form = init?.body;
+        providerImageMentions =
+          form instanceof FormData ? form.getAll('mentions').map(String) : [];
         providerImageReplyIds.push(
           form instanceof FormData ? String(form.get('reply_message_id') ?? '') : ''
         );
-        return json({ message_id: 'sent-image-id' });
+        return json({ message_id: `sent-image-${providerImageSendCount}` });
       }
       if (url.pathname === '/send/video') {
         providerVideoSendCount++;
@@ -3179,27 +3183,62 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     const groupId = inbox.json().data.find((chat: { is_group: boolean }) => chat.is_group)
       .id as number;
+    await db('whatsapp_conversations').where({ id: groupId, company_id: companyId }).update({
+      group_participant_count: 2,
+      group_metadata_synced_at: new Date().toISOString(),
+      group_participants_json: JSON.stringify([
+        {
+          jid: '628111111111@s.whatsapp.net',
+          phone_number: '628111111111@s.whatsapp.net',
+          display_name: 'Rani',
+        },
+      ]),
+    });
+    const mentionGroupSnapshot = await db('whatsapp_conversations')
+      .where({ id: groupId, company_id: companyId })
+      .first('is_group', 'group_participant_count', 'group_participants_json', 'group_metadata_synced_at');
+    expect(mentionGroupSnapshot.is_group).toBeTruthy();
+    expect(mentionGroupSnapshot.group_metadata_synced_at).toBeTruthy();
     const privateId = inbox.json().data.find((chat: { is_group: boolean }) => !chat.is_group)
       .id as number;
 
+    const textIdempotencyKey = randomUUID();
     const sentText = await app.inject({
       method: 'POST',
       url: `/whatsapp/conversations/${groupId}/messages`,
-      headers: { authorization: 'Bearer test', 'idempotency-key': randomUUID() },
-      payload: { content: 'Group message' },
+      headers: { authorization: 'Bearer test', 'idempotency-key': textIdempotencyKey },
+      payload: { content: 'Group message', mentions: JSON.stringify(['628111111111']) },
     });
-    expect(sentText.statusCode).toBe(202);
+    expect(sentText.statusCode, JSON.stringify(sentText.json())).toBe(202);
     expect(sentText.json().data).toMatchObject({
       external_id: expect.stringContaining('pending:'),
       direction: 'outbound',
       content: 'Group message',
       status: 'queued',
     });
+    const changedMentionReplay = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: { authorization: 'Bearer test', 'idempotency-key': textIdempotencyKey },
+      payload: { content: 'Group message', mentions: JSON.stringify(['@everyone']) },
+    });
+    expect(changedMentionReplay.statusCode).toBe(409);
     expect(failTextSend).toBe(false);
     const textMessageId = sentText.json().data.id as number;
     const textEvent = await db('outbox_events')
       .where({ aggregate_id: textMessageId, event_type: 'whatsapp.message.send' })
       .first();
+    expect(JSON.parse(textEvent.payload)).toMatchObject({
+      message_id: textMessageId,
+      mentions: ['628111111111'],
+    });
+    const nonMemberMention = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: { authorization: 'Bearer test', 'idempotency-key': randomUUID() },
+      payload: { content: 'Invalid mention', mentions: JSON.stringify(['628199999999']) },
+    });
+    expect(nonMemberMention.statusCode).toBe(400);
     const unregister = registerWhatsAppOutboxConsumer(storage);
     await dispatchOneOutboxEvent('whatsapp-route-test-worker');
     unregister();
@@ -3209,6 +3248,38 @@ describe('WhatsApp API GoWA bridge', () => {
     expect((await db('outbox_events').where({ id: textEvent.id }).first()).status).toBe(
       'published'
     );
+    expect(providerTextSendBodies.at(-1)).toMatchObject({ mentions: ['628111111111'] });
+
+    const groupImageUpload = multipartPayload(
+      { content: 'Photo with mention', mentions: JSON.stringify(['628111111111']) },
+      { name: 'group.png', mime: 'image/png', bytes: pngFixture() }
+    );
+    const groupImage = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': groupImageUpload.contentType,
+      },
+      payload: groupImageUpload.payload,
+    });
+    expect(groupImage.statusCode, JSON.stringify(groupImage.json())).toBe(202);
+    const groupImageEvent = await db('outbox_events')
+      .where({ aggregate_id: groupImage.json().data.id, event_type: 'whatsapp.message.send' })
+      .first();
+    const groupImagePayload = JSON.parse(groupImageEvent.payload) as {
+      mentions: string[];
+    };
+    await dispatchQueuedWhatsAppMessage(
+      groupImage.json().data.id,
+      companyId,
+      groupImageEvent.id,
+      storage,
+      undefined,
+      groupImagePayload.mentions
+    );
+    expect(providerImageMentions).toEqual(['628111111111']);
 
     const [imageQuoteTarget] = await db('whatsapp_messages')
       .insert({
