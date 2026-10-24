@@ -14,6 +14,7 @@ import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   LocalFileAttachmentStorage,
+  pruneOrphanAttachmentStorage,
   reconcileAttachmentStorage,
   reconcileLocalAttachmentStorage,
   type AttachmentReference,
@@ -257,6 +258,40 @@ describe('LocalFileAttachmentStorage', () => {
 });
 
 describe('provider-neutral attachment reconciliation', () => {
+  it('prunes only stale unreferenced objects and supports dry-run', async () => {
+    const storage = await storageFixture();
+    await storage.put(keyA, Buffer.from('referenced media'));
+    await storage.put(keyB, Buffer.from('orphan media'));
+    await storage.put(keyC, Buffer.from('new orphan media'));
+    const staleDate = new Date('2020-01-01T00:00:00.000Z');
+    await Promise.all(
+      [keyA, keyB].map((key) => utimes(path.join(storage.directory, key), staleDate, staleDate))
+    );
+    const keys = async function* () {
+      yield keyA;
+      yield 'legacy/non-uuid-reference';
+    };
+    const cutoff = new Date('2025-01-01T00:00:00.000Z');
+
+    const dryRun = await pruneOrphanAttachmentStorage(storage, keys(), {
+      apply: false,
+      olderThan: cutoff,
+      limit: 10,
+    });
+    expect(dryRun).toMatchObject({ orphaned: [keyB], deleted: [], failures: [] });
+    await expect(storage.get(keyB)).resolves.toEqual(Buffer.from('orphan media'));
+
+    const applied = await pruneOrphanAttachmentStorage(storage, keys(), {
+      apply: true,
+      olderThan: cutoff,
+      limit: 10,
+    });
+    expect(applied).toMatchObject({ orphaned: [keyB], deleted: [keyB], failures: [] });
+    await expect(storage.get(keyA)).resolves.toEqual(Buffer.from('referenced media'));
+    await expect(storage.get(keyB)).resolves.toBeNull();
+    await expect(storage.get(keyC)).resolves.toEqual(Buffer.from('new orphan media'));
+  });
+
   it('reports legacy non-UUID references without querying storage or treating them as missing', async () => {
     const storage = await storageFixture();
     await storage.put(keyA, Buffer.from('unrelated object'));

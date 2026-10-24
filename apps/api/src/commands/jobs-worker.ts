@@ -12,6 +12,9 @@ import {
 } from '@moonwitness/orm-workflow';
 import { manifest as notificationAddon } from '@moonwitness/orm-notification';
 import { createProcessShutdownController } from '../lifecycle/process-shutdown.js';
+import { manifest as storageManifest } from '@moonwitness/orm-storage';
+import { whatsappManifest } from '../whatsapp/manifest.js';
+import { registerWhatsAppAttachmentJob } from './whatsapp-attachments-job.js';
 
 const db = createDatabase();
 let workerHealth: Awaited<ReturnType<typeof startWorkerHealthServer>> = null;
@@ -20,7 +23,15 @@ const shutdown = createProcessShutdownController(() => {
 });
 
 try {
-  await installAddons(db, [baseManifest, jobsManifest, notificationAddon, workflowAddon]);
+  await installAddons(db, [
+    baseManifest,
+    jobsManifest,
+    notificationAddon,
+    workflowAddon,
+    storageManifest,
+    whatsappManifest,
+  ]);
+  const unregisterWhatsAppAttachmentJob = registerWhatsAppAttachmentJob(db);
   const handlerModule = process.env.JOB_HANDLERS_MODULE;
   if (handlerModule) await import(pathToFileURL(path.resolve(handlerModule)).href);
   if (!shutdown.signal.aborted) {
@@ -47,6 +58,7 @@ try {
   } finally {
     unregisterWorkflow();
     unregisterExample();
+    unregisterWhatsAppAttachmentJob();
   }
 } finally {
   shutdown.dispose();
