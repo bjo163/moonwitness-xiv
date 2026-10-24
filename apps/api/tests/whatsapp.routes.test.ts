@@ -3217,6 +3217,48 @@ describe('WhatsApp API GoWA bridge', () => {
         payload: raw,
       });
     };
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '120363000000777@g.us',
+        name: 'Group cache',
+        is_group: true,
+        unread_count: 0,
+        group_participant_count: 1,
+        group_participants_json: JSON.stringify([
+          {
+            jid: '628111111111@s.whatsapp.net',
+            display_name: 'Cached member',
+            is_admin: false,
+            is_super_admin: false,
+          },
+        ]),
+        group_metadata_synced_at: new Date().toISOString(),
+      })
+      .returning(['id']);
+    expect(
+      (
+        await postEvent('group.participants', {
+          chat_id: '120363000000777@g.us',
+          type: 'join',
+          jids: ['628222222222@s.whatsapp.net'],
+        })
+      ).statusCode
+    ).toBe(204);
+    const invalidatedGroup = await db('whatsapp_conversations').where({ id: group.id }).first();
+    expect(invalidatedGroup.group_metadata_synced_at).toBeNull();
+    expect(JSON.parse(invalidatedGroup.group_participants_json)).toHaveLength(1);
+    groupMetadataFails = true;
+    const staleGroup = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/conversations/${group.id}/group`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(staleGroup.statusCode).toBe(200);
+    expect(staleGroup.json().data).toMatchObject({ stale: true, participant_count: 1 });
+    groupMetadataFails = false;
+
     expect(
       (
         await postEvent('message.edited', {
@@ -3486,7 +3528,8 @@ describe('WhatsApp API GoWA bridge', () => {
         body: {
           webhook_url: `https://api.moonwitness.test/whatsapp/gowa/webhook/moonwitness-company-${companyId}`,
           webhook_secret: process.env.WHATSAPP_WEBHOOK_SECRET,
-          webhook_events: 'message,message.ack,message.edited,message.revoked,message.deleted',
+          webhook_events:
+            'message,message.ack,message.edited,message.revoked,message.deleted,group.participants',
         },
       },
     ]);

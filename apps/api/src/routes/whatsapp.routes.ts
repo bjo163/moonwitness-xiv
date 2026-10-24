@@ -760,6 +760,33 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       } | null;
       if (body?.session_id !== account.gateway_device_id)
         return reply.code(403).send({ success: false, error: 'Webhook device mismatch' });
+      if (body?.event === 'group.participants') {
+        const payload = body.payload;
+        const groupJid = typeof payload?.chat_id === 'string' ? payload.chat_id : '';
+        const type = payload?.type;
+        const jids = Array.isArray(payload?.jids) ? payload.jids : [];
+        if (
+          !/^[^\s@\p{Cc}\p{Cf}]{1,200}@g\.us$/u.test(groupJid) ||
+          !['join', 'leave', 'promote', 'demote'].includes(String(type)) ||
+          jids.length > 500 ||
+          jids.some(
+            (jid) =>
+              typeof jid !== 'string' ||
+              !/^[^\s@\p{Cc}\p{Cf}]{1,200}@(s\.whatsapp\.net|lid)$/u.test(jid)
+          )
+        )
+          return reply.code(204).send();
+        await app
+          .db('whatsapp_conversations')
+          .where({
+            company_id: account.company_id,
+            account_id: account.id,
+            jid: groupJid,
+            is_group: true,
+          })
+          .update({ group_metadata_synced_at: null, write_date: new Date().toISOString() });
+        return reply.code(204).send();
+      }
       if (body?.event === 'message.edited') {
         const payload = body.payload;
         const originalId =
@@ -1358,7 +1385,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             body: JSON.stringify({
               webhook_url: callback.toString(),
               webhook_secret: webhookSecret,
-              webhook_events: 'message,message.ack,message.edited,message.revoked,message.deleted',
+              webhook_events:
+                'message,message.ack,message.edited,message.revoked,message.deleted,group.participants',
             }),
           });
         }
@@ -2663,7 +2691,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           { error: whatsappLogErrorContext(error) },
           'WhatsApp group metadata refresh failed'
         );
-        if (conversation.group_metadata_synced_at)
+        if (
+          conversation.group_metadata_synced_at ||
+          conversation.group_participants_json ||
+          conversation.group_topic
+        )
           return reply.send({ success: true, data: fallback() });
         return reply.code(502).send({ success: false, error: 'Group details could not be loaded' });
       }
