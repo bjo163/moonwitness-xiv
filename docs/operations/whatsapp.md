@@ -30,9 +30,9 @@ cache and outbound delivery/read status. Messages are sent through GoWA's REST e
 group chats and media.
 
 To enable webhooks, set `WHATSAPP_WEBHOOK_URL` to the public HTTPS origin of this API and set
-`WHATSAPP_WEBHOOK_SECRET` to a random secret of at least 32 characters. Compose development and
-production pass both values to the API and worker containers; configure them in `.env` or the
-deployment environment. The API sets a device-specific callback when the company connects. GoWA
+`WHATSAPP_WEBHOOK_SECRET` to a random secret of at least 32 characters. Development and production
+Compose pass both values to the API only; configure them in `.env` or the deployment secret store.
+The API sets a device-specific callback when the company connects. GoWA
 must be able to reach this origin over HTTPS. The callback verifies GoWA's `X-Hub-Signature-256`
 HMAC against the raw request body and checks the GoWA `session_id` against the mapped device.
 Leave both values unset to use REST polling only. Do not use a localhost URL for a hosted GoWA
@@ -180,6 +180,23 @@ and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `
 these boundaries. Compose does not filter outbound network destinations, so enforce any egress
 allowlist for the hosted GoWA endpoint at the container host or network firewall.
 
+## GoWA credential rotation
+
+Store the GoWA Basic Auth username and password in the deployment secret manager when one is
+available. The Compose `.env.prd` file is only a deployment input, not a secret manager: keep it
+outside version control and readable only by the deployment operator. Never put credentials in a
+`curl -u` argument, shell command, ticket, or log.
+
+When rotating credentials, provision the replacement at GoWA first if the provider supports
+overlapping credentials. Update `WHATSAPP_GATEWAY_USERNAME` and `WHATSAPP_GATEWAY_PASSWORD` in the
+deployment secret store, then recreate `api` and `outbox-worker` together so both use the same
+pair. If GoWA allows only one active pair, schedule the provider change and service restart as one
+maintenance action; queued messages remain in PostgreSQL while the worker restarts. Check
+`GET /whatsapp/readyz` from the deployed API and verify account status in Board before revoking the
+old credential. If validation fails, restore the previous pair and recreate both services before
+revoking it. This procedure does not rotate `WHATSAPP_WEBHOOK_SECRET`; webhook key rotation needs a
+coordinated GoWA callback update and is not yet automated.
+
 ## Troubleshooting
 
 - **QR is missing or will not scan:** open the WhatsApp account panel and check its status. For
@@ -243,8 +260,14 @@ deployment.
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.
 - `pnpm --filter @moonwitness/api build` and `pnpm --filter @moonwitness/board typecheck`
   check the API connector and Board UI.
-- `curl -u "$WHATSAPP_GATEWAY_USERNAME:$WHATSAPP_GATEWAY_PASSWORD" "$WHATSAPP_GATEWAY_URL/app/info"`
-  checks the hosted provider. The app-info response reports its deployed GoWA version.
+- Check the deployed API's configured GoWA authentication, health, and expected version without
+  putting credentials on the command line:
+  - PowerShell: `Invoke-WebRequest "$env:API_ORIGIN/whatsapp/readyz" -UseBasicParsing`
+  - POSIX shell: `curl --fail --silent --show-error "$API_ORIGIN/whatsapp/readyz"`
+- For a direct contract test in a checkout whose `.env` is already loaded, the test output never
+  prints credential values:
+  - PowerShell: `$env:GOWA_CONTRACT_TEST='1'; pnpm --filter @moonwitness/api exec vitest run tests/gowa.contract.test.ts`
+  - POSIX shell: `GOWA_CONTRACT_TEST=1 pnpm --filter @moonwitness/api exec vitest run tests/gowa.contract.test.ts`
 
 The current `/chats` response does not expose an authoritative unread count. With the webhook
 enabled, new message events enter the cache immediately and unread state is derived from cached
