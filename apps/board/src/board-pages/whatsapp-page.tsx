@@ -2161,10 +2161,16 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                     )}
                     {activeConversation?.is_group && (
                       <GroupProfileSummary
+                        conversationId={activeConversation.id}
                         profile={groupProfileQuery.data}
                         loading={groupProfileQuery.isLoading}
                         failed={groupProfileQuery.isError}
-                        onRefresh={() => void groupProfileQuery.refetch()}
+                        refreshing={groupProfileQuery.isFetching}
+                        canManage={canManageConversations}
+                        onRefresh={async () => {
+                          const refreshed = await groupProfileQuery.refetch();
+                          return refreshed.isSuccess && refreshed.data?.stale === false;
+                        }}
                       />
                     )}
                   </div>
@@ -3155,22 +3161,90 @@ function MessageComposer({
 }
 
 function GroupProfileSummary({
+  conversationId,
   profile,
   loading,
   failed,
+  refreshing,
+  canManage,
   onRefresh,
 }: {
+  conversationId: number;
   profile?: GroupProfile;
   loading: boolean;
   failed: boolean;
-  onRefresh: () => void;
+  refreshing: boolean;
+  canManage: boolean;
+  onRefresh: () => Promise<boolean>;
 }) {
+  const queryClient = useQueryClient();
+  const [participantDraft, setParticipantDraft] = useState('');
+  const [pendingAction, setPendingAction] = useState<{
+    action: 'add' | 'remove' | 'promote' | 'demote';
+    phone: string;
+    name: string;
+  } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<typeof pendingAction>(null);
+  const [mutating, setMutating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [refreshRequired, setRefreshRequired] = useState(false);
+  const [refreshingAfterUnknown, setRefreshingAfterUnknown] = useState(false);
+
+  const manageParticipant = async () => {
+    if (!confirmAction || mutating || refreshRequired) return;
+    setMutating(true);
+    setActionError(null);
+    try {
+      await client.request(
+        `/whatsapp/conversations/${conversationId}/group/participants/${confirmAction.action}`,
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': crypto.randomUUID() },
+          body: { participants: [confirmAction.phone] },
+        }
+      );
+      setConfirmAction(null);
+      setPendingAction(null);
+      setParticipantDraft('');
+      const refreshed = await onRefresh();
+      if (!refreshed) setActionError('Action completed. Group details could not be refreshed yet.');
+      await queryClient.invalidateQueries({
+        queryKey: scopedQueryKey(['whatsapp', 'conversations']),
+      });
+    } catch (error) {
+      const uncertain =
+        !(error instanceof ApiError) ||
+        error.status >= 500 ||
+        (error.status === 409 && /unresolved|unknown/iu.test(error.message));
+      if (uncertain) setRefreshRequired(true);
+      setActionError(
+        error instanceof Error ? error.message : 'Group action could not be confirmed'
+      );
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const refreshAfterUnknown = async () => {
+    setRefreshingAfterUnknown(true);
+    setActionError(null);
+    const refreshed = await onRefresh();
+    if (refreshed) setRefreshRequired(false);
+    else setActionError('Group details are still unavailable. Do not repeat this action yet.');
+    setRefreshingAfterUnknown(false);
+  };
+
   if (loading) return <p className="mt-1 text-xs text-ink-faint">Loading group details…</p>;
   if (failed)
     return (
       <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
         <span>Group details could not be loaded.</span>
-        <Button type="button" variant="link" className="h-auto p-0" onClick={onRefresh}>
+        <Button
+          type="button"
+          variant="link"
+          className="h-auto p-0"
+          onClick={() => void onRefresh()}
+        >
           Retry
         </Button>
       </div>
@@ -3191,15 +3265,174 @@ function GroupProfileSummary({
           <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto pl-4">
             {profile.participants.map((participant) => (
               <li key={participant.jid} className="break-all">
-                {participant.display_name || participant.phone_number || participant.jid}
-                {participant.is_super_admin ? ' · owner' : participant.is_admin ? ' · admin' : ''}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {participant.display_name || participant.phone_number || participant.jid}
+                    {participant.is_super_admin
+                      ? ' · owner'
+                      : participant.is_admin
+                        ? ' · admin'
+                        : ''}
+                  </span>
+                  {canManage && !participant.is_super_admin && participant.phone_number && (
+                    <span className="flex gap-1">
+                      {participant.is_admin ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={mutating || refreshRequired}
+                          onClick={() =>
+                            setConfirmAction({
+                              action: 'demote',
+                              phone: participant.phone_number!.split('@')[0]!,
+                              name: participant.display_name || participant.phone_number!,
+                            })
+                          }
+                        >
+                          Demote
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={mutating || refreshRequired}
+                          onClick={() =>
+                            setConfirmAction({
+                              action: 'promote',
+                              phone: participant.phone_number!.split('@')[0]!,
+                              name: participant.display_name || participant.phone_number!,
+                            })
+                          }
+                        >
+                          Make admin
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={mutating || refreshRequired}
+                        onClick={() =>
+                          setConfirmAction({
+                            action: 'remove',
+                            phone: participant.phone_number!.split('@')[0]!,
+                            name: participant.display_name || participant.phone_number!,
+                          })
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
         </details>
       )}
+      {canManage && (
+        <div className="mt-2 space-y-2 border-t border-ink/20 pt-2">
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const compact = participantDraft
+                .trim()
+                .replace(/[\s().-]/gu, '')
+                .replace(/^\+/u, '');
+              if (!/^[1-9]\d{7,14}$/u.test(compact)) {
+                setActionError('Enter a valid international phone number.');
+                return;
+              }
+              if (
+                profile.participants.some(
+                  (participant) => participant.phone_number?.split('@')[0] === compact
+                )
+              ) {
+                setActionError('That number is already in this group.');
+                return;
+              }
+              setActionError(null);
+              setConfirmAction({ action: 'add', phone: compact, name: `+${compact}` });
+            }}
+          >
+            <Input
+              aria-label="Add group participant phone number"
+              inputMode="tel"
+              placeholder="+6281234567890"
+              value={participantDraft}
+              disabled={mutating || refreshRequired}
+              onChange={(event) => setParticipantDraft(event.target.value)}
+            />
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={mutating || refreshRequired || !participantDraft.trim()}
+            >
+              Add participant
+            </Button>
+          </form>
+          {refreshRequired && (
+            <div className="space-y-1" role="status">
+              <p>The previous result is unknown. Refresh group details before another action.</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={refreshingAfterUnknown || refreshing}
+                onClick={() => void refreshAfterUnknown()}
+              >
+                {refreshingAfterUnknown ? 'Refreshing…' : 'Refresh group details'}
+              </Button>
+            </div>
+          )}
+          {actionError && (
+            <p role="alert" className="text-red-800">
+              {actionError}
+            </p>
+          )}
+        </div>
+      )}
+      {confirmAction && (
+        <div
+          className="mt-2 border-2 border-ink bg-pink/20 p-2"
+          role="alertdialog"
+          aria-label="Confirm group participant action"
+        >
+          <p>
+            Confirm {confirmAction.action} for {confirmAction.name}?
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={mutating}
+              onClick={() => void manageParticipant()}
+            >
+              {mutating ? 'Applying…' : `Confirm ${confirmAction.action}`}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={mutating}
+              onClick={() => setConfirmAction(null)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {profile.stale && (
-        <Button type="button" variant="link" className="mt-1 h-auto p-0" onClick={onRefresh}>
+        <Button
+          type="button"
+          variant="link"
+          className="mt-1 h-auto p-0"
+          onClick={() => void onRefresh()}
+        >
           Refresh group details
         </Button>
       )}

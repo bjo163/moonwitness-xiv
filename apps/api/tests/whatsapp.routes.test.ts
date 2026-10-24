@@ -146,6 +146,9 @@ describe('WhatsApp API GoWA bridge', () => {
   ];
   let providerGroupCreateRequests: Array<Record<string, unknown>> = [];
   let providerGroupCreateFailureStatus: number | null = null;
+  let providerGroupActionRequests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  let providerGroupActionStatus = 200;
+  let providerGroupActionResult: unknown = null;
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -358,6 +361,9 @@ describe('WhatsApp API GoWA bridge', () => {
     ];
     providerGroupCreateRequests = [];
     providerGroupCreateFailureStatus = null;
+    providerGroupActionRequests = [];
+    providerGroupActionStatus = 200;
+    providerGroupActionResult = null;
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -431,7 +437,7 @@ describe('WhatsApp API GoWA bridge', () => {
         return groupMetadataFails
           ? json({ message: 'provider unavailable' }, 503)
           : json(providerGroupInfo);
-      if (url.pathname === '/group/participants')
+      if (url.pathname === '/group/participants' && method === 'GET')
         return groupMetadataFails
           ? json({ message: 'provider unavailable' }, 503)
           : json({
@@ -443,6 +449,21 @@ describe('WhatsApp API GoWA bridge', () => {
         if (providerGroupCreateFailureStatus)
           return json({ message: 'provider unavailable' }, providerGroupCreateFailureStatus);
         return json({ group_id: '120363123456789@g.us' });
+      }
+      if (
+        /^\/group\/participants(?:\/(?:remove|promote|demote))?$/u.test(url.pathname) &&
+        method === 'POST'
+      ) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        providerGroupActionRequests.push({ path: url.pathname, body });
+        const participants = Array.isArray(body.participants) ? body.participants : [];
+        const result =
+          providerGroupActionResult ??
+          participants.map((participant) => ({
+            participant: `${String(participant)}@s.whatsapp.net`,
+            status: 'success',
+          }));
+        return json(result, providerGroupActionStatus);
       }
       if (/^\/chat\/.+\/(archive|pin)$/u.test(url.pathname) && method === 'POST') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -620,6 +641,7 @@ describe('WhatsApp API GoWA bridge', () => {
     for (const table of [
       'outbox_events',
       'whatsapp_upload_tickets',
+      'whatsapp_group_operations',
       'whatsapp_group_creations',
       'whatsapp_conversation_labels',
       'whatsapp_conversation_aliases',
@@ -956,6 +978,104 @@ describe('WhatsApp API GoWA bridge', () => {
       headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
     });
     expect(foreign.statusCode).toBe(404);
+  });
+
+  it('manages group participants with company scope and durable idempotency', async () => {
+    const [account] = await db('whatsapp_accounts')
+      .insert({
+        company_id: companyId,
+        status: 'connected',
+        gateway_device_id: `moonwitness-company-${companyId}`,
+      })
+      .returning(['id']);
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '120363000000002@g.us',
+        name: 'Managed group',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const url = `/whatsapp/conversations/${group.id}/group/participants/add`;
+    const headers = {
+      authorization: 'Bearer test',
+      'idempotency-key': 'group-add-participants-001',
+    };
+    const body = { participants: ['+628111222333'] };
+    const denied = await app.inject({
+      method: 'POST',
+      url,
+      headers: { ...headers, 'x-test-role': 'user' },
+      payload: body,
+    });
+    expect(denied.statusCode).toBe(403);
+    const foreign = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        ...headers,
+        'idempotency-key': 'foreign-group-operation-01',
+        'x-test-company': 'foreign',
+      },
+      payload: body,
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(providerGroupActionRequests).toHaveLength(0);
+    const added = await app.inject({ method: 'POST', url, headers, payload: body });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toMatchObject({
+      success: true,
+      data: { status: 'completed', results: [{ participant: '628111222333@s.whatsapp.net' }] },
+    });
+    expect(providerGroupActionRequests).toEqual([
+      {
+        path: '/group/participants',
+        body: { group_id: '120363000000002@g.us', participants: ['628111222333'] },
+      },
+    ]);
+    expect((await db('whatsapp_group_operations').first()).status).toBe('completed');
+
+    const replayed = await app.inject({ method: 'POST', url, headers, payload: body });
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json().replayed).toBe(true);
+    expect(providerGroupActionRequests).toHaveLength(1);
+
+    const reusedKey = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${group.id}/group/participants/promote`,
+      headers,
+      payload: body,
+    });
+    expect(reusedKey.statusCode).toBe(409);
+    expect(providerGroupActionRequests).toHaveLength(1);
+
+    providerGroupActionStatus = 503;
+    const unknown = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${group.id}/group/participants/remove`,
+      headers: { ...headers, 'idempotency-key': 'group-remove-participant-02' },
+      payload: body,
+    });
+    expect(unknown.statusCode).toBe(502);
+    expect((await db('whatsapp_group_operations').where({ status: 'unknown' })).length).toBe(1);
+    const blindRetry = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${group.id}/group/participants/remove`,
+      headers: { ...headers, 'idempotency-key': 'group-remove-participant-03' },
+      payload: body,
+    });
+    expect(blindRetry.statusCode).toBe(409);
+    expect(providerGroupActionRequests).toHaveLength(2);
+    const refreshed = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/conversations/${group.id}/group`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(refreshed.statusCode).toBe(200);
+    expect((await db('whatsapp_group_operations').where({ status: 'unknown' })).length).toBe(0);
+    expect(providerGroupActionRequests).toHaveLength(2);
   });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {

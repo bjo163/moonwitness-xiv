@@ -56,8 +56,12 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       ),
     })
   );
-  await page.route('**/whatsapp/conversations/*/group', (route) =>
-    route.fulfill({
+  let managedMemberAdmin = false;
+  let addedManagedParticipant: string | null = null;
+  let simulateUnknownGroupRemoval = false;
+  await page.route('**/whatsapp/conversations/*/group', (route) => {
+    const isCreatedGroup = new URL(route.request().url()).pathname.endsWith('/222/group');
+    return route.fulfill({
       json: {
         success: true,
         data: {
@@ -69,7 +73,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
               jid: '628111222333@s.whatsapp.net',
               phone_number: '628111222333@s.whatsapp.net',
               display_name: 'Rani Finance',
-              is_admin: true,
+              is_admin: isCreatedGroup ? managedMemberAdmin : true,
               is_super_admin: false,
             },
             {
@@ -79,16 +83,32 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
               is_admin: false,
               is_super_admin: false,
             },
+            ...(isCreatedGroup && addedManagedParticipant
+              ? [
+                  {
+                    jid: `${addedManagedParticipant}@s.whatsapp.net`,
+                    phone_number: `${addedManagedParticipant}@s.whatsapp.net`,
+                    display_name: 'New participant',
+                    is_admin: false,
+                    is_super_admin: false,
+                  },
+                ]
+              : []),
           ],
           synced_at: new Date().toISOString(),
           stale: false,
         },
       },
-    })
-  );
+    });
+  });
   let failSearchConversationLoad = false;
   let createdGroup: Record<string, unknown> | null = null;
   const groupCreateRequests: Array<{ key: string; body: Record<string, unknown> }> = [];
+  const groupParticipantActions: Array<{
+    action: string;
+    key: string;
+    body: Record<string, unknown>;
+  }> = [];
   let includeNewInboundMessage = false;
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
   let editedMessageContent = 'A sent reply';
@@ -205,6 +225,31 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       unread_count: 0,
     };
     await route.fulfill({ json: { success: true, data: createdGroup } });
+  });
+  await page.route('**/whatsapp/conversations/*/group/participants/*', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    groupParticipantActions.push({
+      action: path.split('/').at(-1) ?? '',
+      key: route.request().headers()['idempotency-key'] ?? '',
+      body: route.request().postDataJSON() as Record<string, unknown>,
+    });
+    const action = path.split('/').at(-1);
+    const body = route.request().postDataJSON() as { participants?: string[] };
+    if (action === 'promote') managedMemberAdmin = true;
+    if (action === 'demote') managedMemberAdmin = false;
+    if (action === 'add') addedManagedParticipant = body.participants?.[0] ?? null;
+    if (action === 'remove') addedManagedParticipant = null;
+    if (action === 'remove' && simulateUnknownGroupRemoval) {
+      simulateUnknownGroupRemoval = false;
+      await route.fulfill({
+        status: 502,
+        json: { success: false, error: 'Group action result is unknown; refresh group details' },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: { success: true, data: { status: 'completed', results: [{ status: 'success' }] } },
+    });
   });
   const sentMessages: string[] = [];
   const sentReactions: Array<{ sourceId: string; emoji: string }> = [];
@@ -892,6 +937,69 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     title: 'Board project team',
     participants: ['+628111222333', '+628123333444'],
   });
+  await page.getByText('Show participants', { exact: true }).click();
+  await page.getByRole('button', { name: 'Make admin' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm promote' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(1);
+  expect(groupParticipantActions[0]).toMatchObject({
+    action: 'promote',
+    body: { participants: ['628111222333'] },
+  });
+  expect(groupParticipantActions[0]?.key).toBeTruthy();
+  await page.getByRole('button', { name: 'Demote' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm demote' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(2);
+  expect(groupParticipantActions[1]?.action).toBe('demote');
+  await expect(page.getByRole('button', { name: 'Make admin' })).toBeVisible();
+  await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
+  await page.getByRole('button', { name: 'Add participant' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm add' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(3);
+  expect(groupParticipantActions[2]).toMatchObject({
+    action: 'add',
+    body: { participants: ['628115555666'] },
+  });
+  expect(groupParticipantActions[2]?.key).toBeTruthy();
+  expect(groupParticipantActions[2]?.key).not.toBe(groupParticipantActions[0]?.key);
+  await expect(page.getByText('+628115555666')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove', exact: true }).last().click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm remove' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(4);
+  expect(groupParticipantActions[3]?.action).toBe('remove');
+  await expect(page.getByText('+628115555666')).toHaveCount(0);
+  await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
+  await page.getByRole('button', { name: 'Add participant' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm add' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(5);
+  await expect(page.getByText('+628115555666')).toBeVisible();
+  simulateUnknownGroupRemoval = true;
+  await page.getByRole('button', { name: 'Remove', exact: true }).last().click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm group participant action' })
+    .getByRole('button', { name: 'Confirm remove' })
+    .click();
+  await expect.poll(() => groupParticipantActions.length).toBe(6);
+  await expect(page.getByText(/unknown; refresh group details/u)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add participant' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Refresh group details' }).click();
+  await expect(page.getByText('+628115555666')).toHaveCount(0);
+  await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
+  await expect(page.getByRole('button', { name: 'Add participant' })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );
