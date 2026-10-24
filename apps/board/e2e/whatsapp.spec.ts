@@ -398,7 +398,16 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
             media_file_name: 'clip.mp4',
             create_date: new Date(Date.now() - 10).toISOString(),
           },
-          ...Array.from({ length: 36 }, (_, index) => ({
+          {
+            id: 66,
+            direction: 'inbound',
+            content: 'Audio preview',
+            status: 'received',
+            message_type: 'audio',
+            media_file_name: 'voice.ogg',
+            create_date: new Date(Date.now() - 5).toISOString(),
+          },
+          ...Array.from({ length: 35 }, (_, index) => ({
             id: 49 - index,
             direction: 'inbound',
             is_unread: true,
@@ -480,6 +489,13 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       body: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]),
     })
   );
+  await page.route('**/whatsapp/media/66', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'audio/ogg',
+      body: Buffer.from('OggS'),
+    })
+  );
   await page.route('**/whatsapp/media/62', (route) =>
     route.fulfill({
       status: 200,
@@ -546,6 +562,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(videoPreview.getByText(/Original 1\.0 KB/u)).toBeVisible();
   await videoPreview.getByRole('button', { name: 'Load video' }).click();
   await expect(videoPreview.locator('video[controls]')).toBeVisible();
+  const audioPreview = page.locator('#whatsapp-message-66');
+  await expect(audioPreview.locator('audio[controls]')).toBeVisible();
+  await expect(audioPreview.getByText('voice.ogg')).toBeVisible();
   await page.getByRole('button', { name: /Rani Putri/u }).click();
   await expect(page.getByText('Rani Finance', { exact: true })).toBeVisible();
   await expect(
