@@ -172,9 +172,13 @@ paired sessions and its own persistent storage. The API expects GoWA `v9.6.0` by
 will report the gateway not ready if `/app/info` returns another version; review compatibility
 and set `WHATSAPP_GATEWAY_EXPECTED_VERSION` as part of an intentional GoWA upgrade.
 
-The API makes outbound REST calls to GoWA. Device-specific webhooks are optional; the Board inbox
-keeps polling GoWA's chat REST API as a recovery path. No shared internal token is used between
-services.
+The API makes GoWA calls for account control, QR, and inbox reads; the outbox worker sends queued
+messages and Status updates. Device-specific webhooks are optional; the Board inbox keeps polling
+GoWA's chat REST API as a recovery path. Production Compose passes GoWA Basic Auth only to `api`
+and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `jobs-worker`, and
+`jobs-scheduler` receive neither secret. Both production Compose variants have a contract test for
+these boundaries. Compose does not filter outbound network destinations, so enforce any egress
+allowlist for the hosted GoWA endpoint at the container host or network firewall.
 
 ## Troubleshooting
 
