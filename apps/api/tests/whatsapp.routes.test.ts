@@ -104,6 +104,9 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerAudioSendCount = 0;
   let providerAudioSendFields: string[] = [];
   let providerAudioCaption = '';
+  let providerFileSendCount = 0;
+  let providerFileSendFields: string[] = [];
+  let providerFileCaption = '';
   let providerForwardRequests: Array<{ sourceId: string; body: Record<string, unknown> }> = [];
   let providerReactionRequests: Array<{ messageId: string; body: Record<string, unknown> }> = [];
   let providerMessageMutationRequests: Array<{
@@ -316,6 +319,9 @@ describe('WhatsApp API GoWA bridge', () => {
     providerAudioSendCount = 0;
     providerAudioSendFields = [];
     providerAudioCaption = '';
+    providerFileSendCount = 0;
+    providerFileSendFields = [];
+    providerFileCaption = '';
     providerForwardRequests = [];
     providerReactionRequests = [];
     providerMessageMutationRequests = [];
@@ -492,6 +498,15 @@ describe('WhatsApp API GoWA bridge', () => {
           providerAudioCaption = String(form.get('caption') ?? '');
         }
         return json({ message_id: 'sent-audio-id' });
+      }
+      if (url.pathname === '/send/file') {
+        providerFileSendCount++;
+        const form = init?.body;
+        if (form instanceof FormData) {
+          providerFileSendFields = [...form.keys()];
+          providerFileCaption = String(form.get('caption') ?? '');
+        }
+        return json({ message_id: 'sent-file-id' });
       }
       if (/^\/message\/.+\/forward$/u.test(url.pathname) && method === 'POST') {
         providerForwardRequests.push({
@@ -2610,6 +2625,37 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(providerAudioSendFields).toEqual(['phone', 'caption', 'audio']);
     expect(providerAudioCaption).toBe('Voice caption');
     expect((await db('whatsapp_messages').where({ id: audioMessageId }).first()).status).toBe(
+      'sent'
+    );
+
+    const documentUpload = multipartPayload(
+      { content: 'Statement caption' },
+      {
+        name: 'statement.pdf',
+        mime: 'application/pdf',
+        bytes: Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'),
+      }
+    );
+    const sentDocument = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${privateId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': documentUpload.contentType,
+      },
+      payload: documentUpload.payload,
+    });
+    expect(sentDocument.statusCode).toBe(202);
+    const documentMessageId = sentDocument.json().data.id as number;
+    const documentEvent = await db('outbox_events')
+      .where({ aggregate_id: documentMessageId, event_type: 'whatsapp.message.send' })
+      .first();
+    await dispatchQueuedWhatsAppMessage(documentMessageId, companyId, documentEvent.id, storage);
+    expect(providerFileSendCount).toBe(1);
+    expect(providerFileSendFields).toEqual(['phone', 'caption', 'file']);
+    expect(providerFileCaption).toBe('Statement caption');
+    expect((await db('whatsapp_messages').where({ id: documentMessageId }).first()).status).toBe(
       'sent'
     );
 
