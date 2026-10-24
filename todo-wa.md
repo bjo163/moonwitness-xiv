@@ -152,6 +152,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P3-14** Jadwal publikasi Status dengan zona waktu perusahaan.
 - [ ] **P3-15** Analytics tayangan, balasan, dan error hanya dari metrik provider yang nyata.
 - [ ] **P3-16** Test mock, contract test, dan uji nyata per tipe Status sebelum fitur dirilis.
+- [x] **P3-17** API menyediakan antrean publikasi Status teks/gambar/video yang idempotent, company-scoped, menyimpan metadata dan status delivery terpisah dari inbox, memindai media sebelum antri, serta mengirim ke `status@broadcast` lewat outbox GoWA. Route tests membuktikan teks, gambar, video, idempotensi, dan tidak membuat percakapan inbox (PostgreSQL test suite WhatsApp lulus). Ini baru fondasi API: belum ada composer Board dan belum diverifikasi dengan perangkat GoWA tertaut; P3-16 tetap terbuka.
 
 ## P4 — bisnis, UX, dan operasi
 

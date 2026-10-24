@@ -100,6 +100,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let scanAsInfected = false;
   let scannerUnavailable = false;
   let providerImageSendCount = 0;
+  let providerVideoSendCount = 0;
   let providerImageReplyIds: string[] = [];
   let providerAudioSendCount = 0;
   let providerAudioSendFields: string[] = [];
@@ -315,6 +316,7 @@ describe('WhatsApp API GoWA bridge', () => {
     scanAsInfected = false;
     scannerUnavailable = false;
     providerImageSendCount = 0;
+    providerVideoSendCount = 0;
     providerImageReplyIds = [];
     providerAudioSendCount = 0;
     providerAudioSendFields = [];
@@ -490,6 +492,10 @@ describe('WhatsApp API GoWA bridge', () => {
         );
         return json({ message_id: 'sent-image-id' });
       }
+      if (url.pathname === '/send/video') {
+        providerVideoSendCount++;
+        return json({ message_id: 'sent-video-id' });
+      }
       if (url.pathname === '/send/audio') {
         providerAudioSendCount++;
         const form = init?.body;
@@ -604,6 +610,7 @@ describe('WhatsApp API GoWA bridge', () => {
       'whatsapp_conversation_aliases',
       'whatsapp_conversation_reads',
       'whatsapp_internal_notes',
+      'whatsapp_statuses',
       'whatsapp_messages',
       'whatsapp_conversations',
       'whatsapp_accounts',
@@ -3669,6 +3676,111 @@ describe('WhatsApp API GoWA bridge', () => {
         },
       },
     ]);
+  });
+
+  it('queues text Status publication idempotently and keeps it out of the chat inbox', async () => {
+    await connectAndMarkReady();
+    const beforeConversationCount = await db('whatsapp_conversations')
+      .count({ count: '*' })
+      .first();
+    const key = 'status-text-test-0001';
+    const publish = (content: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/whatsapp/statuses',
+        headers: { authorization: 'Bearer test', 'idempotency-key': key },
+        payload: { content, allow_reshare: true },
+      });
+    const first = await publish('Status from Board');
+    const duplicate = await publish('Status from Board');
+    const conflict = await publish('Different status body');
+
+    expect(first.statusCode).toBe(202);
+    expect(first.json().data).toMatchObject({ status_type: 'text', status: 'queued' });
+    expect(duplicate.statusCode).toBe(202);
+    expect(duplicate.json().data.id).toBe(first.json().data.id);
+    expect(conflict.statusCode).toBe(409);
+    const statusId = Number(first.json().data.id);
+    const events = await db('outbox_events').where({
+      aggregate_id: statusId,
+      event_type: 'whatsapp.status.publish',
+    });
+    expect(events).toHaveLength(1);
+
+    const unregister = registerWhatsAppOutboxConsumer(storage);
+    await dispatchOneOutboxEvent('whatsapp-status-test-worker');
+    unregister();
+    expect(providerTextSendBodies.at(-1)).toMatchObject({
+      phone: 'status@broadcast',
+      message: 'Status from Board',
+      allow_reshare: true,
+    });
+    expect((await db('whatsapp_statuses').where({ id: statusId }).first()).status).toBe('sent');
+    expect((await db('outbox_events').where({ id: events[0].id }).first()).status).toBe(
+      'published'
+    );
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/statuses',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().data).toHaveLength(1);
+    const afterConversationCount = await db('whatsapp_conversations').count({ count: '*' }).first();
+    expect(Number(afterConversationCount?.count)).toBe(Number(beforeConversationCount?.count));
+    expect(await db('whatsapp_statuses').where({ company_id: foreignCompanyId })).toHaveLength(0);
+  });
+
+  it('queues and publishes scanned image Status media through GoWA', async () => {
+    await connectAndMarkReady();
+    const upload = multipartPayload(
+      { content: 'Image status caption', allow_reshare: 'true' },
+      { name: 'status.png', mime: 'image/png', bytes: pngFixture() }
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/statuses',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': 'status-image-test-0001',
+        'content-type': upload.contentType,
+      },
+      payload: upload.payload,
+    });
+    expect(response.statusCode, response.payload).toBe(202);
+    expect(response.json().data).toMatchObject({ status_type: 'image', status: 'queued' });
+    const statusId = Number(response.json().data.id);
+    const unregister = registerWhatsAppOutboxConsumer(storage);
+    await dispatchOneOutboxEvent('whatsapp-status-image-test-worker');
+    unregister();
+    expect(providerImageSendCount).toBe(1);
+    expect((await db('whatsapp_statuses').where({ id: statusId }).first()).status).toBe('sent');
+  });
+
+  it('queues and publishes scanned video Status media through GoWA', async () => {
+    await connectAndMarkReady();
+    const upload = multipartPayload(
+      { content: 'Video status caption', allow_reshare: 'false' },
+      { name: 'status.mp4', mime: 'video/mp4', bytes: Buffer.from('0000ftypisom') }
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/statuses',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': 'status-video-test-0001',
+        'content-type': upload.contentType,
+      },
+      payload: upload.payload,
+    });
+    expect(response.statusCode, response.payload).toBe(202);
+    expect(response.json().data).toMatchObject({ status_type: 'video', status: 'queued' });
+    const statusId = Number(response.json().data.id);
+    const unregister = registerWhatsAppOutboxConsumer(storage);
+    await dispatchOneOutboxEvent('whatsapp-status-video-test-worker');
+    unregister();
+    expect(providerVideoSendCount).toBe(1);
+    expect((await db('whatsapp_statuses').where({ id: statusId }).first()).status).toBe('sent');
   });
 
   it('rejects unsigned, malformed, unconfigured, and oversized GoWA webhook requests', async () => {

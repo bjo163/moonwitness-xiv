@@ -1,11 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { PermanentJobError, registerOutboxConsumer } from '@moonwitness/jobs';
 import type { AttachmentStorage } from '@moonwitness/orm-storage';
-import { WhatsappAccount, WhatsappConversation, WhatsappMessage } from './models.js';
+import {
+  WhatsappAccount,
+  WhatsappConversation,
+  WhatsappMessage,
+  WhatsappStatus,
+} from './models.js';
 import { mediaType } from './media.js';
 import { GowaError, gowaRequest } from './gowa-client.js';
 
 export const WHATSAPP_SEND_EVENT = 'whatsapp.message.send';
+export const WHATSAPP_STATUS_PUBLISH_EVENT = 'whatsapp.status.publish';
 const MAX_DELIVERY_ATTEMPTS = 5;
 const MAX_DELIVERY_AGE_MS = 24 * 60 * 60 * 1_000;
 
@@ -83,6 +89,139 @@ async function updateConversationPreview(
       last_message_at: lastMessageAt,
       write_date: new Date().toISOString(),
     });
+}
+
+export async function dispatchQueuedWhatsAppStatus(
+  statusId: number,
+  companyId: number,
+  storage: AttachmentStorage
+): Promise<void> {
+  const status = await WhatsappStatus.query().findOne({ id: statusId, company_id: companyId });
+  if (
+    !status ||
+    status.status === 'sent' ||
+    status.status === 'failed' ||
+    status.status === 'unknown'
+  )
+    return;
+  if (status.status === 'sending') {
+    await WhatsappStatus.query()
+      .where({ id: statusId, company_id: companyId, status: 'sending' })
+      .patch({
+        status: 'unknown',
+        retryable: false,
+        last_error: 'Status publication was interrupted; verify WhatsApp before retrying.',
+        write_date: new Date().toISOString(),
+      });
+    return;
+  }
+  const claimed = await WhatsappStatus.query()
+    .where({ id: statusId, company_id: companyId, status: 'queued' })
+    .patch({
+      status: 'sending',
+      attempt_count: Number(status.attempt_count ?? 0) + 1,
+      retryable: false,
+      last_error: null,
+      write_date: new Date().toISOString(),
+    });
+  if (claimed !== 1) return;
+
+  let providerCallStarted = false;
+  let providerAccepted = false;
+  try {
+    const account = await WhatsappAccount.query().findOne({
+      id: status.account_id,
+      company_id: companyId,
+    });
+    if (!account?.gateway_device_id || account.status !== 'connected') {
+      await WhatsappStatus.query().where({ id: statusId, company_id: companyId }).patch({
+        status: 'failed',
+        retryable: false,
+        last_error: 'WhatsApp account is not connected.',
+      });
+      return;
+    }
+
+    let sent: { id?: string; message_id?: string } | undefined;
+    if (status.media_key) {
+      const bytes = await storage.get(status.media_key);
+      if (!bytes?.byteLength) {
+        await WhatsappStatus.query().where({ id: statusId, company_id: companyId }).patch({
+          status: 'failed',
+          retryable: false,
+          last_error: 'Stored media is unavailable; choose the attachment again.',
+        });
+        return;
+      }
+      const endpoint = status.status_type === 'image' ? '/send/image' : '/send/video';
+      const form = new FormData();
+      form.set('phone', 'status@broadcast');
+      form.set('allow_reshare', String(Boolean(status.allow_reshare)));
+      if (status.content?.trim()) form.set('caption', status.content);
+      form.set(
+        status.status_type,
+        new Blob([bytes], { type: status.media_mime_type ?? 'application/octet-stream' }),
+        status.media_file_name ?? `status.${status.status_type === 'image' ? 'jpg' : 'mp4'}`
+      );
+      providerCallStarted = true;
+      sent = await gowaRequest<{ id?: string; message_id?: string }>(endpoint, {
+        method: 'POST',
+        deviceId: account.gateway_device_id,
+        body: form,
+      });
+    } else {
+      providerCallStarted = true;
+      sent = await gowaRequest<{ id?: string; message_id?: string }>('/send/message', {
+        method: 'POST',
+        deviceId: account.gateway_device_id,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          phone: 'status@broadcast',
+          message: status.content ?? '',
+          allow_reshare: Boolean(status.allow_reshare),
+        }),
+      });
+    }
+    providerAccepted = true;
+    const externalId =
+      typeof sent?.message_id === 'string'
+        ? sent.message_id
+        : typeof sent?.id === 'string'
+          ? sent.id
+          : `gowa-${randomUUID()}`;
+    const publishedAt = new Date().toISOString();
+    await WhatsappStatus.query()
+      .where({ id: statusId, company_id: companyId })
+      .patch({
+        external_id: externalId.slice(0, 255),
+        status: 'sent',
+        retryable: false,
+        last_error: null,
+        published_at: publishedAt,
+        write_date: publishedAt,
+      });
+  } catch (error) {
+    if (providerAccepted) throw error;
+    if (error instanceof GowaError && error.statusCode === 429) {
+      await WhatsappStatus.query().where({ id: statusId, company_id: companyId }).patch({
+        status: 'queued',
+        retryable: true,
+        last_error: 'GoWA rate limited the Status publication; retrying safely.',
+        write_date: new Date().toISOString(),
+      });
+      throw error;
+    }
+    await WhatsappStatus.query()
+      .where({ id: statusId, company_id: companyId })
+      .patch({
+        status: providerCallStarted ? 'unknown' : 'failed',
+        retryable: false,
+        last_error: providerCallStarted
+          ? 'GoWA did not confirm Status publication; verify WhatsApp before retrying.'
+          : 'Status publication could not start.',
+        write_date: new Date().toISOString(),
+      });
+  }
 }
 
 async function persistProviderAcknowledgement(
@@ -359,28 +498,57 @@ export async function dispatchQueuedWhatsAppMessage(
 }
 
 export function registerWhatsAppOutboxConsumer(storage: AttachmentStorage): () => void {
-  return registerOutboxConsumer(WHATSAPP_SEND_EVENT, async (payload, eventId, context) => {
-    if (
-      !payload ||
-      typeof payload !== 'object' ||
-      !('message_id' in payload) ||
-      !Number.isSafeInteger((payload as { message_id: unknown }).message_id) ||
-      !context.companyId
-    ) {
-      throw new PermanentJobError('Invalid WhatsApp delivery event', 'INVALID_WHATSAPP_EVENT');
+  const unregisterMessage = registerOutboxConsumer(
+    WHATSAPP_SEND_EVENT,
+    async (payload, eventId, context) => {
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('message_id' in payload) ||
+        !Number.isSafeInteger((payload as { message_id: unknown }).message_id) ||
+        !context.companyId
+      ) {
+        throw new PermanentJobError('Invalid WhatsApp delivery event', 'INVALID_WHATSAPP_EVENT');
+      }
+      await dispatchQueuedWhatsAppMessage(
+        (payload as { message_id: number }).message_id,
+        context.companyId,
+        eventId,
+        storage,
+        'provider_ack' in payload &&
+          payload.provider_ack &&
+          typeof payload.provider_ack === 'object' &&
+          'external_id' in payload.provider_ack &&
+          typeof payload.provider_ack.external_id === 'string'
+          ? (payload.provider_ack as { external_id: string; accepted_at?: string })
+          : undefined
+      );
     }
-    await dispatchQueuedWhatsAppMessage(
-      (payload as { message_id: number }).message_id,
-      context.companyId,
-      eventId,
-      storage,
-      'provider_ack' in payload &&
-        payload.provider_ack &&
-        typeof payload.provider_ack === 'object' &&
-        'external_id' in payload.provider_ack &&
-        typeof payload.provider_ack.external_id === 'string'
-        ? (payload.provider_ack as { external_id: string; accepted_at?: string })
-        : undefined
-    );
-  });
+  );
+  const unregisterStatus = registerOutboxConsumer(
+    WHATSAPP_STATUS_PUBLISH_EVENT,
+    async (payload, _eventId, context) => {
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('status_id' in payload) ||
+        !Number.isSafeInteger((payload as { status_id: unknown }).status_id) ||
+        !context.companyId
+      ) {
+        throw new PermanentJobError(
+          'Invalid WhatsApp Status event',
+          'INVALID_WHATSAPP_STATUS_EVENT'
+        );
+      }
+      await dispatchQueuedWhatsAppStatus(
+        (payload as { status_id: number }).status_id,
+        context.companyId,
+        storage
+      );
+    }
+  );
+  return () => {
+    unregisterMessage();
+    unregisterStatus();
+  };
 }

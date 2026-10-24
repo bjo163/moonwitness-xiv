@@ -9,6 +9,7 @@ import {
   WhatsappAccount,
   WhatsappConversation,
   WhatsappMessage,
+  WhatsappStatus,
   WhatsappUploadTicket,
 } from '../whatsapp/models.js';
 import { attachPrivateLidAlias } from '../whatsapp/conversation-identity.js';
@@ -19,7 +20,7 @@ import { gowaBinary, gowaOriginPath, gowaRequest, GowaError } from '../whatsapp/
 import parsePhoneNumberFromString from 'libphonenumber-js/max';
 import { whatsappLogErrorContext } from '../whatsapp/log-redaction.js';
 import { OutboxEvent } from '@moonwitness/jobs';
-import { WHATSAPP_SEND_EVENT } from '../whatsapp/outbox-consumer.js';
+import { WHATSAPP_SEND_EVENT, WHATSAPP_STATUS_PUBLISH_EVENT } from '../whatsapp/outbox-consumer.js';
 import { enqueueNotification } from '@moonwitness/orm-notification';
 import {
   createAttachmentScanner,
@@ -96,7 +97,8 @@ type OutgoingUpload = {
 async function parseOutgoingUpload(
   req: FastifyRequest,
   storage: AttachmentStorage,
-  scanner: AttachmentScanner
+  scanner: AttachmentScanner | null,
+  extraFields: string[] = []
 ): Promise<OutgoingUpload> {
   const fields: Record<string, string> = {};
   if (req.isMultipart() === false && req.headers['content-type']?.includes('application/json')) {
@@ -104,12 +106,14 @@ async function parseOutgoingUpload(
     if (
       !body ||
       Object.keys(body).some(
-        (key) => !['content', 'reply_to_message_id', 'upload_ticket_id'].includes(key)
+        (key) =>
+          !['content', 'reply_to_message_id', 'upload_ticket_id', ...extraFields].includes(key)
       ) ||
       typeof body.content !== 'string' ||
       body.content.length > 8000 ||
       (body.reply_to_message_id !== undefined &&
-        (!Number.isSafeInteger(body.reply_to_message_id) || Number(body.reply_to_message_id) < 1)) ||
+        (!Number.isSafeInteger(body.reply_to_message_id) ||
+          Number(body.reply_to_message_id) < 1)) ||
       (body.upload_ticket_id !== undefined &&
         (!Number.isSafeInteger(body.upload_ticket_id) || Number(body.upload_ticket_id) < 1))
     )
@@ -119,6 +123,14 @@ async function parseOutgoingUpload(
       fields.reply_to_message_id = String(body.reply_to_message_id);
     if (body.upload_ticket_id !== undefined)
       fields.upload_ticket_id = String(body.upload_ticket_id);
+    for (const field of extraFields) {
+      const value = body[field];
+      if (value !== undefined) {
+        if (typeof value !== 'boolean' && typeof value !== 'string')
+          throw Object.assign(new Error('Invalid message payload'), { statusCode: 400 });
+        fields[field] = String(value);
+      }
+    }
     return {
       fields,
       mediaKey: null,
@@ -138,7 +150,7 @@ async function parseOutgoingUpload(
     for await (const part of req.parts({ limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 } })) {
       if (part.type === 'field') {
         if (
-          !['content', 'reply_to_message_id'].includes(part.fieldname) ||
+          !['content', 'reply_to_message_id', ...extraFields].includes(part.fieldname) ||
           typeof part.value !== 'string' ||
           part.value.length > 8000
         ) {
@@ -190,6 +202,7 @@ async function parseOutgoingUpload(
         });
       if (mediaMime === 'application/octet-stream' && detectedMime) mediaMime = detectedMime;
       mediaDigest = digest.digest('hex');
+      if (!scanner) throw new MalwareScannerUnavailableError();
       const scanResult = await scanStoredAttachment(storage, mediaKey, scanner);
       if (scanResult.status === 'infected')
         throw new MediaScanInfectedError('Attachment was blocked by the malware scanner');
@@ -723,7 +736,8 @@ type WhatsappModel =
   | 'whatsapp.conversation'
   | 'whatsapp.internal_note'
   | 'whatsapp.label'
-  | 'whatsapp.message';
+  | 'whatsapp.message'
+  | 'whatsapp.status';
 
 function canPerformWhatsAppAction(
   auth: {
@@ -1231,6 +1245,196 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       return reply.code(204).send();
     }
   );
+
+  app.get('/whatsapp/statuses', async (req, reply) => {
+    const companyId = requireCompany(req, reply);
+    if (!companyId) return;
+    const rows = await WhatsappStatus.query()
+      .where({ company_id: companyId })
+      .select(
+        'id',
+        'status_type',
+        'content',
+        'media_mime_type',
+        'media_file_name',
+        'media_size_bytes',
+        'allow_reshare',
+        'external_id',
+        'status',
+        'attempt_count',
+        'retryable',
+        'last_error',
+        'published_at',
+        'create_date'
+      )
+      .limit(50);
+    return { success: true, data: rows };
+  });
+
+  app.post('/whatsapp/statuses', whatsappRateLimit(5), async (req, reply) => {
+    const companyId = requireCompany(req, reply);
+    if (!companyId) return;
+    if (!requireWhatsAppAction(req, reply, 'whatsapp.message', 'create')) return;
+    const idempotencyKey = req.headers['idempotency-key'];
+    if (
+      typeof idempotencyKey !== 'string' ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 128 ||
+      !/^[A-Za-z0-9._:-]+$/u.test(idempotencyKey)
+    ) {
+      return reply.code(400).send({ success: false, error: 'A valid Idempotency-Key is required' });
+    }
+    let upload: OutgoingUpload;
+    try {
+      upload = await parseOutgoingUpload(req, options.attachmentStorage, attachmentScanner, [
+        'allow_reshare',
+      ]);
+    } catch (error) {
+      const statusCode =
+        isRecord(error) && typeof error.statusCode === 'number' ? error.statusCode : 400;
+      const message = error instanceof Error ? error.message : 'Invalid WhatsApp Status upload';
+      return reply.code(statusCode).send({ success: false, error: message });
+    }
+    const content = upload.fields.content?.trim() ?? '';
+    const allowReshareValue = upload.fields.allow_reshare ?? 'false';
+    if (
+      !['true', 'false'].includes(allowReshareValue) ||
+      [...content].length > 700 ||
+      (!content && !upload.mediaKey)
+    ) {
+      if (upload.mediaKey)
+        await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+      return reply.code(400).send({ success: false, error: 'Invalid WhatsApp Status content' });
+    }
+    const allowReshare = allowReshareValue === 'true';
+    let statusType: 'text' | 'image' | 'video' = 'text';
+    if (upload.mediaKey) {
+      const detectedType = mediaType(upload.mediaMime);
+      if (detectedType !== 'image' && detectedType !== 'video') {
+        await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+        return reply
+          .code(400)
+          .send({ success: false, error: 'Status media must be an image or video' });
+      }
+      statusType = detectedType;
+    }
+    if (!content && !upload.mediaKey) {
+      if (upload.mediaKey)
+        await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+      return reply.code(400).send({ success: false, error: 'Status must contain text or media' });
+    }
+    const requestHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          status_type: statusType,
+          content,
+          allow_reshare: allowReshare,
+          media_mime_type: upload.mediaMime,
+          media_file_name: upload.mediaFileName,
+        })
+      )
+      .update(upload.mediaDigest)
+      .digest('hex');
+    const existing = await WhatsappStatus.query().findOne({
+      company_id: companyId,
+      idempotency_key: idempotencyKey,
+    });
+    if (existing) {
+      if (upload.mediaKey)
+        await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+      if (existing.request_hash !== requestHash)
+        return reply
+          .code(409)
+          .send({ success: false, error: 'Idempotency key was used for another Status' });
+      return reply.code(202).send({ success: true, data: existing });
+    }
+    const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+    if (!account?.gateway_device_id || account.status !== 'connected') {
+      if (upload.mediaKey)
+        await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+      return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+    }
+    const result = await app.db
+      .transaction(async (trx) => {
+        const inserted = await trx('whatsapp_statuses')
+          .insert({
+            company_id: companyId,
+            account_id: account.id,
+            status_type: statusType,
+            content: content || null,
+            media_key: upload.mediaKey,
+            media_mime_type: upload.mediaKey ? upload.mediaMime : null,
+            media_file_name: upload.mediaKey ? upload.mediaFileName : null,
+            media_size_bytes: upload.mediaKey ? upload.mediaSizeBytes : null,
+            allow_reshare: allowReshare,
+            idempotency_key: idempotencyKey,
+            request_hash: requestHash,
+            external_id: `pending:${idempotencyKey}`.slice(0, 255),
+            status: 'queued',
+            attempt_count: 0,
+            retryable: false,
+          })
+          .onConflict(['company_id', 'idempotency_key'])
+          .ignore()
+          .returning(['id']);
+        const id = inserted[0]?.id;
+        if (!id) {
+          const existing = await trx('whatsapp_statuses')
+            .where({ company_id: companyId, idempotency_key: idempotencyKey })
+            .first('id', 'request_hash');
+          if (existing?.request_hash !== requestHash)
+            throw Object.assign(new Error('Idempotency key conflict'), { statusCode: 409 });
+          return { id: Number(existing.id), created: false, conflict: false };
+        }
+        await OutboxEvent.query(trx).insert({
+          event_type: WHATSAPP_STATUS_PUBLISH_EVENT,
+          aggregate_model: 'whatsapp.status',
+          aggregate_id: id,
+          company_id: companyId,
+          payload: JSON.stringify({ status_id: id }),
+          status: 'pending',
+          attempts: 0,
+          max_attempts: 4,
+          available_at: new Date().toISOString(),
+        });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.status',
+          'publish_queued',
+          Number(id),
+          companyId,
+          trx
+        );
+        return { id: Number(id), created: true, conflict: false };
+      })
+      .catch((error: unknown) => {
+        if (isRecord(error) && error.statusCode === 409)
+          return { id: 0, created: false, conflict: true };
+        throw error;
+      });
+    if (!result.created && upload.mediaKey)
+      await options.attachmentStorage.delete(upload.mediaKey).catch(() => undefined);
+    if (result.conflict)
+      return reply
+        .code(409)
+        .send({ success: false, error: 'Idempotency key was used for another Status' });
+    const status = await WhatsappStatus.query()
+      .where({ id: result.id, company_id: companyId })
+      .select(
+        'id',
+        'status_type',
+        'content',
+        'media_mime_type',
+        'media_file_name',
+        'media_size_bytes',
+        'allow_reshare',
+        'status',
+        'last_error',
+        'create_date'
+      )
+      .first();
+    return reply.code(202).send({ success: true, data: status });
+  });
 
   app.get('/whatsapp/account', async (req, reply) => {
     const companyId = requireCompany(req, reply);
@@ -3655,7 +3859,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       if (
         !conversationId ||
         !body ||
-        Object.keys(body).some((key) => !['file_name', 'content_type', 'size_bytes'].includes(key)) ||
+        Object.keys(body).some(
+          (key) => !['file_name', 'content_type', 'size_bytes'].includes(key)
+        ) ||
         typeof body.file_name !== 'string' ||
         !safeFileName(body.file_name) ||
         typeof body.content_type !== 'string' ||
@@ -3766,7 +3972,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           return reply.code(410).send({ success: false, error: 'Upload ticket expired' });
         }
         if (!supportsDirectUploads(options.attachmentStorage))
-          return reply.code(409).send({ success: false, error: 'Direct uploads require S3 storage' });
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Direct uploads require S3 storage' });
         try {
           const metadata = await options.attachmentStorage.head(ticket.storage_key);
           if (
@@ -3778,7 +3986,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           ) {
             await options.attachmentStorage.delete(ticket.storage_key).catch(() => undefined);
             await WhatsappUploadTicket.query().deleteById(ticket.id);
-            return reply.code(422).send({ success: false, error: 'Uploaded media did not match its ticket' });
+            return reply
+              .code(422)
+              .send({ success: false, error: 'Uploaded media did not match its ticket' });
           }
           const bytes = await readStoredAttachmentBounded(
             options.attachmentStorage,
@@ -3794,13 +4004,17 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           if (!mimeMatchesSignature(ticket.content_type, detectedMime)) {
             await options.attachmentStorage.delete(ticket.storage_key).catch(() => undefined);
             await WhatsappUploadTicket.query().deleteById(ticket.id);
-            return reply.code(422).send({ success: false, error: 'Media type does not match its contents' });
+            return reply
+              .code(422)
+              .send({ success: false, error: 'Media type does not match its contents' });
           }
           const scanResult = await attachmentScanner!.scan(Readable.from([bytes]));
           if (scanResult.status === 'infected') {
             await options.attachmentStorage.delete(ticket.storage_key).catch(() => undefined);
             await WhatsappUploadTicket.query().deleteById(ticket.id);
-            return reply.code(422).send({ success: false, error: 'Attachment blocked by malware scan' });
+            return reply
+              .code(422)
+              .send({ success: false, error: 'Attachment blocked by malware scan' });
           }
           upload = {
             fields: Object.fromEntries(
@@ -3822,14 +4036,19 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           if (error instanceof MediaTooLargeError) {
             await options.attachmentStorage.delete(ticket.storage_key).catch(() => undefined);
             await WhatsappUploadTicket.query().deleteById(ticket.id);
-            return reply.code(413).send({ success: false, error: 'Media exceeds the 10 MiB limit' });
+            return reply
+              .code(413)
+              .send({ success: false, error: 'Media exceeds the 10 MiB limit' });
           }
           if (error instanceof MalwareScannerUnavailableError)
             return reply.code(503).send({
               success: false,
               error: 'Attachment malware scanning is temporarily unavailable',
             });
-          req.log.error({ error: whatsappLogErrorContext(error) }, 'WhatsApp direct upload check failed');
+          req.log.error(
+            { error: whatsappLogErrorContext(error) },
+            'WhatsApp direct upload check failed'
+          );
           return reply.code(503).send({ success: false, error: 'Could not verify uploaded media' });
         }
       }
@@ -3942,7 +4161,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       try {
         if (directUploadTicketId && directUploadSourceKey && mediaKey) {
           const finalMediaKey = randomUUID();
-          if (!directUploadBytes) throw new MediaStorageError('Uploaded media is no longer available');
+          if (!directUploadBytes)
+            throw new MediaStorageError('Uploaded media is no longer available');
           await options.attachmentStorage.put(finalMediaKey, directUploadBytes);
           mediaKey = finalMediaKey;
         }

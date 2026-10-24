@@ -102,6 +102,37 @@ export const WhatsappMessage = defineModel('whatsapp.message', {
   },
 });
 
+export const WhatsappStatus = defineModel('whatsapp.status', {
+  table: 'whatsapp_statuses',
+  order: 'create_date desc, id desc',
+  unique: [
+    ['company', 'idempotency_key'],
+    ['company', 'external_id'],
+  ],
+  fields: {
+    company: fields.belongsTo(Company, { required: true }),
+    account: fields.belongsTo(WhatsappAccount, { required: true }),
+    status_type: fields.enum(['text', 'image', 'video'], { required: true }),
+    content: fields.text(),
+    media_key: fields.string({ hidden: true, sensitive: true }),
+    media_mime_type: fields.string(),
+    media_file_name: fields.string(),
+    media_size_bytes: fields.integer(),
+    allow_reshare: fields.boolean({ required: true, default: false }),
+    idempotency_key: fields.string({ required: true, hidden: true, sensitive: true }),
+    request_hash: fields.string({ required: true, hidden: true, sensitive: true }),
+    external_id: fields.string({ required: true }),
+    status: fields.enum(['queued', 'sending', 'sent', 'failed', 'unknown'], {
+      required: true,
+      default: 'queued',
+    }),
+    attempt_count: fields.integer({ required: true, default: 0 }),
+    retryable: fields.boolean({ required: true, default: false }),
+    last_error: fields.string(),
+    published_at: fields.string(),
+  },
+});
+
 export const WhatsappUploadTicket = defineModel('whatsapp.upload.ticket', {
   table: 'whatsapp_upload_tickets',
   order: 'id asc',
