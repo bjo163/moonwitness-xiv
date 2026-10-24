@@ -176,6 +176,36 @@ The API makes outbound REST calls to GoWA. Device-specific webhooks are optional
 keeps polling GoWA's chat REST API as a recovery path. No shared internal token is used between
 services.
 
+## Troubleshooting
+
+- **QR is missing or will not scan:** open the WhatsApp account panel and check its status. For
+  `qr_expired`, choose **Refresh QR code** and scan the new code from WhatsApp → Linked devices.
+  For `disconnected`, choose **Connect WhatsApp**. If the controls are absent, confirm the active
+  company and that the user has `whatsapp.account.write`; never copy a QR into a ticket or log.
+- **Gateway reports unavailable or pairing gets an auth error:** request the unauthenticated
+  `GET /whatsapp/readyz` endpoint from the API host. A 503 means the gateway check failed; the
+  endpoint intentionally does not reveal credentials or the precise upstream error. From the
+  repository checkout, run the live contract test with the deployment environment loaded:
+  `$env:GOWA_CONTRACT_TEST='1'; pnpm --filter @moonwitness/api exec vitest run tests/gowa.contract.test.ts`.
+  It checks authenticated `/health` and the expected `/app/info` version. If it fails, confirm
+  `WHATSAPP_GATEWAY_URL`, `WHATSAPP_GATEWAY_USERNAME`, `WHATSAPP_GATEWAY_PASSWORD`, and
+  `WHATSAPP_GATEWAY_EXPECTED_VERSION` are present and identical in both API and outbox-worker
+  deployment environments. Production must not use the development fallback credentials. Do not
+  paste credentials or an Authorization header into logs or support tickets.
+- **Device is missing:** check `/whatsapp/account` while signed in to the affected company. If it
+  reports `disconnected` or a missing device mapping, use **Connect WhatsApp** to request a QR for
+  that company's stable GoWA slot. Confirm the device exists and is logged in in GoWA's own admin
+  interface; do not delete a GoWA device to repair a company mapping unless intentionally unlinking
+  that WhatsApp account. Pairing against the hosted gateway requires a real QR scan.
+- **Attachment storage is unavailable or full:** `/readyz` checks PostgreSQL and the configured
+  attachment storage; a storage failure returns 503. For local storage, check free space, write
+  permission, and that the API and outbox worker mount the same `ATTACHMENT_STORAGE_DIR`. For S3,
+  check bucket reachability, credentials, quota, and provider logs. Production's legacy local volume
+  is read-only and is not an S3 fallback. Restore storage capacity before retrying queued media.
+- **WhatsApp was logged out:** the account panel reports `disconnected`; reconnect and scan a fresh
+  QR. A gateway outage appears as `error` and should be resolved before pairing again. Disconnect
+  from Board deliberately unlinks the GoWA device; do not use it as a connectivity retry.
+
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.
