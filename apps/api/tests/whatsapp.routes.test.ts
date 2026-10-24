@@ -3671,6 +3671,49 @@ describe('WhatsApp API GoWA bridge', () => {
     ]);
   });
 
+  it('rejects unsigned, malformed, unconfigured, and oversized GoWA webhook requests', async () => {
+    const url = '/whatsapp/gowa/webhook/moonwitness-company-test';
+    const raw = JSON.stringify({ event: 'message.ack', session_id: 'unmapped', payload: {} });
+    process.env.WHATSAPP_WEBHOOK_SECRET = 'test-gowa-webhook-secret';
+
+    const unsigned = await app.inject({
+      method: 'POST',
+      url,
+      headers: { 'content-type': 'application/json' },
+      payload: raw,
+    });
+    const malformed = await app.inject({
+      method: 'POST',
+      url,
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=not-hex' },
+      payload: raw,
+    });
+    expect(unsigned.statusCode).toBe(401);
+    expect(malformed.statusCode).toBe(401);
+
+    delete process.env.WHATSAPP_WEBHOOK_SECRET;
+    const signatureWithoutConfiguredSecret = `sha256=${createHmac('sha256', 'test-gowa-webhook-secret').update(raw).digest('hex')}`;
+    const unconfigured = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        'content-type': 'application/json',
+        'x-hub-signature-256': signatureWithoutConfiguredSecret,
+      },
+      payload: raw,
+    });
+    expect(unconfigured.statusCode).toBe(401);
+
+    process.env.WHATSAPP_WEBHOOK_SECRET = 'test-gowa-webhook-secret';
+    const oversized = await app.inject({
+      method: 'POST',
+      url,
+      headers: { 'content-type': 'application/json' },
+      payload: 'x'.repeat(256 * 1024 + 1),
+    });
+    expect(oversized.statusCode).toBe(413);
+  });
+
   it('authenticates GoWA receipts and applies delivery states monotonically within one company', async () => {
     const accountId = await connectAndMarkReady();
     process.env.WHATSAPP_WEBHOOK_SECRET = 'test-gowa-webhook-secret';
