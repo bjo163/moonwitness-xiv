@@ -1972,7 +1972,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       >
                         {phoneCheck.is_on_whatsapp
                           ? `${phoneCheck.phone} is on WhatsApp`
-                          : `${phoneCheck.phone} is not on WhatsApp`}
+                          : `${phoneCheck.phone} is not registered, or GoWA could not verify it`}
                       </p>
                     )}
                     <Button

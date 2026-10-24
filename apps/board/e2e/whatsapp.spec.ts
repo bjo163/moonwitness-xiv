@@ -727,7 +727,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.getByLabel('Phone number with country code').fill('+62 811 1111 2222');
   await page.getByRole('button', { name: 'Check number' }).click();
   await expect(
-    page.getByRole('status').filter({ hasText: '+6281111112222 is not on WhatsApp' })
+    page
+      .getByRole('status')
+      .filter({ hasText: '+6281111112222 is not registered, or GoWA could not verify it' })
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'New chat' })).toBeDisabled();
   await expect(page.locator('#whatsapp-message-50').getByText('Rani from Finance')).toBeVisible();
