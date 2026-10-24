@@ -2199,7 +2199,10 @@ test('pauses WhatsApp account polling while the Board tab is hidden', async ({ p
   await expect.poll(() => accountPolls, { timeout: 5000 }).toBeGreaterThan(1);
 });
 
-test('guides the user to connect a WhatsApp account before opening the inbox', async ({ page }) => {
+test('guides the user to connect a WhatsApp account before opening the inbox', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
   await page.route('**/whatsapp/account', (route) =>
     route.fulfill({
       json: {
@@ -2222,4 +2225,39 @@ test('guides the user to connect a WhatsApp account before opening the inbox', a
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Connect a WhatsApp account' })).toBeVisible();
   await expect(page.getByText('One WhatsApp account is available for this company.')).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 320, height: 640 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp connect state WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    const width = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+    }));
+    expect(
+      width.document,
+      `WhatsApp connect state overflows in ${theme} theme`
+    ).toBeLessThanOrEqual(width.viewport);
+    const connectButton = await page
+      .getByRole('button', { name: 'Connect WhatsApp' })
+      .boundingBox();
+    if (!connectButton) throw new Error('Connect WhatsApp button has no visible bounds');
+    expect(connectButton.x + connectButton.width).toBeLessThanOrEqual(width.viewport);
+    await page.screenshot({ path: testInfo.outputPath(`whatsapp-connect-${theme}-320.png`) });
+  }
 });

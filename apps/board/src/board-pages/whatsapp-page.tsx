@@ -3073,7 +3073,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
         </section>
       )}
       {!connected && status !== 'qr' && (
-        <section className="border-2 border-ink bg-white p-8 text-center">
+        <section className="border-2 border-ink bg-paper-raised p-8 text-center">
           <SmartphoneIcon className="mx-auto size-10" />
           <h2 className="mt-3 font-display text-xl uppercase">Connect a WhatsApp account</h2>
           <p className="mt-1 text-sm text-ink-faint">
