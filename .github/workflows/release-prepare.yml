@@ -88,13 +88,3 @@ jobs:
           git commit -m "chore(release): prepare workspace release"
           node scripts/push-expected-ref.mjs origin HEAD refs/heads/dev "$EXPECTED_SOURCE_SHA"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-      - name: Dispatch full CI and promotion for the bot push
-        if: steps.publish.outputs.pushed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh workflow run ci.yml --repo "$GH_REPO" --ref dev
-          gh workflow run promote.yml --repo "$GH_REPO" --ref dev
-          echo "Prepared release pushed; explicit full CI and promotion dispatches requested." >> "$GITHUB_STEP_SUMMARY"

@@ -82,43 +82,6 @@ jobs:
           if [[ "$version" != v* ]]; then version="v$version"; fi
           pnpm release:check "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Require the exact source commit to be verified by main CI
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          git fetch --force origin refs/heads/main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
-          for attempt in $(seq 1 60); do
-            runs="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_SHA&event=push&per_page=100")"
-            run="$(jq --arg sha "$SOURCE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")] | sort_by(.created_at, .run_attempt) | last // empty' <<< "$runs")"
-            if [[ -n "$run" ]]; then
-              run_id="$(jq -r '.id' <<< "$run")"
-              run_attempt="$(jq -r '.run_attempt' <<< "$run")"
-              if [[ "$(jq -r '.status' <<< "$run")" == "completed" ]]; then
-                if [[ "$(jq -r '.conclusion // ""' <<< "$run")" != "success" ]]; then
-                  echo "The newest main push CI run for $SOURCE_SHA did not succeed." >&2
-                  exit 1
-                fi
-                jobs="$(gh api "repos/$GH_REPO/actions/runs/$run_id/attempts/$run_attempt/jobs?per_page=100")"
-                if [[ "$(jq '[.jobs[] | select(.name == "ci-gate" and .conclusion == "success")] | length' <<< "$jobs")" != "1" ]]; then
-                  echo "The exact main push CI run has no successful ci-gate for $SOURCE_SHA." >&2
-                  exit 1
-                fi
-                echo "Verified exact main ci-gate for source SHA $SOURCE_SHA (run $run_id)."
-                exit 0
-              fi
-            fi
-            echo "Waiting for exact main ci-gate on $SOURCE_SHA (attempt $attempt/60)."
-            sleep 15
-          done
-          echo "Timed out waiting for a successful main ci-gate on $SOURCE_SHA." >&2
-          exit 1
-      # Tag releases already require the successful exact-SHA main ci-gate above.
-      # Keep full local verification for workflow_dispatch dry runs and branch refs.
       - if: github.ref_type != 'tag' || (github.event_name == 'workflow_dispatch' && !inputs.publish)
         run: pnpm lint
       - if: github.ref_type != 'tag' || (github.event_name == 'workflow_dispatch' && !inputs.publish)

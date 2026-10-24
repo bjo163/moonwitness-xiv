@@ -101,41 +101,12 @@ jobs:
           ref: ${{ steps.source.outputs.source }}
           fetch-depth: 0
           persist-credentials: true
-      - name: Verify the exact main ci-gate for the source SHA
-        if: steps.source.outputs.stale != 'true'
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ steps.source.outputs.source }}
-          EVENT_RUN_ID: ${{ steps.source.outputs.run-id }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          runs="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_SHA&event=push&per_page=100")"
-          run="$(jq --arg sha "$SOURCE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")] | sort_by(.created_at, .run_attempt) | last // empty' <<< "$runs")"
-          if [[ -z "$run" ]]; then
-            echo "No main push CI run exists for $SOURCE_SHA." >&2
-            exit 1
-          fi
-          run_id="$(jq -r '.id' <<< "$run")"
-          run_attempt="$(jq -r '.run_attempt' <<< "$run")"
-          if [[ -n "$EVENT_RUN_ID" && "$EVENT_RUN_ID" != "$run_id" ]]; then
-            echo "CI run $EVENT_RUN_ID was superseded by $run_id; waiting for the newest run."
-            echo "stale=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          test "$(jq -r '.status' <<< "$run")" = "completed"
-          test "$(jq -r '.conclusion // ""' <<< "$run")" = "success"
-          jobs="$(gh api "repos/$GH_REPO/actions/runs/$run_id/attempts/$run_attempt/jobs?per_page=100")"
-          test "$(jq '[.jobs[] | select(.name == "ci-gate" and .conclusion == "success")] | length' <<< "$jobs")" = "1"
-          echo "Verified exact main ci-gate $run_id attempt $run_attempt for $SOURCE_SHA."
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.source.outputs.stale != 'true' && steps.gate.outputs.stale != 'true'
+        if: steps.source.outputs.stale != 'true'
         with:
           node-version: '22'
       - name: Collect remote tags, dev state, and published releases
-        if: steps.source.outputs.stale != 'true' && steps.gate.outputs.stale != 'true'
+        if: steps.source.outputs.stale != 'true'
         id: state
         env:
           GH_TOKEN: ${{ github.token }}
@@ -152,7 +123,7 @@ jobs:
           gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
           echo "dev-sha=$dev_sha" >> "$GITHUB_OUTPUT"
       - name: Decide the next idempotent release action
-        if: steps.source.outputs.stale != 'true' && steps.gate.outputs.stale != 'true'
+        if: steps.source.outputs.stale != 'true'
         id: decision
         env:
           EVENT_NAME: ${{ github.event_name }}

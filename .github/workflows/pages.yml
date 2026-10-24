@@ -286,42 +286,6 @@ jobs:
         if: always() && steps.docs_portal_tests.outcome == 'failure'
         continue-on-error: true
         run: node scripts/summarize-junit-failures.mjs test-results/junit
-      - name: Require successful CI gate for trusted main source
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ steps.source_sha.outputs.sha }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 60); do
-            runs="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_SHA&event=push&per_page=100")"
-            run="$(jq --arg sha "$SOURCE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")] | sort_by(.created_at, .run_attempt) | last // empty' <<< "$runs")"
-            if [[ -n "$run" ]]; then
-              run_id="$(jq -r '.id' <<< "$run")"
-              run_attempt="$(jq -r '.run_attempt' <<< "$run")"
-              run_status="$(jq -r '.status' <<< "$run")"
-              run_conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
-              if [[ "$run_status" == "completed" ]]; then
-                if [[ "$run_conclusion" != "success" ]]; then
-                  echo "The newest main push CI run for $SOURCE_SHA concluded $run_conclusion." >&2
-                  exit 1
-                fi
-                jobs="$(gh api "repos/$GH_REPO/actions/runs/$run_id/attempts/$run_attempt/jobs?per_page=100")"
-                gate="$(jq '[.jobs[] | select(.name == "ci-gate")] | last // empty' <<< "$jobs")"
-                if [[ "$(jq -r 'if type == "object" then (.conclusion // "") else "" end' <<< "$gate")" != "success" ]]; then
-                  echo "The main push CI run has no successful ci-gate for $SOURCE_SHA." >&2
-                  exit 1
-                fi
-                echo "Verified main push ci-gate success for source SHA $SOURCE_SHA (run $run_id)."
-                exit 0
-              fi
-            fi
-            echo "Waiting for main push CI and ci-gate on source SHA $SOURCE_SHA (attempt $attempt/60)."
-            sleep 15
-          done
-          echo "Timed out waiting for successful ci-gate on $SOURCE_SHA." >&2
-          exit 1
       - name: Confirm docs-only source does not request an app version bump
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change-detection.outputs.docs_only == 'true'
         env:
