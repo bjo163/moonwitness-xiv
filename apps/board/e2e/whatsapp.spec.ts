@@ -1521,6 +1521,7 @@ test('assigns conversations to agents and teams and closes or reopens queue item
       unread_count: 0,
     },
   ];
+  let assignmentRequestCount = 0;
   await page.route('**/whatsapp/account', (route) =>
     route.fulfill({
       json: {
@@ -1566,6 +1567,7 @@ test('assigns conversations to agents and teams and closes or reopens queue item
       });
     }
     if (path.endsWith('/assignment') && method === 'PUT') {
+      assignmentRequestCount++;
       const body = route.request().postDataJSON() as {
         assigned_user_id: number | null;
         assigned_team_id: number | null;
@@ -1618,6 +1620,8 @@ test('assigns conversations to agents and teams and closes or reopens queue item
   await expect(page.getByRole('button', { name: /Unassigned conversation/u })).toBeVisible();
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await page.getByRole('button', { name: 'Assign to team API' }).click();
+  await expect.poll(() => assignmentRequestCount).toBe(1);
+  await expect.poll(() => conversations[1]?.assigned_team_id).toBe(5);
   await expect(page.getByRole('button', { name: /Unassigned conversation/u })).toHaveCount(0);
   await page.getByRole('button', { name: 'Queue: All', exact: true }).click();
   await page.getByRole('button', { name: 'API', exact: true }).click();
@@ -1625,6 +1629,7 @@ test('assigns conversations to agents and teams and closes or reopens queue item
   await page.getByRole('button', { name: /Unassigned conversation/u }).click();
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await page.getByRole('button', { name: 'Assign to agent-b' }).click();
+  await expect.poll(() => conversations[1]?.assigned_user_id).toBe(3);
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await expect(
     page.getByRole('region', { name: 'Assign conversation' }).getByText('Assigned to agent-b')
@@ -1653,6 +1658,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   let status = 'disconnected';
   let directUploads = false;
   let accountRequests = 0;
+  let connectRequests = 0;
   await page.route('**/whatsapp/account**', (route) => {
     accountRequests++;
     return route.fulfill({
@@ -1668,6 +1674,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     });
   });
   await page.route('**/whatsapp/connect', (route) => {
+    connectRequests++;
     status = 'qr';
     return route.fulfill({ status: 202, json: { success: true } });
   });
@@ -1802,6 +1809,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   ).toBeVisible();
   await page.setViewportSize({ width: 320, height: 720 });
   await page.getByRole('button', { name: 'Connect WhatsApp' }).click();
+  await expect.poll(() => connectRequests).toBe(1);
   const qrCode = page.getByAltText('WhatsApp connection QR code');
   await expect(qrCode).toBeVisible();
   await page.getByText('QR scan help', { exact: true }).click();

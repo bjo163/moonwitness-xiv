@@ -3549,10 +3549,7 @@ function GroupProfileSummary({
         !(error instanceof ApiError) ||
         error.status >= 500 ||
         (error.status === 409 && /unresolved|unknown/iu.test(error.message));
-      if (uncertain) {
-        setRefreshRequired(true);
-        setConfirmAction(null);
-      }
+      if (uncertain) setRefreshRequired(true);
       setActionError(
         error instanceof Error ? error.message : 'Leave result could not be confirmed'
       );
@@ -3588,7 +3585,10 @@ function GroupProfileSummary({
         !(error instanceof ApiError) ||
         error.status >= 500 ||
         (error.status === 409 && /unresolved|unknown/iu.test(error.message));
-      if (uncertain) setRefreshRequired(true);
+      if (uncertain) {
+        setRefreshRequired(true);
+        setConfirmAction(null);
+      }
       setActionError(
         error instanceof Error ? error.message : 'Group action could not be confirmed'
       );
