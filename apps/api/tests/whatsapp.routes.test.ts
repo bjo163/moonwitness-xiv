@@ -127,6 +127,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let bufferGetCount = 0;
   let providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
   let providerAvatarId = 'avatar-1';
+  let providerAvatarRequests: URL[] = [];
   let avatarCdnFetchCount = 0;
   let groupMetadataFails = false;
   let providerGroupInfo: Record<string, unknown> = {
@@ -353,6 +354,7 @@ describe('WhatsApp API GoWA bridge', () => {
     videoPosterCallCount = 0;
     providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
     providerAvatarId = 'avatar-1';
+    providerAvatarRequests = [];
     avatarCdnFetchCount = 0;
     groupMetadataFails = false;
     providerGroupInfo = {
@@ -451,6 +453,7 @@ describe('WhatsApp API GoWA bridge', () => {
         if (profileRequestsFail) return json({ error: 'provider unavailable' }, 503);
         else return json({ verified_name: 'Verified Contact', status: 'Available for work' });
       if (url.pathname === '/user/avatar') {
+        providerAvatarRequests.push(url);
         if (profileRequestsFail) return json({ error: 'provider unavailable' }, 503);
         return json({ url: providerAvatarUrl, id: providerAvatarId });
       }
@@ -1017,6 +1020,7 @@ describe('WhatsApp API GoWA bridge', () => {
       is_announce: false,
       is_ephemeral: true,
       stale: false,
+      avatar_available: true,
       participants: [
         { jid: '628111111111@s.whatsapp.net', display_name: 'Rani', is_admin: true },
         { jid: '987654321@lid', display_name: 'Anonymous member' },
@@ -1482,6 +1486,66 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(recovered.statusCode).toBe(200);
     expect(recovered.json().replayed).toBe(true);
     expect(providerGroupJoinRequests).toHaveLength(2);
+  });
+
+  it('proxies, caches, refreshes, and company-scopes group avatars via the community avatar contract', async () => {
+    const accountId = await connectAndMarkReady();
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '120363000000022@g.us',
+        name: 'Avatar group',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const path = `/whatsapp/conversations/${group.id}/group/avatar`;
+    const first = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    expect(first.statusCode).toBe(200);
+    expect(Buffer.from(first.rawPayload)).toEqual(pngFixture());
+    expect(providerAvatarRequests.at(-1)?.searchParams.get('phone')).toBe('120363000000022@g.us');
+    expect(providerAvatarRequests.at(-1)?.searchParams.get('is_community')).toBe('true');
+    const [saved] = await db('whatsapp_conversations')
+      .where({ company_id: companyId, id: group.id })
+      .select('group_avatar_key', 'group_avatar_picture_id');
+    expect(saved).toMatchObject({
+      group_avatar_picture_id: 'avatar-1',
+      group_avatar_key: expect.any(String),
+    });
+    expect(stored.has(saved.group_avatar_key)).toBe(true);
+    const cdnFetches = avatarCdnFetchCount;
+    const cached = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    expect(cached.statusCode).toBe(200);
+    expect(Buffer.from(cached.rawPayload)).toEqual(pngFixture());
+    expect(avatarCdnFetchCount).toBe(cdnFetches);
+
+    providerAvatarId = 'group-avatar-2';
+    providerAvatarUrl = 'https://pps.whatsapp.net/group-avatar-2.png';
+    const refreshed = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(refreshed.statusCode).toBe(200);
+    const [rotated] = await db('whatsapp_conversations')
+      .where({ company_id: companyId, id: group.id })
+      .select('group_avatar_key', 'group_avatar_picture_id');
+    expect(rotated.group_avatar_picture_id).toBe('group-avatar-2');
+    expect(rotated.group_avatar_key).not.toBe(saved.group_avatar_key);
+    expect(stored.has(saved.group_avatar_key)).toBe(false);
+
+    const foreign = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+    });
+    expect(foreign.statusCode).toBe(404);
+    profileRequestsFail = true;
+    const stale = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    expect(stale.statusCode).toBe(200);
+    expect(Buffer.from(stale.rawPayload)).toEqual(pngFixture());
+    profileRequestsFail = false;
   });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {

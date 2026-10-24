@@ -19,10 +19,11 @@ export async function* whatsappAttachmentReferences(
   }
 
   const conversationRows = await db('whatsapp_conversations')
-    .whereNotNull('contact_avatar_key')
-    .select('contact_avatar_key');
+    .where((query) => query.whereNotNull('contact_avatar_key').orWhereNotNull('group_avatar_key'))
+    .select('contact_avatar_key', 'group_avatar_key');
   for (const row of conversationRows) {
     if (typeof row.contact_avatar_key === 'string') yield { storageKey: row.contact_avatar_key };
+    if (typeof row.group_avatar_key === 'string') yield { storageKey: row.group_avatar_key };
   }
 
   const pendingUploadRows = await db('whatsapp_upload_tickets')

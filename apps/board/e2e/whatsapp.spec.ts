@@ -56,6 +56,16 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       ),
     })
   );
+  await page.route('**/whatsapp/conversations/*/group/avatar', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l5sAAAAASUVORK5CYII=',
+        'base64'
+      ),
+    })
+  );
   let managedMemberAdmin = false;
   let groupLocked = false;
   let groupAnnounce = false;
@@ -74,6 +84,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
           is_locked: groupLocked,
           is_announce: groupAnnounce,
           is_ephemeral: true,
+          avatar_available: true,
           participants: [
             {
               jid: '628111222333@s.whatsapp.net',
@@ -678,6 +689,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(page.getByText('+6281234567890')).toBeVisible();
   await page.getByRole('button', { name: /Project group/u }).click();
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
   await page.getByRole('button', { name: '@Rani Finance' }).click();
   await expect(

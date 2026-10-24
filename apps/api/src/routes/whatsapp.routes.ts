@@ -3486,6 +3486,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         is_locked: conversation.group_is_locked ?? null,
         is_announce: conversation.group_is_announce ?? null,
         is_ephemeral: conversation.group_is_ephemeral ?? null,
+        avatar_available: true,
         synced_at: conversation.group_metadata_synced_at ?? null,
         stale: true,
       });
@@ -3669,6 +3670,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               typeof infoResult.is_announce === 'boolean' ? infoResult.is_announce : null,
             is_ephemeral:
               typeof infoResult.is_ephemeral === 'boolean' ? infoResult.is_ephemeral : null,
+            avatar_available: true,
             synced_at: now,
             stale: false,
             pending_operation: Boolean(hasPendingGroupOperation),
@@ -4503,6 +4505,144 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         return reply
           .code(502)
           .send({ success: false, error: 'Contact avatar could not be loaded' });
+      }
+    }
+  );
+
+  app.get<{ Params: Params }>(
+    '/whatsapp/conversations/:id/group/avatar',
+    whatsappRateLimit(30),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const conversation = await WhatsappConversation.query()
+        .findOne({ id: conversationId, company_id: companyId })
+        .select('id', 'company_id', 'jid', 'is_group', 'group_avatar_key');
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Conversation not found' });
+      if (!conversation.is_group || !/^\d[\d-]{4,79}@g\.us$/u.test(String(conversation.jid)))
+        return reply.code(404).send({ success: false, error: 'Group avatar is unavailable' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account?.gateway_device_id)
+        return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
+      const [avatarCache] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .select('group_avatar_picture_id', 'group_avatar_key');
+      const sendCachedAvatar = async () => {
+        if (typeof avatarCache?.group_avatar_key !== 'string') return null;
+        const cached = await options.attachmentStorage.get(avatarCache.group_avatar_key);
+        const mime = cached ? sniffMime(cached) : null;
+        if (
+          !cached ||
+          !mime ||
+          !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime)
+        )
+          return null;
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          'group_avatar_access',
+          conversationId,
+          companyId
+        );
+        reply
+          .header('content-type', mime)
+          .header('content-length', String(cached.length))
+          .header('content-disposition', 'inline')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-security-policy', "default-src 'none'; sandbox; base-uri 'none'")
+          .header('cache-control', 'private, max-age=300')
+          .header('vary', 'Authorization, X-Company-Id')
+          .send(cached);
+        return true;
+      };
+      try {
+        const avatar = await gowaRequest<{ url?: unknown; id?: unknown }>(
+          `/user/avatar?phone=${encodeURIComponent(String(conversation.jid))}&is_preview=true&is_community=true`,
+          { deviceId: account.gateway_device_id }
+        );
+        const avatarUrl = trustedWhatsAppAvatarUrl(avatar.url);
+        const pictureId = typeof avatar.id === 'string' ? avatar.id.slice(0, 255) : null;
+        if (pictureId && avatarCache?.group_avatar_picture_id === pictureId) {
+          const cached = await sendCachedAvatar();
+          if (cached) return cached;
+        }
+        if (typeof avatar.url === 'string' && avatar.url.length > 0 && !avatarUrl)
+          return reply.code(404).send({ success: false, error: 'Group avatar is unavailable' });
+        if (!avatarUrl) {
+          const cached = await sendCachedAvatar();
+          if (cached) return cached;
+          return reply.code(404).send({ success: false, error: 'Group avatar is unavailable' });
+        }
+        const fetchAvatar = options.fetchContactAvatar ?? globalThis.fetch.bind(globalThis);
+        const response = await fetchAvatar(avatarUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!response.ok) {
+          await response.body?.cancel();
+          return reply.code(response.status === 404 ? 404 : 502).send({
+            success: false,
+            error: 'Group avatar could not be loaded',
+          });
+        }
+        const bytes = await readBoundedAvatar(response);
+        const mime = sniffMime(bytes);
+        if (!mime || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime))
+          return reply.code(502).send({ success: false, error: 'Group avatar is invalid' });
+        if (pictureId) {
+          const newKey = randomUUID();
+          await options.attachmentStorage.put(newKey, bytes);
+          try {
+            await app
+              .db('whatsapp_conversations')
+              .where({ id: conversationId, company_id: companyId, is_group: true })
+              .update({ group_avatar_picture_id: pictureId, group_avatar_key: newKey });
+          } catch (error) {
+            await options.attachmentStorage.delete(newKey).catch(() => undefined);
+            throw error;
+          }
+          if (
+            typeof avatarCache?.group_avatar_key === 'string' &&
+            avatarCache.group_avatar_key !== newKey
+          )
+            await options.attachmentStorage
+              .delete(avatarCache.group_avatar_key)
+              .catch((error: unknown) => {
+                req.log.warn(
+                  { error: whatsappLogErrorContext(error) },
+                  'Stale WhatsApp group avatar cleanup failed'
+                );
+              });
+        }
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          'group_avatar_access',
+          conversationId,
+          companyId
+        );
+        return reply
+          .header('content-type', mime)
+          .header('content-length', String(bytes.length))
+          .header('content-disposition', 'inline')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-security-policy', "default-src 'none'; sandbox; base-uri 'none'")
+          .header('cache-control', 'private, max-age=300')
+          .header('vary', 'Authorization, X-Company-Id')
+          .send(bytes);
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group avatar fetch failed'
+        );
+        const cached = await sendCachedAvatar();
+        if (cached) return cached;
+        return reply.code(502).send({ success: false, error: 'Group avatar could not be loaded' });
       }
     }
   );

@@ -10,7 +10,7 @@ describe('WhatsApp attachment references', () => {
     db = null;
   });
 
-  it('keeps status media, message media, thumbnails, avatars, and unexpired upload objects', async () => {
+  it('keeps status media, message media, thumbnails, contact and group avatars, and unexpired upload objects', async () => {
     db = knex({
       client: 'better-sqlite3',
       connection: { filename: ':memory:' },
@@ -25,6 +25,7 @@ describe('WhatsApp attachment references', () => {
     });
     await db.schema.createTable('whatsapp_conversations', (table) => {
       table.string('contact_avatar_key');
+      table.string('group_avatar_key');
     });
     await db.schema.createTable('whatsapp_upload_tickets', (table) => {
       table.string('storage_key');
@@ -36,7 +37,10 @@ describe('WhatsApp attachment references', () => {
       media_thumbnail_key: 'message-thumbnail',
     });
     await db('whatsapp_statuses').insert({ media_key: 'status-media' });
-    await db('whatsapp_conversations').insert({ contact_avatar_key: 'contact-avatar' });
+    await db('whatsapp_conversations').insert({
+      contact_avatar_key: 'contact-avatar',
+      group_avatar_key: 'group-avatar',
+    });
     await db('whatsapp_upload_tickets').insert([
       { storage_key: 'active-upload', expires_at: '2026-10-25T12:00:01.000Z' },
       { storage_key: 'expired-upload', expires_at: '2026-10-25T11:59:59.000Z' },
@@ -55,6 +59,7 @@ describe('WhatsApp attachment references', () => {
       'message-thumbnail',
       'status-media',
       'contact-avatar',
+      'group-avatar',
       'active-upload',
     ]);
   });

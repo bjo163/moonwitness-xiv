@@ -34,6 +34,8 @@ export const WhatsappConversation = defineModel('whatsapp.conversation', {
     contact_avatar_key: fields.string({ hidden: true, sensitive: true }),
     contact_profile_synced_at: fields.string(),
     group_topic: fields.text(),
+    group_avatar_picture_id: fields.string({ hidden: true }),
+    group_avatar_key: fields.string({ hidden: true, sensitive: true }),
     group_participant_count: fields.integer(),
     group_participants_json: fields.text({ hidden: true, sensitive: true }),
     group_metadata_synced_at: fields.string({ hidden: true }),

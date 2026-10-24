@@ -72,6 +72,7 @@ type ContactProfile = {
 };
 type GroupProfile = {
   name: string;
+  avatar_available?: boolean;
   topic: string | null;
   participant_count: number | null;
   participants: Array<{
@@ -3472,6 +3473,7 @@ function GroupProfileSummary({
   onRefresh: () => Promise<'fresh' | 'left' | false>;
 }) {
   const queryClient = useQueryClient();
+  const [avatar, setAvatar] = useState<{ conversationId: number; url: string } | null>(null);
   const [participantDraft, setParticipantDraft] = useState('');
   const [pendingAction, setPendingAction] = useState<{
     action: 'add' | 'remove' | 'promote' | 'demote';
@@ -3488,6 +3490,29 @@ function GroupProfileSummary({
   const [confirmInviteReset, setConfirmInviteReset] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmSetting, setConfirmSetting] = useState<'locked' | 'announce' | null>(null);
+
+  useEffect(() => {
+    if (!profile?.avatar_available) return;
+    let active = true;
+    let objectUrl: string | null = null;
+    const controller = new AbortController();
+    void client
+      .requestBlobWithDownloadProgress(`/whatsapp/conversations/${conversationId}/group/avatar`, {
+        signal: controller.signal,
+        onDownloadProgress: () => undefined,
+      })
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setAvatar({ conversationId, url: objectUrl });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [conversationId, profile?.avatar_available, profile?.synced_at]);
 
   const loadInviteLink = async (reset = false) => {
     setInviteLoading(true);
@@ -3627,6 +3652,23 @@ function GroupProfileSummary({
   if (!profile) return null;
   return (
     <div className="mt-2 max-w-xl text-xs text-ink-faint">
+      <div className="mb-2 flex items-center gap-2">
+        {avatar?.conversationId === conversationId ? (
+          <img
+            src={avatar.url}
+            alt={`${profile.name} WhatsApp group photo`}
+            className="size-9 shrink-0 rounded-full border border-ink/30 object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-ink/30 bg-paper font-semibold text-ink"
+          >
+            {profile.name.slice(0, 1).toLocaleUpperCase() || '?'}
+          </span>
+        )}
+        <span className="truncate text-ink">{profile.name}</span>
+      </div>
       <p>
         {profile.participant_count === null
           ? 'Group participants'
