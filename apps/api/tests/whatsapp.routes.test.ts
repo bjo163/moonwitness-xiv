@@ -118,6 +118,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
   let avatarCdnFetchCount = 0;
   let profileRequestsFail = false;
+  let phoneCheckResult: boolean | null = true;
+  let phoneCheckRequests: URL[] = [];
   const previousGateway = process.env.WHATSAPP_GATEWAY_URL;
   const previousWebhookUrl = process.env.WHATSAPP_WEBHOOK_URL;
   const previousWebhookSecret = process.env.WHATSAPP_WEBHOOK_SECRET;
@@ -256,6 +258,8 @@ describe('WhatsApp API GoWA bridge', () => {
     providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
     avatarCdnFetchCount = 0;
     profileRequestsFail = false;
+    phoneCheckResult = true;
+    phoneCheckRequests = [];
     bufferGetCount = 0;
     stored.clear();
     activeStorage = memoryStorage;
@@ -316,6 +320,10 @@ describe('WhatsApp API GoWA bridge', () => {
       if (url.pathname === '/user/avatar') {
         if (profileRequestsFail) return json({ error: 'provider unavailable' }, 503);
         return json({ url: providerAvatarUrl, id: 'avatar-1' });
+      }
+      if (url.pathname === '/user/check') {
+        phoneCheckRequests.push(url);
+        return json(phoneCheckResult === null ? {} : { is_on_whatsapp: phoneCheckResult });
       }
       if (/^\/chat\/.+\/(archive|pin)$/u.test(url.pathname) && method === 'POST') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -628,6 +636,63 @@ describe('WhatsApp API GoWA bridge', () => {
       headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
     });
     expect(foreign.statusCode).toBe(404);
+  });
+
+  it('validates international phone syntax and reports GoWA registration without leaking tenant data', async () => {
+    await connectAndMarkReady();
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test' },
+      payload: { phone: '+1 234 567' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(phoneCheckRequests).toHaveLength(0);
+    const invalidCountryCode = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test' },
+      payload: { phone: '+999123456789' },
+    });
+    expect(invalidCountryCode.statusCode).toBe(400);
+    expect(phoneCheckRequests).toHaveLength(0);
+
+    const checked = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test' },
+      payload: { phone: '+62 (858) 9342-9926' },
+    });
+    expect(checked.statusCode).toBe(200);
+    expect(checked.json().data).toEqual({ phone: '+6285893429926', is_on_whatsapp: true });
+    expect(phoneCheckRequests[0]?.searchParams.get('phone')).toBe('6285893429926');
+
+    phoneCheckResult = false;
+    const notRegistered = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test' },
+      payload: { phone: '6285893429926' },
+    });
+    expect(notRegistered.statusCode).toBe(200);
+    expect(notRegistered.json().data.is_on_whatsapp).toBe(false);
+
+    phoneCheckResult = null;
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test' },
+      payload: { phone: '6285893429926' },
+    });
+    expect(unknown.statusCode).toBe(502);
+
+    const foreign = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/contacts/check',
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+      payload: { phone: '6285893429926' },
+    });
+    expect(foreign.statusCode).toBe(409);
   });
 
   it('requires an authenticated active company and creates a stable GoWA device with a proxied QR', async () => {

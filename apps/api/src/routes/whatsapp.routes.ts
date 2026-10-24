@@ -11,6 +11,7 @@ import { isRecord, MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
 
 import { mediaType, mimeMatchesSignature, safeMime, sniffMime } from '../whatsapp/media.js';
 import { gowaBinary, gowaOriginPath, gowaRequest, GowaError } from '../whatsapp/gowa-client.js';
+import parsePhoneNumberFromString from 'libphonenumber-js/max';
 import { whatsappLogErrorContext } from '../whatsapp/log-redaction.js';
 import { OutboxEvent } from '@moonwitness/jobs';
 import { WHATSAPP_SEND_EVENT } from '../whatsapp/outbox-consumer.js';
@@ -2187,6 +2188,55 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       })),
     };
   });
+
+  app.post<{ Body: unknown }>(
+    '/whatsapp/contacts/check',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'create')) return;
+      const body = isRecord(req.body) ? req.body : null;
+      const rawPhone = typeof body?.phone === 'string' ? body.phone.trim() : '';
+      const compactPhone = rawPhone.replace(/[\s().-]/gu, '');
+      const phone = compactPhone.startsWith('+') ? compactPhone.slice(1) : compactPhone;
+      const parsedPhone = /^\d+$/u.test(phone)
+        ? parsePhoneNumberFromString(`+${phone}`)
+        : undefined;
+      if (
+        !body ||
+        Object.keys(body).some((key) => key !== 'phone') ||
+        !/^[1-9]\d{7,14}$/u.test(phone) ||
+        !parsedPhone?.isValid()
+      )
+        return reply.code(400).send({
+          success: false,
+          error: 'Enter a valid international phone number (8–15 digits)',
+        });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+      try {
+        const check = await gowaRequest<{ is_on_whatsapp?: unknown }>(
+          `/user/check?phone=${encodeURIComponent(parsedPhone.number.slice(1))}`,
+          { deviceId: account.gateway_device_id }
+        );
+        if (typeof check.is_on_whatsapp !== 'boolean')
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp number could not be verified' });
+        return reply.send({
+          success: true,
+          data: { phone: parsedPhone.number, is_on_whatsapp: check.is_on_whatsapp },
+        });
+      } catch (error) {
+        req.log.warn({ error: whatsappLogErrorContext(error) }, 'WhatsApp number check failed');
+        return reply
+          .code(502)
+          .send({ success: false, error: 'WhatsApp number could not be verified' });
+      }
+    }
+  );
 
   app.post<{ Params: Params; Body: unknown }>(
     '/whatsapp/conversations/:id/archive',

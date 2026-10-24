@@ -20,6 +20,16 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       },
     })
   );
+  await page.route('**/whatsapp/contacts/check', async (route) => {
+    const request = route.request().postDataJSON() as { phone: string };
+    const phone = request.phone.replace(/\D/gu, '');
+    await route.fulfill({
+      json: {
+        success: true,
+        data: { phone: `+${phone}`, is_on_whatsapp: phone === '6285893429926' },
+      },
+    });
+  });
   await page.route('**/whatsapp/conversations/*/contact', (route) =>
     route.fulfill({
       json: {
@@ -465,6 +475,18 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.goto('/board/whatsapp');
   await expect(page.getByText('+6281234567890')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  await page.getByLabel('Phone number with country code').fill('+62 (858) 9342-9926');
+  await page.getByRole('button', { name: 'Check number' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '+6285893429926 is on WhatsApp' })
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New chat' })).toBeEnabled();
+  await page.getByLabel('Phone number with country code').fill('+62 811 1111 2222');
+  await page.getByRole('button', { name: 'Check number' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '+6281111112222 is not on WhatsApp' })
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New chat' })).toBeDisabled();
   await expect(page.locator('#whatsapp-message-50').getByText('Rani from Finance')).toBeVisible();
   await expect(
     page.getByRole('progressbar', { name: 'Download progress for download.png' })
@@ -492,7 +514,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(videoPreview.locator('video[controls]')).toBeVisible();
   await page.getByRole('button', { name: /Rani Putri/u }).click();
   await expect(page.getByText('Rani Finance', { exact: true })).toBeVisible();
-  await expect(page.locator('span.block').getByText('+628111222333', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('span.block').getByText('+628111222333', { exact: true })
+  ).toBeVisible();
   await expect(page.getByText('About: Ready to help')).toBeVisible();
   await expect(page.getByAltText('Rani Putri WhatsApp profile photo')).toBeVisible();
   await page.getByRole('button', { name: /Project group/u }).click();

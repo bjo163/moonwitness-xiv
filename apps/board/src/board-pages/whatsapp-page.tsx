@@ -323,6 +323,11 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   const setShowArchived = (showArchived: boolean) =>
     setInboxPreferences((current) => ({ ...current, showArchived }));
   const [newPhone, setNewPhone] = useState('');
+  const [phoneCheck, setPhoneCheck] = useState<{
+    phone: string;
+    is_on_whatsapp: boolean;
+  } | null>(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
   const [conversationSearch, setConversationSearch] = useState('');
   const conversationSearchRef = useRef<HTMLInputElement>(null);
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
@@ -890,11 +895,16 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   const startChat = async (event: FormEvent) => {
     event.preventDefault();
     if (startingChat) return;
+    const phone = newPhone.replace(/[\s().-]/gu, '').replace(/^\+/u, '');
+    if (phoneCheck?.phone !== `+${phone}` || !phoneCheck.is_on_whatsapp) {
+      toast.error('Check that this number is on WhatsApp before starting a chat');
+      return;
+    }
     setStartingChat(true);
     try {
       const response = await client.request<{ data: Conversation }>('/whatsapp/conversations', {
         method: 'POST',
-        body: { phone: newPhone.trim() },
+        body: { phone: `+${phone}` },
       });
       setNewPhone('');
       await queryClient.invalidateQueries({
@@ -905,6 +915,21 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
       toast.error(error instanceof Error ? error.message : 'Could not start conversation');
     } finally {
       setStartingChat(false);
+    }
+  };
+  const checkPhone = async () => {
+    if (checkingPhone) return;
+    setCheckingPhone(true);
+    setPhoneCheck(null);
+    try {
+      const response = await client.request<{
+        data: { phone: string; is_on_whatsapp: boolean };
+      }>('/whatsapp/contacts/check', { method: 'POST', body: { phone: newPhone } });
+      setPhoneCheck(response.data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not check this number');
+    } finally {
+      setCheckingPhone(false);
     }
   };
 
@@ -1637,16 +1662,48 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                 </Button>
               </div>
               {canCreateConversation && (
-                <form onSubmit={startChat} className="mt-3 flex gap-2">
-                  <Input
-                    aria-label="Phone number with country code"
-                    placeholder="6281234567890"
-                    value={newPhone}
-                    onChange={(event) => setNewPhone(event.target.value)}
-                    disabled={startingChat}
-                    inputMode="tel"
-                  />
-                  <Button type="submit" disabled={startingChat || !newPhone.trim()}>
+                <form onSubmit={startChat} className="mt-3 space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      aria-label="Phone number with country code"
+                      placeholder="+6281234567890"
+                      value={newPhone}
+                      onChange={(event) => {
+                        setNewPhone(event.target.value);
+                        setPhoneCheck(null);
+                      }}
+                      disabled={startingChat || checkingPhone}
+                      inputMode="tel"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={startingChat || checkingPhone || !newPhone.trim()}
+                      onClick={() => void checkPhone()}
+                    >
+                      {checkingPhone ? 'Checking…' : 'Check number'}
+                    </Button>
+                  </div>
+                  {phoneCheck && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className={`text-xs ${phoneCheck.is_on_whatsapp ? 'text-green-800' : 'text-ink-faint'}`}
+                    >
+                      {phoneCheck.is_on_whatsapp
+                        ? `${phoneCheck.phone} is on WhatsApp`
+                        : `${phoneCheck.phone} is not on WhatsApp`}
+                    </p>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={
+                      startingChat ||
+                      checkingPhone ||
+                      !newPhone.trim() ||
+                      phoneCheck?.is_on_whatsapp !== true
+                    }
+                  >
                     New chat
                   </Button>
                 </form>
