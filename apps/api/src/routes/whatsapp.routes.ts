@@ -2113,18 +2113,17 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
     const existingPreviewRows = primaryJids.length
       ? await app
           .db('whatsapp_conversations')
-          .select('jid', 'last_message', 'last_message_at', 'last_message_sync_at')
+          .select('id', 'jid', 'last_message', 'last_message_at', 'last_message_sync_at')
           .where({ company_id: companyId })
           .whereIn('jid', primaryJids)
       : [];
     const existingPreviewByJid = new Map(existingPreviewRows.map((row) => [String(row.jid), row]));
-    for (const chat of chats.values()) {
+    const conversationRows = [...chats.values()].flatMap((chat) => {
       const jid = typeof chat.jid === 'string' ? chat.jid : '';
-      if (!/^[^\s@]{1,200}@(s\.whatsapp\.net|g\.us|lid)$/u.test(jid)) continue;
+      if (!/^[^\s@]{1,200}@(s\.whatsapp\.net|g\.us|lid)$/u.test(jid)) return [];
       const lastMessageAt = providerTimestamp(chat.last_message_time);
-      await app
-        .db('whatsapp_conversations')
-        .insert({
+      return [
+        {
           company_id: companyId,
           account_id: account.id,
           jid,
@@ -2133,12 +2132,18 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           is_archived: chat.archived === true,
           unread_count: 0,
           last_message_at: lastMessageAt,
-        })
+        },
+      ];
+    });
+    if (conversationRows.length) {
+      await app
+        .db('whatsapp_conversations')
+        .insert(conversationRows)
         .onConflict(['company_id', 'jid'])
         .merge({
-          name: typeof chat.name === 'string' && chat.name ? chat.name.slice(0, 255) : jid,
-          is_group: jid.endsWith('@g.us'),
-          is_archived: chat.archived === true,
+          name: app.db.raw('excluded.name'),
+          is_group: app.db.raw('excluded.is_group'),
+          is_archived: app.db.raw('excluded.is_archived'),
           last_message_at: app.db.raw(
             'CASE WHEN whatsapp_conversations.last_message_at IS NULL OR excluded.last_message_at > whatsapp_conversations.last_message_at THEN excluded.last_message_at ELSE whatsapp_conversations.last_message_at END'
           ),
@@ -2154,6 +2159,20 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       const syncedTime = providerTimestamp(existing?.last_message_sync_at);
       return !syncedTime || Date.parse(providerTime) > Date.parse(syncedTime);
     });
+    const conversationIdByJid = new Map(
+      existingPreviewRows.map((row) => [String(row.jid), Number(row.id)])
+    );
+    const missingConversationJids = chatsNeedingPreview
+      .map((chat) => String(chat.jid))
+      .filter((jid) => !conversationIdByJid.has(jid));
+    if (missingConversationJids.length) {
+      const insertedRows = await app
+        .db('whatsapp_conversations')
+        .select('id', 'jid')
+        .where({ company_id: companyId })
+        .whereIn('jid', missingConversationJids);
+      for (const row of insertedRows) conversationIdByJid.set(String(row.jid), Number(row.id));
+    }
     let previewIndex = 0;
     const previewWorkers = Array.from(
       { length: Math.min(4, chatsNeedingPreview.length) },
@@ -2162,11 +2181,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           const chat = chatsNeedingPreview[previewIndex++]!;
           const jid = String(chat.jid);
           try {
-            const conversation = await WhatsappConversation.query().findOne({
-              company_id: companyId,
-              jid,
-            });
-            if (!conversation) continue;
+            const conversationId = conversationIdByJid.get(jid);
+            if (!conversationId) continue;
             const latest = await gowaRequest<{ data?: Array<Record<string, unknown>> }>(
               `/chat/${encodeURIComponent(jid)}/messages?limit=100&offset=0`,
               { deviceId: account.gateway_device_id! }
@@ -2208,7 +2224,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               recentMessages.set(item.id, {
                 company_id: companyId,
                 account_id: account.id,
-                conversation_id: conversation.id,
+                conversation_id: conversationId,
                 external_id: item.id.slice(0, 255),
                 direction: fromMe ? 'outbound' : 'inbound',
                 message_type: messageType,

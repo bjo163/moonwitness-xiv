@@ -74,6 +74,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let app: ReturnType<typeof Fastify>;
   let companyId: number;
   let foreignCompanyId: number;
+  let loadFixtureCompanyIds: number[] = [];
   let schema: string;
   let deviceExists = false;
   let providerConnected = false;
@@ -574,7 +575,10 @@ describe('WhatsApp API GoWA bridge', () => {
               ? undefined
               : request.headers['x-test-company'] === 'foreign'
                 ? foreignCompanyId
-                : companyId,
+                : typeof request.headers['x-test-company'] === 'string' &&
+                    /^[1-9][0-9]*$/u.test(request.headers['x-test-company'])
+                  ? Number(request.headers['x-test-company'])
+                  : companyId,
           role: request.headers['x-test-role'] === 'user' ? 'user' : 'superadmin',
           groupPermissions: [],
         };
@@ -618,6 +622,9 @@ describe('WhatsApp API GoWA bridge', () => {
       'audit_logs',
     ])
       await db(table).delete();
+    if (loadFixtureCompanyIds.length)
+      await db('companies').whereIn('id', loadFixtureCompanyIds).delete();
+    loadFixtureCompanyIds = [];
     stored.clear();
     vi.unstubAllGlobals();
   });
@@ -2510,6 +2517,69 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(
       providerMessageRequests.filter((url) => url.searchParams.get('limit') === '100')
     ).toHaveLength(1);
+  });
+
+  it('bulk syncs a 100-chat page across multiple company inboxes with one conversation write per company', async () => {
+    const companyIds: number[] = [companyId];
+    for (let index = 0; index < 9; index += 1) {
+      const [company] = await db('companies')
+        .insert({ name: `WhatsApp load fixture ${index}-${randomUUID()}`, timezone: 'UTC' })
+        .returning(['id']);
+      const id = Number(company.id);
+      companyIds.push(id);
+      loadFixtureCompanyIds.push(id);
+      await db('whatsapp_accounts').insert({
+        company_id: id,
+        status: 'connected',
+        gateway_device_id: `moonwitness-company-${id}`,
+      });
+    }
+    await db('whatsapp_accounts').insert({
+      company_id: companyId,
+      status: 'connected',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    providerConnected = true;
+    providerChats = Array.from({ length: 100 }, (_, index) => ({
+      jid: `628${String(index).padStart(9, '0')}@s.whatsapp.net`,
+      name: `Load fixture ${index}`,
+    }));
+    let conversationWrites = 0;
+    const queryListener = (query: { sql: string }) => {
+      const sql = query.sql.toLowerCase();
+      if (sql.includes('insert into') && sql.includes('whatsapp_conversations'))
+        conversationWrites += 1;
+    };
+    db.on('query', queryListener);
+    try {
+      const startedAt = performance.now();
+      const responses = await Promise.all(
+        companyIds.map((id) =>
+          app.inject({
+            method: 'GET',
+            url: '/whatsapp/conversations',
+            headers: {
+              authorization: 'Bearer test',
+              'x-test-company': String(id),
+            },
+          })
+        )
+      );
+      const elapsedMs = performance.now() - startedAt;
+      expect(elapsedMs).toBeLessThan(30_000);
+      for (const response of responses) {
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data).toHaveLength(50);
+      }
+    } finally {
+      db.removeListener('query', queryListener);
+    }
+    expect(conversationWrites).toBe(companyIds.length);
+    for (const id of companyIds) {
+      await expect(db('whatsapp_conversations').where({ company_id: id })).resolves.toHaveLength(
+        100
+      );
+    }
   });
 
   it('sends text to a group and media to a private chat through GoWA, and reports upstream failures', async () => {
