@@ -1,6 +1,6 @@
 # WhatsApp (GoWA) — backlog implementasi
 
-> Audit per 24 Oktober 2026. Cakupan: integrasi Board → API MoonWitness → GoWA di workspace ini. Kemampuan GoWA yang belum diverifikasi langsung ditandai untuk validasi, bukan diasumsikan tersedia.
+> Audit per 25 Oktober 2026. Cakupan: integrasi Board → API MoonWitness → GoWA di workspace ini. Kemampuan GoWA yang belum diverifikasi langsung ditandai untuk validasi, bukan diasumsikan tersedia.
 
 ## Kondisi saat ini
 
@@ -20,9 +20,10 @@ Belum dibuktikan pada koneksi WhatsApp nyata:
 - [ ] Pairing QR GoWA, persistensi sesi setelah restart, kirim/terima pesan nyata.
 - [ ] Receipt/status pesan nyata, perilaku grup nyata, dan unduhan media nyata.
 
-Bukti GoWA live: pada 24 Oktober 2026, `GET /app/info` dengan autentikasi ke gateway eksternal
-melaporkan `v9.6.0` dan `GET /health` menjawab `OK`; kedua pemeriksaan ada di
-`tests/gowa.contract.test.ts` dan lulus terhadap host tersebut. Digest image dan tag deployment
+Bukti GoWA live: 25 Oktober 2026, contract test read-only `apps/api/tests/gowa.contract.test.ts`
+lulus 2/2 terhadap `https://wa.moonwitness.biz.id`: `GET /app/info` melaporkan `v9.6.0` dan
+`GET /health` menjawab `OK`. Autentikasi HTTP 200 ke `GET /devices` mengembalikan `results: null`,
+jadi belum ada perangkat untuk menguji pairing/pesan/Status nyata. Digest image dan tag deployment
 Docker belum dapat dibaca dari API GoWA.
 
 Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media dan grup; **P3** Status/Story; **P4** bisnis dan operasi. Item backlog belum selesai atau belum diverifikasi sampai kriteria item terpenuhi.
@@ -31,7 +32,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 
 ## P0 — pairing, status koneksi, dan pengiriman aman
 
-- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pada 25 Oktober 2026, kredensial dari `.env` checkout utama mengautentikasi ke `/app/info` (HTTP 200, GoWA `v9.6.0`); `/devices` juga HTTP 200 tetapi `results: null`, jadi belum ada device slot. QR dan pairing pada device nyata belum dapat dibuktikan. (UI: `WUI-02`, `WUI-08`)
+- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pada 25 Oktober 2026, contract test read-only autentikasi ke `/app/info` dan `/health` lulus (2/2, GoWA `v9.6.0`); `/devices` juga HTTP 200 tetapi `results: null`, jadi belum ada device slot. QR dan pairing pada device nyata belum dapat dibuktikan. (UI: `WUI-02`, `WUI-08`)
 - [ ] **P0-02** Buktikan sesi GoWA bertahan setelah restart container tanpa scan QR ulang.
 - [ ] **P0-03** Buktikan sesi dan mapping perusahaan tetap benar setelah restart API, Board, dan PostgreSQL secara terpisah.
 - [ ] **P0-04** Uji putus jaringan, pemulihan koneksi, status reconnecting, lalu kembali connected tanpa akun ganda.
