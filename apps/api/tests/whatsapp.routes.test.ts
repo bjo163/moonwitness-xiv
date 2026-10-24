@@ -103,6 +103,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerImageSendCount = 0;
   let providerImageMentions: string[] = [];
   let providerVideoSendCount = 0;
+  let providerVideoMentions: string[] = [];
+  let providerFileMentions: string[] = [];
   let providerImageReplyIds: string[] = [];
   let providerAudioSendCount = 0;
   let providerAudioSendFields: string[] = [];
@@ -336,6 +338,8 @@ describe('WhatsApp API GoWA bridge', () => {
     providerImageSendCount = 0;
     providerImageMentions = [];
     providerVideoSendCount = 0;
+    providerVideoMentions = [];
+    providerFileMentions = [];
     providerImageReplyIds = [];
     providerAudioSendCount = 0;
     providerAudioSendFields = [];
@@ -594,7 +598,9 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname === '/send/video') {
         providerVideoSendCount++;
-        return json({ message_id: 'sent-video-id' });
+        const form = init?.body;
+        providerVideoMentions = form instanceof FormData ? form.getAll('mentions').map(String) : [];
+        return json({ message_id: `sent-video-${providerVideoSendCount}` });
       }
       if (url.pathname === '/send/audio') {
         providerAudioSendCount++;
@@ -610,9 +616,10 @@ describe('WhatsApp API GoWA bridge', () => {
         const form = init?.body;
         if (form instanceof FormData) {
           providerFileSendFields = [...form.keys()];
+          providerFileMentions = form.getAll('mentions').map(String);
           providerFileCaption = String(form.get('caption') ?? '');
         }
-        return json({ message_id: 'sent-file-id' });
+        return json({ message_id: `sent-file-${providerFileSendCount}` });
       }
       if (/^\/message\/.+\/forward$/u.test(url.pathname) && method === 'POST') {
         providerForwardRequests.push({
@@ -1501,7 +1508,11 @@ describe('WhatsApp API GoWA bridge', () => {
       })
       .returning(['id']);
     const path = `/whatsapp/conversations/${group.id}/group/avatar`;
-    const first = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const first = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(first.statusCode).toBe(200);
     expect(Buffer.from(first.rawPayload)).toEqual(pngFixture());
     expect(providerAvatarRequests.at(-1)?.searchParams.get('phone')).toBe('120363000000022@g.us');
@@ -1515,7 +1526,11 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(stored.has(saved.group_avatar_key)).toBe(true);
     const cdnFetches = avatarCdnFetchCount;
-    const cached = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const cached = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(cached.statusCode).toBe(200);
     expect(Buffer.from(cached.rawPayload)).toEqual(pngFixture());
     expect(avatarCdnFetchCount).toBe(cdnFetches);
@@ -1542,7 +1557,11 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(foreign.statusCode).toBe(404);
     profileRequestsFail = true;
-    const stale = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const stale = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(stale.statusCode).toBe(200);
     expect(Buffer.from(stale.rawPayload)).toEqual(pngFixture());
     profileRequestsFail = false;
@@ -3501,6 +3520,68 @@ describe('WhatsApp API GoWA bridge', () => {
     );
     expect(providerImageMentions).toEqual(['628111111111']);
 
+    const groupVideoUpload = multipartPayload(
+      { content: 'Video with mention', mentions: JSON.stringify(['628111111111']) },
+      { name: 'group.mp4', mime: 'video/mp4', bytes: Buffer.from('0000ftypisom') }
+    );
+    const groupVideo = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': groupVideoUpload.contentType,
+      },
+      payload: groupVideoUpload.payload,
+    });
+    expect(groupVideo.statusCode, JSON.stringify(groupVideo.json())).toBe(202);
+    const groupVideoEvent = await db('outbox_events')
+      .where({ aggregate_id: groupVideo.json().data.id, event_type: 'whatsapp.message.send' })
+      .first();
+    const groupVideoPayload = JSON.parse(groupVideoEvent.payload) as { mentions: string[] };
+    await dispatchQueuedWhatsAppMessage(
+      groupVideo.json().data.id,
+      companyId,
+      groupVideoEvent.id,
+      storage,
+      undefined,
+      groupVideoPayload.mentions
+    );
+    expect(providerVideoMentions).toEqual(['628111111111']);
+
+    const groupDocumentUpload = multipartPayload(
+      { content: 'Document with mention', mentions: JSON.stringify(['628111111111']) },
+      {
+        name: 'group.pdf',
+        mime: 'application/pdf',
+        bytes: Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'),
+      }
+    );
+    const groupDocument = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': groupDocumentUpload.contentType,
+      },
+      payload: groupDocumentUpload.payload,
+    });
+    expect(groupDocument.statusCode, JSON.stringify(groupDocument.json())).toBe(202);
+    const groupDocumentEvent = await db('outbox_events')
+      .where({ aggregate_id: groupDocument.json().data.id, event_type: 'whatsapp.message.send' })
+      .first();
+    const groupDocumentPayload = JSON.parse(groupDocumentEvent.payload) as { mentions: string[] };
+    await dispatchQueuedWhatsAppMessage(
+      groupDocument.json().data.id,
+      companyId,
+      groupDocumentEvent.id,
+      storage,
+      undefined,
+      groupDocumentPayload.mentions
+    );
+    expect(providerFileMentions).toEqual(['628111111111']);
+
     const [imageQuoteTarget] = await db('whatsapp_messages')
       .insert({
         company_id: companyId,
@@ -3626,7 +3707,7 @@ describe('WhatsApp API GoWA bridge', () => {
       .where({ aggregate_id: documentMessageId, event_type: 'whatsapp.message.send' })
       .first();
     await dispatchQueuedWhatsAppMessage(documentMessageId, companyId, documentEvent.id, storage);
-    expect(providerFileSendCount).toBe(1);
+    expect(providerFileSendCount).toBe(2);
     expect(providerFileSendFields).toEqual(['phone', 'caption', 'file']);
     expect(providerFileCaption).toBe('Statement caption');
     expect((await db('whatsapp_messages').where({ id: documentMessageId }).first()).status).toBe(
