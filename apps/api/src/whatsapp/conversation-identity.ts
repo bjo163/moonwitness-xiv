@@ -13,6 +13,12 @@ type ConversationRow = {
   last_message?: string | null;
   last_message_at?: string | null;
   last_message_sync_at?: string | null;
+  contact_verified_name?: string | null;
+  contact_status?: string | null;
+  contact_picture_id?: string | null;
+  contact_avatar_picture_id?: string | null;
+  contact_avatar_key?: string | null;
+  contact_profile_synced_at?: string | null;
 };
 
 function validTime(value: unknown): number | null {
@@ -127,6 +133,15 @@ export async function mergeWhatsappConversations(
     .where({ company_id: companyId, id: keepConversationId })
     .update({
       name,
+      contact_verified_name: keep.contact_verified_name ?? remove.contact_verified_name ?? null,
+      contact_status: keep.contact_status ?? remove.contact_status ?? null,
+      contact_picture_id: keep.contact_picture_id ?? remove.contact_picture_id ?? null,
+      contact_avatar_picture_id: keep.contact_avatar_key
+        ? keep.contact_avatar_picture_id
+        : (remove.contact_avatar_picture_id ?? null),
+      contact_avatar_key: keep.contact_avatar_key ?? remove.contact_avatar_key ?? null,
+      contact_profile_synced_at:
+        keep.contact_profile_synced_at ?? remove.contact_profile_synced_at ?? null,
       is_pinned: Boolean(keep.is_pinned || remove.is_pinned),
       unread_count: Number(keep.unread_count ?? 0) + Number(remove.unread_count ?? 0),
       ...(removeHasLaterMessage

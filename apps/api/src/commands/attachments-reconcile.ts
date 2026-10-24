@@ -44,6 +44,13 @@ export async function reconcileAttachments(options: AttachmentReconcileOptions) 
         if (typeof row.media_thumbnail_key === 'string')
           yield { storageKey: row.media_thumbnail_key };
       }
+      const conversationRows = await db('whatsapp_conversations')
+        .whereNotNull('contact_avatar_key')
+        .select('contact_avatar_key');
+      for (const row of conversationRows) {
+        if (typeof row.contact_avatar_key === 'string')
+          yield { storageKey: row.contact_avatar_key };
+      }
     }
     try {
       return await reconcileAttachmentStorage(storage, references(), options);

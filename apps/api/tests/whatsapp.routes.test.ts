@@ -116,6 +116,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let videoPosterCallCount = 0;
   let bufferGetCount = 0;
   let providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
+  let providerAvatarId = 'avatar-1';
   let avatarCdnFetchCount = 0;
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
@@ -256,6 +257,7 @@ describe('WhatsApp API GoWA bridge', () => {
     streamGetCount = 0;
     videoPosterCallCount = 0;
     providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
+    providerAvatarId = 'avatar-1';
     avatarCdnFetchCount = 0;
     profileRequestsFail = false;
     phoneCheckResult = true;
@@ -319,7 +321,7 @@ describe('WhatsApp API GoWA bridge', () => {
         else return json({ verified_name: 'Verified Contact', status: 'Available for work' });
       if (url.pathname === '/user/avatar') {
         if (profileRequestsFail) return json({ error: 'provider unavailable' }, 503);
-        return json({ url: providerAvatarUrl, id: 'avatar-1' });
+        return json({ url: providerAvatarUrl, id: providerAvatarId });
       }
       if (url.pathname === '/user/check') {
         phoneCheckRequests.push(url);
@@ -604,7 +606,38 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(Buffer.from(avatar.rawPayload)).toEqual(pngFixture());
     expect(avatarCdnFetchCount).toBe(1);
-    expect(await db('audit_logs').where({ operation: 'contact_avatar_access' })).toHaveLength(1);
+    const [savedAvatar] = await db('whatsapp_conversations')
+      .where({ id: conversation.id, company_id: companyId })
+      .select('contact_avatar_key', 'contact_avatar_picture_id');
+    expect(savedAvatar).toMatchObject({
+      contact_avatar_picture_id: 'avatar-1',
+      contact_avatar_key: expect.any(String),
+    });
+    expect(stored.has(savedAvatar.contact_avatar_key)).toBe(true);
+    const cachedAvatar = await app.inject({
+      method: 'GET',
+      url: `${path}/avatar`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(cachedAvatar.statusCode).toBe(200);
+    expect(Buffer.from(cachedAvatar.rawPayload)).toEqual(pngFixture());
+    expect(avatarCdnFetchCount).toBe(1);
+
+    providerAvatarId = 'avatar-2';
+    providerAvatarUrl = 'https://pps.whatsapp.net/avatar-2.png';
+    const updatedAvatar = await app.inject({
+      method: 'GET',
+      url: `${path}/avatar`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(updatedAvatar.statusCode).toBe(200);
+    expect(avatarCdnFetchCount).toBe(2);
+    const [refreshedAvatar] = await db('whatsapp_conversations')
+      .where({ id: conversation.id, company_id: companyId })
+      .select('contact_avatar_key', 'contact_avatar_picture_id');
+    expect(refreshedAvatar.contact_avatar_picture_id).toBe('avatar-2');
+    expect(refreshedAvatar.contact_avatar_key).not.toBe(savedAvatar.contact_avatar_key);
+    expect(stored.has(savedAvatar.contact_avatar_key)).toBe(false);
 
     profileRequestsFail = true;
     const staleProfile = await app.inject({
@@ -616,19 +649,29 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(staleProfile.json().data).toMatchObject({
       verified_name: 'Verified Contact',
       status: 'Available for work',
-      picture_id: 'avatar-1',
+      picture_id: 'avatar-2',
       synced_at: savedProfile.contact_profile_synced_at,
     });
+    const staleAvatar = await app.inject({
+      method: 'GET',
+      url: `${path}/avatar`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(staleAvatar.statusCode).toBe(200);
+    expect(Buffer.from(staleAvatar.rawPayload)).toEqual(pngFixture());
+    expect(avatarCdnFetchCount).toBe(2);
     profileRequestsFail = false;
 
     providerAvatarUrl = 'https://pps.whatsapp.net.evil.example/avatar.png';
+    providerAvatarId = 'avatar-3';
     const rejectedAvatar = await app.inject({
       method: 'GET',
       url: `${path}/avatar`,
       headers: { authorization: 'Bearer test' },
     });
     expect(rejectedAvatar.statusCode).toBe(404);
-    expect(avatarCdnFetchCount).toBe(1);
+    expect(avatarCdnFetchCount).toBe(2);
+    expect(await db('audit_logs').where({ operation: 'contact_avatar_access' })).toHaveLength(4);
 
     const foreign = await app.inject({
       method: 'GET',
@@ -3565,6 +3608,15 @@ describe('WhatsApp API GoWA bridge', () => {
     const lidConversation = await db('whatsapp_conversations')
       .where({ company_id: companyId, jid: contactLid })
       .first();
+    const contactAvatarKey = randomUUID();
+    stored.set(contactAvatarKey, pngFixture());
+    await db('whatsapp_conversations')
+      .where({ company_id: companyId, id: lidConversation.id })
+      .update({
+        contact_picture_id: 'lid-avatar',
+        contact_avatar_picture_id: 'lid-avatar',
+        contact_avatar_key: contactAvatarKey,
+      });
     const lidMessage = await db('whatsapp_messages')
       .where({ company_id: companyId, external_id: 'webhook-private-lid-before-map' })
       .first();
@@ -3593,7 +3645,12 @@ describe('WhatsApp API GoWA bridge', () => {
       .where({ company_id: companyId })
       .whereIn('jid', [contactLid, canonicalPhoneJid]);
     expect(conversationsAfterLidResolution).toHaveLength(1);
-    expect(conversationsAfterLidResolution[0]).toMatchObject({ jid: canonicalPhoneJid });
+    expect(conversationsAfterLidResolution[0]).toMatchObject({
+      jid: canonicalPhoneJid,
+      contact_picture_id: 'lid-avatar',
+      contact_avatar_picture_id: 'lid-avatar',
+      contact_avatar_key: contactAvatarKey,
+    });
     const mergedMessages = await db('whatsapp_messages')
       .where({ company_id: companyId })
       .whereIn('external_id', ['webhook-private-lid-before-map', 'webhook-private-lid-after-map']);

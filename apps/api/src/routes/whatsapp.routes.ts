@@ -2550,7 +2550,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           verified_name: verifiedName ?? conversation.contact_verified_name ?? null,
           status: contactStatus ?? conversation.contact_status ?? null,
           picture_id: pictureId ?? conversation.contact_picture_id ?? null,
-          avatar_available: trustedWhatsAppAvatarUrl(avatar.url) !== null,
+          avatar_available:
+            trustedWhatsAppAvatarUrl(avatar.url) !== null ||
+            Boolean(conversation.contact_avatar_key),
           synced_at: profileSyncedAt ?? conversation.contact_profile_synced_at ?? null,
         },
       });
@@ -2566,10 +2568,19 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       const conversationId = id(req.params.id);
       if (!conversationId)
         return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
-      const conversation = await WhatsappConversation.query().findOne({
-        id: conversationId,
-        company_id: companyId,
-      });
+      const conversation = await WhatsappConversation.query()
+        .findOne({
+          id: conversationId,
+          company_id: companyId,
+        })
+        .select(
+          'id',
+          'company_id',
+          'jid',
+          'is_group',
+          'contact_avatar_picture_id',
+          'contact_avatar_key'
+        );
       if (!conversation)
         return reply.code(404).send({ success: false, error: 'Conversation not found' });
       const phoneMatch = String(conversation.jid).match(/^(\d{5,20})@s\.whatsapp\.net$/u);
@@ -2578,14 +2589,60 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       const account = await WhatsappAccount.query().findOne({ company_id: companyId });
       if (!account?.gateway_device_id)
         return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
+      const [avatarCache] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId })
+        .select('contact_avatar_picture_id', 'contact_avatar_key');
+      const sendCachedAvatar = async () => {
+        if (typeof avatarCache?.contact_avatar_key !== 'string') return null;
+        const cached = await options.attachmentStorage.get(avatarCache.contact_avatar_key);
+        const cachedMime = cached ? sniffMime(cached) : null;
+        if (
+          !cached ||
+          !cachedMime ||
+          !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(cachedMime)
+        )
+          return null;
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          'contact_avatar_access',
+          conversationId,
+          companyId
+        );
+        reply
+          .header('content-type', cachedMime)
+          .header('content-length', String(cached.length))
+          .header('content-disposition', 'inline')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-security-policy', "default-src 'none'; sandbox; base-uri 'none'")
+          .header('cache-control', 'private, max-age=300')
+          .header('vary', 'Authorization, X-Company-Id')
+          .send(cached);
+        return true;
+      };
       try {
-        const avatar = await gowaRequest<{ url?: unknown }>(
+        const avatar = await gowaRequest<{ url?: unknown; id?: unknown }>(
           `/user/avatar?phone=${encodeURIComponent(conversation.jid)}&is_preview=true`,
           { deviceId: account.gateway_device_id }
         );
         const avatarUrl = trustedWhatsAppAvatarUrl(avatar.url);
-        if (!avatarUrl)
+        const pictureId = typeof avatar.id === 'string' ? avatar.id.slice(0, 255) : null;
+        if (
+          pictureId &&
+          avatarCache?.contact_avatar_picture_id === pictureId &&
+          typeof avatarCache.contact_avatar_key === 'string'
+        ) {
+          const cached = await sendCachedAvatar();
+          if (cached) return cached;
+        }
+        if (typeof avatar.url === 'string' && avatar.url.length > 0 && !avatarUrl)
           return reply.code(404).send({ success: false, error: 'Contact avatar is unavailable' });
+        if (!avatarUrl) {
+          const cached = await sendCachedAvatar();
+          if (cached) return cached;
+          return reply.code(404).send({ success: false, error: 'Contact avatar is unavailable' });
+        }
         const fetchAvatar = options.fetchContactAvatar ?? globalThis.fetch.bind(globalThis);
         const response = await fetchAvatar(avatarUrl, {
           redirect: 'error',
@@ -2602,6 +2659,32 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         const mime = sniffMime(bytes);
         if (!mime || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime))
           return reply.code(502).send({ success: false, error: 'Contact avatar is invalid' });
+        if (pictureId) {
+          const newKey = randomUUID();
+          await options.attachmentStorage.put(newKey, bytes);
+          try {
+            await app
+              .db('whatsapp_conversations')
+              .where({ id: conversationId, company_id: companyId })
+              .update({
+                contact_picture_id: pictureId,
+                contact_avatar_picture_id: pictureId,
+                contact_avatar_key: newKey,
+              });
+          } catch (error) {
+            await options.attachmentStorage.delete(newKey).catch(() => undefined);
+            throw error;
+          }
+          if (conversation.contact_avatar_key && conversation.contact_avatar_key !== newKey)
+            await options.attachmentStorage
+              .delete(conversation.contact_avatar_key)
+              .catch((error: unknown) => {
+                req.log.warn(
+                  { error: whatsappLogErrorContext(error) },
+                  'Stale WhatsApp contact avatar cleanup failed'
+                );
+              });
+        }
         await recordWhatsAppAudit(
           req,
           'whatsapp.conversation',
@@ -2623,6 +2706,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           { error: whatsappLogErrorContext(error) },
           'WhatsApp contact avatar fetch failed'
         );
+        const cached = await sendCachedAvatar();
+        if (cached) return cached;
         return reply
           .code(502)
           .send({ success: false, error: 'Contact avatar could not be loaded' });
