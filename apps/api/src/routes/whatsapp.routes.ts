@@ -2857,7 +2857,10 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           );
           return joined;
         });
-        return reply.code(201).send({ success: true, data: conversation });
+        return reply.code(201).send({
+          success: true,
+          data: { ...conversation, is_group: Boolean(conversation.is_group) },
+        });
       } catch (error) {
         const rejected =
           error instanceof GowaError && error.statusCode >= 400 && error.statusCode < 500;
@@ -3242,7 +3245,10 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           );
           return created;
         });
-        return reply.code(201).send({ success: true, data: conversation });
+        return reply.code(201).send({
+          success: true,
+          data: { ...conversation, is_group: Boolean(conversation.is_group) },
+        });
       } catch (error) {
         const definitelyRejected =
           error instanceof GowaError && error.statusCode >= 400 && error.statusCode < 500;

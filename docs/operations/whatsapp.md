@@ -180,6 +180,36 @@ and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `
 these boundaries. Compose does not filter outbound network destinations, so enforce any egress
 allowlist for the hosted GoWA endpoint at the container host or network firewall.
 
+## GoWA compatibility and rollback
+
+The version check is exact-string matching, not a claim that neighboring releases are compatible.
+The current matrix is:
+
+| GoWA version      | API readiness       | Evidence and limit                                                                                                                                                                                                                                                                                                      |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v9.6.0`          | Accepted by default | Authenticated live `/health` and `/app/info` contract passed 2/2 on 25 October 2026; a fresh `/app/info` check returned HTTP 200 and exact `v9.6.0`. The hosted `/devices` response is still `results: null`, so QR pairing, session persistence, media delivery, and messages have not been verified on a real device. |
+| Any other version | Rejected by default | No other GoWA version has a compatibility result in this repository. Setting `WHATSAPP_GATEWAY_EXPECTED_VERSION` changes the exact readiness comparison only; it is not evidence that the API features work with that release.                                                                                          |
+
+Before an upgrade, record the current GoWA image digest/tag from the deployment host, API release/commit,
+and configured expected version. Take a backup of GoWA's own persistent data and prove that the
+backup can be read and restored before changing versions; this prerequisite is tracked in
+`todo-wa.md` P0-25. Keep the previous image digest and the matching pre-upgrade backup together.
+
+Test the candidate GoWA image and API version in staging first. During the production maintenance
+window, pause the outbox worker so queued messages are not sent while the gateway/API versions are
+in transition. Update the GoWA image and `WHATSAPP_GATEWAY_EXPECTED_VERSION` as one deployment
+change, then verify authenticated `/health` and `/app/info`, API `/whatsapp/readyz`, Board account
+status, and device session state. Resume the outbox only after those checks pass. Verify actual
+send/receive behavior with an approved test device and recipient before the maintenance is closed.
+
+For rollback, pause the outbox worker, restore the previous GoWA image and its matching data backup
+if the upgraded version changed its storage format, restore the previous expected-version setting,
+and restart API/outbox worker. Recheck gateway and account status before resuming queued sends. Do
+not downgrade a GoWA binary against data already migrated by a newer release without restoring the
+pre-upgrade backup. Retain the backup until the upgraded device session and message flows have been
+verified. This is a runbook procedure; an actual host image digest, backup restore, and linked-device
+upgrade/rollback have not yet been tested.
+
 ## GoWA credential rotation
 
 Store the GoWA Basic Auth username and password in the deployment secret manager when one is
