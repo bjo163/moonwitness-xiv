@@ -80,7 +80,7 @@ describe('WhatsApp orphan attachment schedule', () => {
     ).rejects.toThrow('payload must be an empty object');
   });
 
-  it('deletes only stale orphan objects and preserves a referenced attachment', async () => {
+  it('deletes only stale orphan objects and preserves general and WhatsApp references', async () => {
     db = knex({
       client: 'better-sqlite3',
       connection: { filename: ':memory:' },
@@ -91,12 +91,16 @@ describe('WhatsApp orphan attachment schedule', () => {
     storageDirectory = await mkdtemp(path.join(tmpdir(), 'moonwitness-wa-cleanup-'));
     const storage = new LocalFileAttachmentStorage(storageDirectory);
     const referencedKey = '11111111-1111-4111-8111-111111111111';
-    const orphanKey = '22222222-2222-4222-8222-222222222222';
+    const messageMediaKey = '22222222-2222-4222-8222-222222222222';
+    const uploadTicketKey = '33333333-3333-4333-8333-333333333333';
+    const orphanKey = '44444444-4444-4444-8444-444444444444';
     await storage.put(referencedKey, Buffer.from('referenced'));
+    await storage.put(messageMediaKey, Buffer.from('message media'));
+    await storage.put(uploadTicketKey, Buffer.from('active upload'));
     await storage.put(orphanKey, Buffer.from('orphan'));
     const staleDate = new Date('2020-01-01T00:00:00.000Z');
     await Promise.all(
-      [referencedKey, orphanKey].map((key) =>
+      [referencedKey, messageMediaKey, uploadTicketKey, orphanKey].map((key) =>
         utimes(path.join(storageDirectory!, key), staleDate, staleDate)
       )
     );
@@ -107,6 +111,42 @@ describe('WhatsApp orphan attachment schedule', () => {
       mimetype: 'application/octet-stream',
       size_bytes: 10,
       storage_key: referencedKey,
+    });
+    const companyId = Number((await db('companies').first('id'))?.id);
+    const [account] = await db('whatsapp_accounts')
+      .insert({ company_id: companyId, status: 'connected' })
+      .returning(['id']);
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Cleanup test',
+        is_group: false,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    await db('whatsapp_messages').insert({
+      company_id: companyId,
+      account_id: account.id,
+      conversation_id: conversation.id,
+      external_id: 'cleanup-message-1',
+      direction: 'inbound',
+      message_type: 'image',
+      status: 'received',
+      media_key: messageMediaKey,
+      media_mime_type: 'image/png',
+      media_size_bytes: 12,
+    });
+    await db('whatsapp_upload_tickets').insert({
+      company_id: companyId,
+      conversation_id: conversation.id,
+      user_id: 1,
+      storage_key: uploadTicketKey,
+      file_name: 'active.png',
+      content_type: 'image/png',
+      size_bytes: 13,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
     });
     unregister = registerWhatsAppAttachmentJob(db, () => storage);
 
@@ -122,6 +162,8 @@ describe('WhatsApp orphan attachment schedule', () => {
       scan_truncated: false,
     });
     await expect(storage.get(referencedKey)).resolves.toEqual(Buffer.from('referenced'));
+    await expect(storage.get(messageMediaKey)).resolves.toEqual(Buffer.from('message media'));
+    await expect(storage.get(uploadTicketKey)).resolves.toEqual(Buffer.from('active upload'));
     await expect(storage.get(orphanKey)).resolves.toBeNull();
   });
 });
