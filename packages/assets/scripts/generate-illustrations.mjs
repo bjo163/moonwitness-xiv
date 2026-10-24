@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { stdout } from 'node:process';
+import { replaceGeneratedAssets } from './manifest-ownership.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const output = resolve(root, 'illustrations');
@@ -46,15 +47,20 @@ const entries = [
 
 await mkdir(output, { recursive: true });
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-manifest.assets = manifest.assets.filter((asset) => !asset.path.startsWith('illustrations/'));
+const themes = ['light', 'dark'];
+const ownedAssetPaths = new Set([
+  ...entries.flatMap(([name]) => themes.map((theme) => `illustrations/${name}-${theme}.svg`)),
+  ...themes.map((theme) => `illustrations/orbit-pattern-${theme}.svg`),
+]);
+const generatedAssetEntries = [];
 
 for (const [name, label, content] of entries) {
-  for (const theme of ['light', 'dark']) {
+  for (const theme of themes) {
     const ink = theme === 'dark' ? '#f3efe4' : '#0d0d0d';
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 164 152" width="164" height="152" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${label}"><title>${label}</title><circle cx="82" cy="76" r="67" stroke="${ink}" stroke-opacity=".12" stroke-dasharray="1 8"/>${content}<path d="M31 127h102" stroke="${theme === 'dark' ? '#e6ff00' : '#ff2e88'}" stroke-width="4"/></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 164 152" width="164" height="152" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${label}"><title>${label}</title><circle cx="82" cy="76" r="67" stroke="${ink}" stroke-opacity=".12" stroke-dasharray="1 8"/>${content}<path d="M31 127h102" stroke="${theme === 'dark' ? '#ffe031' : '#ff2e88'}" stroke-width="4"/></svg>`;
     const path = `illustrations/${name}-${theme}.svg`;
     await writeFile(resolve(root, path), `${svg}\n`);
-    manifest.assets.push({
+    generatedAssetEntries.push({
       path,
       kind: 'illustration',
       variant: theme,
@@ -65,13 +71,13 @@ for (const [name, label, content] of entries) {
   }
 }
 
-for (const theme of ['light', 'dark']) {
+for (const theme of themes) {
   const ink = theme === 'dark' ? '#f3efe4' : '#0d0d0d';
   const path = `illustrations/orbit-pattern-${theme}.svg`;
   const patternId = `mw-illustrations-orbit-pattern-${theme}-svg-texture`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="MoonWitness orbit pattern"><title>MoonWitness orbit pattern</title><pattern id="${patternId}" width="80" height="80" patternUnits="userSpaceOnUse"><circle cx="40" cy="40" r="17" fill="none" stroke="${ink}" stroke-opacity=".12"/><circle cx="40" cy="40" r="2" fill="${theme === 'dark' ? '#e6ff00' : '#ff2e88'}"/><path d="M8 40h8m48 0h8M40 8v8m0 48v8" stroke="${ink}" stroke-opacity=".12"/></pattern><rect width="160" height="160" fill="url(#${patternId})"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="MoonWitness orbit pattern"><title>MoonWitness orbit pattern</title><pattern id="${patternId}" width="80" height="80" patternUnits="userSpaceOnUse"><circle cx="40" cy="40" r="17" fill="none" stroke="${ink}" stroke-opacity=".12"/><circle cx="40" cy="40" r="2" fill="${theme === 'dark' ? '#ffe031' : '#ff2e88'}"/><path d="M8 40h8m48 0h8M40 8v8m0 48v8" stroke="${ink}" stroke-opacity=".12"/></pattern><rect width="160" height="160" fill="url(#${patternId})"/></svg>`;
   await writeFile(resolve(root, path), `${svg}\n`);
-  manifest.assets.push({
+  generatedAssetEntries.push({
     path,
     kind: 'pattern',
     variant: theme,
@@ -81,7 +87,7 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-manifest.assets.sort((left, right) => left.path.localeCompare(right.path));
+manifest.assets = replaceGeneratedAssets(manifest.assets, generatedAssetEntries, ownedAssetPaths);
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 stdout.write(
   `Generated ${entries.length * 2 + 2} accessible themed illustration and pattern assets.\n`

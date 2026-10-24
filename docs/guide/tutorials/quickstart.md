@@ -20,29 +20,31 @@ Di PowerShell, salin template dengan `Copy-Item .env.example .env`. Compose mema
 `127.0.0.1:5432`; tunggu sampai `docker compose ps` menampilkan service `postgres` berjalan sebelum
 memulai API.
 
-## 2. Build dan jalankan API
+## 2. Build dan jalankan API serta Board
 
 ```bash
 pnpm build
 pnpm dev
 ```
 
-API membaca `.env`, memasang addon base/auth secara programmatic, dan baru listen setelah koneksi
-database serta seed startup siap. Periksa `http://localhost:3000/readyz`: hasil yang diharapkan
-adalah HTTP 200 dengan readiness bernilai sehat. `/livez` hanya membuktikan proses hidup; gunakan
-`/readyz` untuk memeriksa database.
+`pnpm dev` menjalankan API dan Board bersama-sama. API membaca `.env`, memasang addon base/auth
+secara programmatic, dan baru listen setelah koneksi database serta seed startup siap. Periksa
+`http://localhost:3000/readyz`: hasil yang diharapkan adalah HTTP 200 dengan readiness bernilai
+sehat. `/livez` hanya membuktikan proses hidup; gunakan `/readyz` untuk memeriksa database.
 
-## 3. Jalankan Board
+## 3. Buka Board atau jalankan aplikasi secara terpisah
 
-Buka terminal kedua dari root repository:
+Board tersedia di `http://localhost:5173` setelah `pnpm dev` siap. Jika hanya ingin menjalankan
+salah satu proses, gunakan perintah ini dari root repository:
 
 ```bash
+pnpm dev:api
 pnpm dev:board
 ```
 
-Buka `http://localhost:5173`. Board mem-proxy `/api`, `/auth`, `/jsonrpc`, dan `/health` ke API
-lokal. Login dengan `superadmin` dan password development yang ditetapkan di `.env`. Seed contoh
-berisi company, user, partner, dan data referensi; gunakan hanya untuk eksplorasi lokal.
+Board mem-proxy `/api`, `/auth`, `/jsonrpc`, dan `/health` ke API lokal. Login dengan `superadmin`
+dan password development yang ditetapkan di `.env`. Seed contoh berisi company, user, partner, dan
+data referensi; gunakan hanya untuk eksplorasi lokal.
 
 ## 4. Jalankan tes PostgreSQL terisolasi
 

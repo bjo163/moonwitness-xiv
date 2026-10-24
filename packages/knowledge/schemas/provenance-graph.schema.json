@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/provenance-graph.schema.json",
+  "title": "MoonWitness XIV PROV-inspired provenance graph",
+  "description": "Offline provenance envelope with a scoped ID/kind record index and explicit derivations. Full record envelopes require separate validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["records", "activities"],
+  "properties": {
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "Entity",
+              "Agent",
+              "Work",
+              "Expression",
+              "Edition",
+              "Artifact",
+              "Passage",
+              "Content",
+              "Term",
+              "Concept",
+              "Assertion",
+              "Evidence",
+              "ProvenanceActivity",
+              "Relation",
+              "Assessment",
+              "ReviewDecision",
+              "DatasetRelease",
+              "ImportRun",
+              "ExternalAlias"
+            ]
+          },
+          "derivation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["activity_id", "input_ids", "method_id", "method_version"],
+            "properties": {
+              "activity_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "input_ids": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+              },
+              "method_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "method_version": { "type": "string", "minLength": 1, "maxLength": 100 }
+            }
+          }
+        }
+      }
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "actor_id",
+          "source_ids",
+          "used_ids",
+          "generated_ids",
+          "started_at",
+          "ended_at",
+          "method_id",
+          "method_version"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "actor_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "source_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+          },
+          "used_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+          },
+          "generated_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+          },
+          "started_at": { "type": "string", "format": "date-time" },
+          "ended_at": { "type": "string", "format": "date-time" },
+          "method_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "method_version": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      }
+    }
+  }
+}

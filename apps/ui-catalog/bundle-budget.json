@@ -5,7 +5,7 @@
     "maxGzipBytes": 163840
   },
   "stylesheet": {
-    "maxRawBytes": 65536,
-    "maxGzipBytes": 16384
+    "maxRawBytes": 98304,
+    "maxGzipBytes": 18432
   }
 }

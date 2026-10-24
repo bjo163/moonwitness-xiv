@@ -73,7 +73,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (fastify,
         return reply.code(201).header('Cache-Control', 'no-store').send(tokenResponse(session));
       } catch (error) {
         if (error instanceof ConflictError) {
-          req.log.warn({ login: req.body.login, ip: req.ip }, 'registration conflict');
+          req.log.warn({ ip: req.ip }, 'registration conflict');
           return reply.code(409).send({ success: false, error: error.message });
         }
         throw error;
@@ -108,7 +108,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (fastify,
         return reply.header('Cache-Control', 'no-store').send(tokenResponse(session));
       } catch (error) {
         if (!(error instanceof AuthError)) throw error;
-        req.log.warn({ login: req.body.login, ip: req.ip }, 'login failed');
+        req.log.warn({ ip: req.ip }, 'login failed');
         return reply.code(401).send({ success: false, error: error.message });
       }
     }

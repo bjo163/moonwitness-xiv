@@ -1,5 +1,6 @@
 import { defineModel, fields } from '@moonwitness/orm';
 import { Company, User } from '@moonwitness/orm-base';
+import type { StaticHookArguments } from 'objection';
 
 export const WorkflowDefinition = defineModel('workflow.definition', {
   table: 'workflow_definitions',
@@ -49,10 +50,25 @@ export const WorkflowEvent = defineModel('workflow.event', {
     to_state: fields.string({ required: true }),
     revision: fields.integer({ required: true }),
     idempotency_key: fields.string({ required: true, unique: true, hidden: true }),
+    payload: fields.text({ hidden: true }),
     comment: fields.text(),
     created_at: fields.string({ required: true }),
   },
 });
+
+/** Fail early in ORM use; database triggers below also protect raw SQL paths. */
+const rejectWorkflowEventMutation = (): never => {
+  throw new Error('Workflow events are append-only');
+};
+
+WorkflowEvent.beforeUpdate = (
+  _args: StaticHookArguments<InstanceType<typeof WorkflowEvent>>
+): never => rejectWorkflowEventMutation();
+WorkflowEvent.beforeDelete = (
+  _args: StaticHookArguments<InstanceType<typeof WorkflowEvent>>
+): never => rejectWorkflowEventMutation();
+WorkflowEvent.prototype.$beforeUpdate = rejectWorkflowEventMutation;
+WorkflowEvent.prototype.$beforeDelete = rejectWorkflowEventMutation;
 
 export const WorkflowApproval = defineModel('workflow.approval', {
   table: 'workflow_approvals',

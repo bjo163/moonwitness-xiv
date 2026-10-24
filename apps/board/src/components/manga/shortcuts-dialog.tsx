@@ -1,4 +1,4 @@
-import { Keyboard, Sparkles } from 'lucide-react';
+import { KeyboardIcon, SparkleIcon } from '@moonwitness/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -54,14 +54,14 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
         <DialogHeader className="border-b-2 border-ink pb-3 text-left">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 border-2 border-ink bg-lime px-2 py-0.5 font-mono text-xs font-bold uppercase text-on-accent">
-              <Keyboard className="size-3.5" /> Manual
+              <KeyboardIcon className="size-3.5" /> Manual
             </span>
             <DialogTitle className="font-display text-2xl uppercase tracking-wider text-ink">
               Keyboard Mastery Cheatsheet
             </DialogTitle>
           </div>
           <DialogDescription className="font-mono text-xs text-ink-faint mt-1">
-            Supercharge your Moonwitness workflow with instant hotkeys.
+            Supercharge your MoonWitness workflow with instant hotkeys.
           </DialogDescription>
         </DialogHeader>
 
@@ -69,7 +69,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
           {SHORTCUT_GROUPS.map((group) => (
             <div key={group.category} className="space-y-2">
               <h3 className="font-display text-xs uppercase tracking-widest text-ink-faint flex items-center gap-1.5">
-                <Sparkles className="size-3 text-lime" />
+                <SparkleIcon className="size-3 text-lime" />
                 {group.category}
               </h3>
               <div className="space-y-1.5">

@@ -52,7 +52,21 @@ function scan(directory) {
       throw new Error(`Source maps are not allowed in public docs: ${relativePath}`);
     const contents = fs.readFileSync(filePath);
     let text;
-    if (contents[0] === 0xff && contents[1] === 0xfe) {
+    if (
+      contents[0] === 0xff &&
+      contents[1] === 0xfe &&
+      contents[2] === 0x00 &&
+      contents[3] === 0x00
+    ) {
+      text = decodeUtf32(contents, true, relativePath);
+    } else if (
+      contents[0] === 0x00 &&
+      contents[1] === 0x00 &&
+      contents[2] === 0xfe &&
+      contents[3] === 0xff
+    ) {
+      text = decodeUtf32(contents, false, relativePath);
+    } else if (contents[0] === 0xff && contents[1] === 0xfe) {
       text = contents.subarray(2).toString('utf16le');
     } else if (contents[0] === 0xfe && contents[1] === 0xff) {
       text = Buffer.from(contents.subarray(2)).swap16().toString('utf16le');
@@ -65,6 +79,21 @@ function scan(directory) {
         throw new Error(`Potential secret detected in public file: ${relativePath}`);
     }
   }
+}
+
+function decodeUtf32(contents, littleEndian, relativePath) {
+  const payload = contents.subarray(4);
+  if (payload.length % 4 !== 0)
+    throw new Error(`Invalid BOM-marked UTF-32 public file: ${relativePath}`);
+
+  let text = '';
+  for (let offset = 0; offset < payload.length; offset += 4) {
+    const codePoint = littleEndian ? payload.readUInt32LE(offset) : payload.readUInt32BE(offset);
+    if (codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff))
+      throw new Error(`Invalid BOM-marked UTF-32 public file: ${relativePath}`);
+    text += String.fromCodePoint(codePoint);
+  }
+  return text;
 }
 
 try {

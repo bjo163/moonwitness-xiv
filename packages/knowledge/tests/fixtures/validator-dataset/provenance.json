@@ -1,0 +1,30 @@
+{
+  "records": [
+    { "id": "mw:agent:synthetic-reviewer", "kind": "Agent" },
+    { "id": "mw:artifact:synthetic-artifact", "kind": "Artifact" },
+    { "id": "mw:content:synthetic-input", "kind": "Content" },
+    {
+      "id": "mw:assertion:synthetic-output",
+      "kind": "Assertion",
+      "derivation": {
+        "activity_id": "mw:provenance-activity:synthetic-run",
+        "input_ids": ["mw:content:synthetic-input"],
+        "method_id": "mw:method:synthetic-extraction",
+        "method_version": "1.0.0"
+      }
+    }
+  ],
+  "activities": [
+    {
+      "id": "mw:provenance-activity:synthetic-run",
+      "actor_id": "mw:agent:synthetic-reviewer",
+      "source_ids": ["mw:artifact:synthetic-artifact"],
+      "used_ids": ["mw:artifact:synthetic-artifact", "mw:content:synthetic-input"],
+      "generated_ids": ["mw:assertion:synthetic-output"],
+      "started_at": "2026-10-15T10:00:00Z",
+      "ended_at": "2026-10-15T10:00:01Z",
+      "method_id": "mw:method:synthetic-extraction",
+      "method_version": "1.0.0"
+    }
+  ]
+}

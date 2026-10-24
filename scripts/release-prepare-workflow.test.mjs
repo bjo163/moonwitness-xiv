@@ -18,8 +18,22 @@ test('release preparation is manual, restricted to dev, and guards the expected 
     source,
     /README\.md\|apps\/\*\/package\.json\|packages\/\*\/package\.json\|docs\/\*/u
   );
-  assert.match(source, /group: repository-write-coordinator/u);
+  assert.match(source, /group: dev-branch-updates/u);
   assert.doesNotMatch(source, /refs\/heads\/release/u);
+});
+
+test('release preparation selects a channel and dispatches the trusted follow-ups after its push', async () => {
+  const source = (await readFile(workflowUrl, 'utf8')).replace(/\r\n/gu, '\n');
+  assert.match(
+    source,
+    /channel:\n\s+description: Release channel to prepare\n\s+required: true\n\s+type: choice\n\s+options:\n\s+- rc\n\s+- stable\n\s+- hotfix/u
+  );
+  assert.match(source, /RELEASE_CHANNEL: \$\{\{ inputs\.channel \}\}/u);
+  assert.match(source, /--channel "\$RELEASE_CHANNEL" --apply/u);
+  assert.match(source, /actions: write/u);
+  assert.match(source, /if: steps\.publish\.outputs\.pushed == 'true'/u);
+  assert.match(source, /gh workflow run ci\.yml --repo "\$GH_REPO" --ref dev/u);
+  assert.match(source, /gh workflow run promote\.yml --repo "\$GH_REPO" --ref dev/u);
 });
 
 test('release preparation never publishes images or creates a GitHub release', async () => {

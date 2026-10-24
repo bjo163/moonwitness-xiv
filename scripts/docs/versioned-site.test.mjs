@@ -202,11 +202,11 @@ test('composes version selector, stable latest alias, retained releases, and cur
     '<h1>v1.1.0</h1>\n'
   );
   assert.equal(await readFile(path.join(output, 'next', 'index.html'), 'utf8'), '<h1>main</h1>\n');
-  assert.equal(manifest.versions[0].path, '/moonwitness-xi/v1.2.0/');
-  assert.equal(manifest.next.path, '/moonwitness-xi/next/');
+  assert.equal(manifest.versions[0].path, '/moonwitness-xiv/v1.2.0/');
+  assert.equal(manifest.next.path, '/moonwitness-xiv/next/');
   assert.equal(
     await readFile(path.join(output, '404.html'), 'utf8').then((html) =>
-      html.includes('/moonwitness-xi/')
+      html.includes('/moonwitness-xiv/')
     ),
     true
   );
@@ -219,13 +219,13 @@ test('composes version selector, stable latest alias, retained releases, and cur
     releases: [release('v1.2.0'), release('v1.1.0')],
     archiveDirectory: archives,
     outputDirectory: stableOutput,
-    basePath: '/moonwitness-xi/v1.2.0/',
+    basePath: '/moonwitness-xiv/v1.2.0/',
   });
   assert.equal(stableManifest.next, null);
-  assert.equal(stableManifest.versions[0].path, '/moonwitness-xi/v1.2.0/');
+  assert.equal(stableManifest.versions[0].path, '/moonwitness-xiv/v1.2.0/');
   assert.match(
     await readFile(path.join(stableOutput, 'latest', 'index.html'), 'utf8'),
-    /href="\/moonwitness-xi\/v1\.2\.0\/"/u
+    /href="\/moonwitness-xiv\/v1\.2\.0\/"/u
   );
 });
 

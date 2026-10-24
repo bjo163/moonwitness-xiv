@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/research-semantic-annotation.schema.json",
+  "title": "MoonWitness source-bound semantic annotation",
+  "description": "A reviewable interpretation linked to an exact assertion and resolved textual evidence. Text spans are relative to the resolved evidence excerpt after its selector range is applied; annotations never replace source text or assertion records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "schema_version",
+    "subject_assertion_id",
+    "evidence_id",
+    "source_content_sha256",
+    "offset_basis",
+    "source_range",
+    "polarity",
+    "polarity_basis",
+    "context",
+    "review_status"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:semantic-annotation:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "kind": { "const": "ResearchSemanticAnnotation" },
+    "schema_version": { "const": 1 },
+    "subject_assertion_id": {
+      "type": "string",
+      "pattern": "^mw:assertion:[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "evidence_id": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "source_content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "offset_basis": { "const": "resolved_evidence_excerpt" },
+    "source_range": { "$ref": "#/$defs/span" },
+    "polarity": { "enum": ["positive", "negative", "ambiguous", "unknown"] },
+    "polarity_basis": {
+      "enum": [
+        "explicit_affirmation",
+        "explicit_negation",
+        "human_scope_judgment",
+        "insufficient_context"
+      ]
+    },
+    "polarity_cue": { "$ref": "#/$defs/cue" },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["direct_quote", "reported_speech", "narration", "analysis"] },
+        "speaker_id": {
+          "type": "string",
+          "pattern": "^mw:(?:agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+        },
+        "cue": { "$ref": "#/$defs/cue" }
+      }
+    },
+    "review_status": { "enum": ["candidate", "accepted", "rejected"] },
+    "reviewer_id": { "type": "string", "pattern": "^mw:user:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "reviewed_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "polarity_basis": { "const": "explicit_affirmation" } } },
+      "then": {
+        "properties": {
+          "polarity": { "const": "positive" },
+          "polarity_cue": { "type": "object", "properties": { "kind": { "const": "affirmation" } } }
+        },
+        "required": ["polarity_cue"]
+      }
+    },
+    {
+      "if": { "properties": { "polarity_basis": { "const": "explicit_negation" } } },
+      "then": {
+        "properties": {
+          "polarity": { "const": "negative" },
+          "polarity_cue": { "type": "object", "properties": { "kind": { "const": "negation" } } }
+        },
+        "required": ["polarity_cue"]
+      }
+    },
+    {
+      "if": { "properties": { "polarity_basis": { "const": "insufficient_context" } } },
+      "then": { "properties": { "polarity": { "enum": ["ambiguous", "unknown"] } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": { "mode": { "enum": ["direct_quote", "reported_speech"] } },
+            "required": ["mode"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "type": "object",
+            "required": ["speaker_id", "cue"],
+            "properties": {
+              "speaker_id": { "type": "string" },
+              "cue": {
+                "type": "object",
+                "properties": { "kind": { "enum": ["quotation", "speaker_attribution"] } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "review_status": { "enum": ["accepted", "rejected"] } } },
+      "then": {
+        "required": ["reviewer_id", "reviewed_at"],
+        "properties": {
+          "reviewer_id": { "type": "string" },
+          "reviewed_at": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["byte_start", "byte_end", "scalar_start", "scalar_end"],
+      "properties": {
+        "byte_start": { "type": "integer", "minimum": 0 },
+        "byte_end": { "type": "integer", "minimum": 1 },
+        "scalar_start": { "type": "integer", "minimum": 0 },
+        "scalar_end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "span", "text"],
+      "properties": {
+        "kind": { "enum": ["affirmation", "negation", "quotation", "speaker_attribution"] },
+        "span": { "$ref": "#/$defs/span" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 }
+      }
+    }
+  }
+}

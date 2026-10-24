@@ -13,9 +13,9 @@ function parseArguments(args) {
   const options = new Map();
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === '--date') {
+    if (argument === '--date' || argument === '--channel') {
       const value = args[index + 1];
-      if (!value || value.startsWith('--')) throw new Error('--date requires YYYY-MM-DD.');
+      if (!value || value.startsWith('--')) throw new Error(`${argument} requires a value.`);
       options.set(argument, value);
       index += 1;
     } else if (argument === '--output') {
@@ -244,9 +244,19 @@ async function run(options) {
   });
   assertCleanSource(status);
   const date = options.get('--date') ?? new Date().toISOString().slice(0, 10);
+  const channel = options.get('--channel') ?? 'rc';
+  if (!['rc', 'stable', 'hotfix'].includes(channel))
+    throw new Error(`Unsupported release channel: ${channel}`);
   const preparationOutput = execFileSync(
     process.execPath,
-    [path.join(repositoryRoot, 'scripts/prepare-release.mjs'), '--include-content', '--date', date],
+    [
+      path.join(repositoryRoot, 'scripts/prepare-release.mjs'),
+      '--include-content',
+      '--date',
+      date,
+      '--channel',
+      channel,
+    ],
     { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
   );
   const preparation = JSON.parse(preparationOutput);
@@ -266,6 +276,7 @@ async function run(options) {
   );
   const workflow = await readFile(releaseWorkflow, 'utf8');
   const report = buildReleaseDryRunReport(preparation, currentFiles, repository);
+  report.channel = channel;
   report.releaseWorkflowSha256 = sha256(workflow);
   const output = `${JSON.stringify(report, null, 2)}\n`;
   const outputPath = options.get('--output');

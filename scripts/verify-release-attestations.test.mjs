@@ -6,8 +6,8 @@ import path from 'node:path';
 import { buildVerificationPlan, verifyReleaseBundle } from './verify-release-attestations.mjs';
 
 const inputs = {
-  repository: 'bjo163/moonwitness-xi',
-  workflow: 'bjo163/moonwitness-xi/.github/workflows/release.yml',
+  repository: 'bjo163/moonwitness-xiv',
+  workflow: 'bjo163/moonwitness-xiv/.github/workflows/release.yml',
   tag: 'v1.2.3-rc.1',
   directory: 'bundle',
 };
@@ -22,7 +22,7 @@ test('consumer verification binds every asset and image to the exact repository 
     assert.ok(command.args.includes(inputs.workflow));
   }
   assert.equal(plan[2].args.at(-1), 'https://spdx.dev/Document/v2.3');
-  assert.match(plan[4].args[2], /^oci:\/\/ghcr\.io\/bjo163\/moonwitness-xi:/u);
+  assert.match(plan[4].args[2], /^oci:\/\/ghcr\.io\/bjo163\/moonwitness-xiv:/u);
   assert.throws(
     () => buildVerificationPlan({ ...inputs, repository: 'attacker/project' }),
     /repository/u

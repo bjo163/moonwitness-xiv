@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/assertion.schema.json",
+  "title": "MoonWitness scoped research assertion",
+  "description": "A claim with explicit polarity, scope, context, epistemic state, and review state. This contract never upgrades missing data into a negative claim or a scoped statement into a global fact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "schema_version",
+    "lifecycle",
+    "created_at",
+    "updated_at",
+    "origin_ref",
+    "visibility",
+    "content_revision",
+    "claim",
+    "polarity",
+    "scope",
+    "context",
+    "epistemic_status",
+    "review_status"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:assertion:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "kind": { "const": "Assertion" },
+    "schema_version": { "const": 1 },
+    "lifecycle": { "enum": ["draft", "candidate", "active", "superseded", "withdrawn"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "origin_ref": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "visibility": {
+      "enum": ["PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "CHILD_SENSITIVE"]
+    },
+    "content_revision": { "type": "integer", "minimum": 1 },
+    "claim": { "type": "string", "minLength": 1, "maxLength": 10000 },
+    "polarity": { "enum": ["positive", "negative"] },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference_id"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "passage",
+            "speaker",
+            "document",
+            "work",
+            "community",
+            "time",
+            "research_context"
+          ]
+        },
+        "reference_id": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "reference_id"],
+      "properties": {
+        "mode": { "enum": ["direct_quote", "reported_speech", "narration", "analysis"] },
+        "reference_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "speaker_id": {
+          "type": "string",
+          "pattern": "^mw:(?:agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "enum": ["direct_quote", "reported_speech"] } },
+            "required": ["mode"]
+          },
+          "then": {
+            "required": ["speaker_id"],
+            "properties": {
+              "speaker_id": { "$ref": "#/properties/context/properties/speaker_id" }
+            }
+          }
+        }
+      ]
+    },
+    "epistemic_status": { "enum": ["asserted", "reported", "hypothesized", "uncertain"] },
+    "review_status": {
+      "enum": ["unreviewed", "pending", "accepted", "rejected", "disputed", "withdrawn"]
+    }
+  }
+}

@@ -6,31 +6,198 @@
     "source": "packages/assets/scripts/generate.mjs",
     "additionalSource": "packages/assets/scripts/generate-illustrations.mjs",
     "license": "ISC",
-    "modifications": "Original MoonWitness brand marks, UI icons, interface illustrations, and orbit pattern authored for this project; no third-party icon or logo artwork is embedded."
+    "modifications": "Original MoonWitness crown + brush wordmark, UI icons, interface illustrations, and orbit pattern authored for this project; no third-party icon or logo artwork is embedded."
   },
+  "brandAssets": [
+    {
+      "path": "brand/source/moonwitness-master.svg",
+      "creator": "MoonWitness contributors",
+      "source": "Original vector artwork authored for this project",
+      "license": "ISC",
+      "notes": "Canonical crown paths and a brush wordmark outlined from the licensed Road Rage font; generated color variants are derived from this source."
+    }
+  ],
   "fonts": [
     {
       "family": "Anton",
       "designer": "Vernon Adams",
       "source": "https://github.com/google/fonts/tree/main/ofl/anton",
       "license": "SIL Open Font License 1.1",
-      "usage": "Referenced by the Board Google Fonts stylesheet; font binaries are not included in @moonwitness/assets."
-    },
-    {
-      "family": "Space Grotesk",
-      "designer": "Florian Karsten",
-      "source": "https://github.com/google/fonts/tree/main/ofl/spacegrotesk",
-      "license": "SIL Open Font License 1.1",
-      "usage": "Referenced by the Board Google Fonts stylesheet; font binaries are not included in @moonwitness/assets."
+      "files": [
+        {
+          "path": "fonts/Anton-latin.woff2",
+          "source": "https://fonts.gstatic.com/s/anton/v27/1Ptgg87LROyAm3Kz-C8.woff2",
+          "sha256": "D0FA07FF63DD60CBC0E2F58E29C802DCA2A5AE0276C999F59C6111AB7BBAEC3B"
+        },
+        {
+          "path": "fonts/Anton-latin-ext.woff2",
+          "source": "https://fonts.gstatic.com/s/anton/v27/1Ptgg87LROyAm3K9-C8QSw.woff2",
+          "sha256": "0D17B7880F389DEEB6663A52FA4EADC6D9116BDDA725F0AA1F3D404FBB7D3D59"
+        }
+      ],
+      "usage": "Bundled as WOFF2 subsets for deterministic local Board rendering."
     },
     {
       "family": "JetBrains Mono",
       "designer": "Philipp Nurullin",
       "source": "https://github.com/JetBrains/JetBrainsMono",
       "license": "SIL Open Font License 1.1",
-      "usage": "Referenced by the Board Google Fonts stylesheet; font binaries are not included in @moonwitness/assets."
+      "files": [
+        {
+          "path": "fonts/JetBrainsMono-latin.woff2",
+          "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+          "sha256": "83C005D49D8A6A50474C73A5A36AC0468076E9C4A29DA7BDB14995D80560A5BE"
+        },
+        {
+          "path": "fonts/JetBrainsMono-latin-ext.woff2",
+          "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhsk.woff2",
+          "sha256": "DB5FF4DB83E580426280E9337A58DC57D3A83784A1B03AD80914651594441D52"
+        }
+      ],
+      "usage": "Bundled as WOFF2 subsets for deterministic local Board rendering."
+    },
+    {
+      "family": "Road Rage",
+      "designer": "Robert Leuschke",
+      "source": "https://github.com/google/fonts/tree/main/ofl/roadrage",
+      "license": "SIL Open Font License 1.1",
+      "files": [
+        {
+          "path": "fonts/RoadRage-latin.woff2",
+          "source": "https://fonts.gstatic.com/s/roadrage/v9/6NUU8F2fKAOBKjjr4ekvtA.ttf",
+          "sourceFile": "source/fonts/RoadRage-Regular.ttf",
+          "sourceSha256": "F476D2AAC31340C6F5ECB4F2750331F17548B18E29E4CD351ADBB006F609E29A",
+          "sha256": "0F8B4556881B76CBA826B74B46A7DEF0B73512D2EE19E8B56C33E1FF3966DB70"
+        }
+      ],
+      "usage": "Bundled subset WOFF2 for short editorial display headings only."
+    },
+    {
+      "family": "Space Grotesk",
+      "designer": "Florian Karsten",
+      "source": "https://github.com/google/fonts/tree/main/ofl/spacegrotesk",
+      "license": "SIL Open Font License 1.1",
+      "files": [
+        {
+          "path": "fonts/SpaceGrotesk-latin.woff2",
+          "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2",
+          "sha256": "0640890476FC1198AB4DE571FB658DE443C4D85B66466EC09534A8737AB1CE9D"
+        },
+        {
+          "path": "fonts/SpaceGrotesk-latin-ext.woff2",
+          "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb94C-s0.woff2",
+          "sha256": "952DDDB45D2F96F71CBF3B7F510B24379AFC3C89EA02FCF89D377B45D62C0166"
+        }
+      ],
+      "usage": "Bundled as WOFF2 subsets for deterministic local Board rendering."
     }
   ],
-  "verifiedOn": "2026-10-04",
-  "notes": "Font names and licenses were checked against the upstream project metadata and license pages on the verification date. Verify the upstream license again before bundling font files or distributing modified font binaries."
+  "verifiedOn": "2026-10-16",
+  "notes": "Upstream SIL Open Font License 1.1 texts are included in fonts/OFL-Anton.txt, fonts/OFL-SpaceGrotesk.txt, fonts/OFL-JetBrainsMono.txt, and fonts/OFL-RoadRage.txt. Road Rage's upstream TTF is retained under source/fonts and subsetted to WOFF2 for display use; hashes are recorded above.",
+  "soundEffects": [
+    {
+      "path": "sounds/ui-alert.wav",
+      "creator": "MoonWitness contributors",
+      "source": "packages/assets/scripts/generate-sounds.mjs",
+      "license": "ISC",
+      "modifications": "Original short synthesized interface cue; generated from PCM oscillators for this project."
+    },
+    {
+      "path": "sounds/ui-signal.wav",
+      "creator": "MoonWitness contributors",
+      "source": "packages/assets/scripts/generate-sounds.mjs",
+      "license": "ISC",
+      "modifications": "Original short synthesized interface cue; generated from PCM oscillators for this project."
+    },
+    {
+      "path": "sounds/ui-success.wav",
+      "creator": "MoonWitness contributors",
+      "source": "packages/assets/scripts/generate-sounds.mjs",
+      "license": "ISC",
+      "modifications": "Original short synthesized interface cue; generated from PCM oscillators for this project."
+    }
+  ],
+  "artwork": [
+    {
+      "path": "illustrations/auth-login-desktop.webp",
+      "sourceFile": "source/artwork/auth-login-shadow-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-24",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/auth-login-mobile.webp",
+      "sourceFile": "source/artwork/auth-login-shadow-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-24",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/board-masthead.webp",
+      "sourceFile": "source/artwork/board-masthead-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/editorial-knowledge.webp",
+      "sourceFile": "source/artwork/home-editorial-triptych-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/editorial-people.webp",
+      "sourceFile": "source/artwork/home-editorial-triptych-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/editorial-stories.webp",
+      "sourceFile": "source/artwork/home-editorial-triptych-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/home-hero-desktop.webp",
+      "sourceFile": "source/artwork/home-hero-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/home-hero-mobile.webp",
+      "sourceFile": "source/artwork/home-hero-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    },
+    {
+      "path": "illustrations/story-workbench-masthead.webp",
+      "sourceFile": "source/artwork/story-workbench-masthead-master.png",
+      "creator": "OpenAI image generation, commissioned by MoonWitness contributors",
+      "source": "Codex image_gen using the user-provided MoonWitness visual references",
+      "terms": "https://openai.com/policies/terms-of-use/",
+      "generatedOn": "2026-10-23",
+      "notes": "Original illustration generated without embedded typography or UI. The user-provided reference was used for art direction; no screenshot was used as artwork."
+    }
+  ]
 }

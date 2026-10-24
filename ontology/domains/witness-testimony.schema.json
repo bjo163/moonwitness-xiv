@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/ontology/domains/witness-testimony.schema.json",
+  "title": "Witness testimony record",
+  "description": "Strict synthetic-first schema for preserving an original account separately from later sourced corrections.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "external_key",
+    "original_text",
+    "source",
+    "received_time",
+    "visibility",
+    "created_by"
+  ],
+  "properties": {
+    "external_key": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "original_text": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "locator", "sha256"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "received_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "precision"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "precision": { "enum": ["instant", "day", "month", "year", "unknown"] },
+        "uncertainty_note": { "type": "string" }
+      }
+    },
+    "visibility": { "enum": ["RESTRICTED", "INTERNAL", "PUBLIC"], "default": "RESTRICTED" },
+    "created_by": { "type": "integer", "minimum": 1 },
+    "corrections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/correction" }
+    },
+    "interpretations": {
+      "description": "Separate source-linked interpretations; never overwrite the original account.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/interpretation" }
+    }
+  },
+  "$defs": {
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "text", "reason", "source", "asserted_time", "recorded_by"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "locator", "sha256"],
+          "properties": {
+            "label": { "type": "string", "minLength": 1 },
+            "locator": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "asserted_time": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "precision"],
+          "properties": {
+            "text": { "type": "string", "minLength": 1 },
+            "precision": { "enum": ["instant", "day", "month", "year", "unknown"] },
+            "uncertainty_note": { "type": "string" }
+          }
+        },
+        "recorded_by": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "interpretation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertion_ref",
+        "evidence_ref",
+        "text",
+        "method",
+        "method_version",
+        "epistemic_status",
+        "visibility",
+        "recorded_by"
+      ],
+      "properties": {
+        "assertion_ref": { "type": "string", "minLength": 1 },
+        "evidence_ref": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "minLength": 1 },
+        "method_version": { "type": "string", "minLength": 1 },
+        "epistemic_status": { "enum": ["hypothesis", "supported", "contested", "rejected"] },
+        "visibility": { "enum": ["RESTRICTED", "INTERNAL", "PUBLIC"], "default": "RESTRICTED" },
+        "recorded_by": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

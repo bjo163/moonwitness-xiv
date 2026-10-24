@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createE2eSuffix, E2E_SUPERADMIN_PASSWORD } from './constants.js';
+import { createE2eSuffix, E2E_SUPERADMIN_PASSWORD, loginPageUrl } from './constants.js';
 
 interface BoardSession {
   access_token: string;
@@ -27,10 +27,10 @@ test('requester submits a request that superadmin approves or rejects in Board',
   const requesterPassword = `request-e2e-password-${suffix}`;
 
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
 
   const adminSession = await page.evaluate(
     () => JSON.parse(localStorage.getItem('mw-board-session') ?? 'null') as BoardSession | null
@@ -65,10 +65,10 @@ test('requester submits a request that superadmin approves or rejects in Board',
 
   await page.getByRole('button', { name: 'superadmin' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
-  await page.getByLabel('Login').fill(requesterLogin);
-  await page.getByLabel('Password').fill(requesterPassword);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
+  await expect(page).toHaveURL(loginPageUrl);
+  await page.getByLabel('Email or Username').fill(requesterLogin);
+  await page.getByLabel('Password', { exact: true }).fill(requesterPassword);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page.getByRole('button', { name: requesterLogin })).toBeVisible();
 
   const requesterSession = await page.evaluate(
@@ -120,7 +120,7 @@ test('requester submits a request that superadmin approves or rejects in Board',
   const rejectionRequest = (await rejectionRequestResponse.json()) as ApiRecord<CreatedRecord>;
   expect(rejectionRequest.data.create_uid).toBe(requesterProfile.data.id);
 
-  await page.goto(`/m/request.purchase/${createdRequest.data.id}`);
+  await page.goto(`/board/m/request.purchase/${createdRequest.data.id}`);
   const workflow = page.getByRole('region', { name: 'Approval workflow' });
   await expect(workflow).toBeVisible();
   await expect(
@@ -135,7 +135,7 @@ test('requester submits a request that superadmin approves or rejects in Board',
     'Please review this purchase request.'
   );
 
-  await page.goto(`/m/request.purchase/${rejectionRequest.data.id}`);
+  await page.goto(`/board/m/request.purchase/${rejectionRequest.data.id}`);
   const rejectionWorkflow = page.getByRole('region', { name: 'Approval workflow' });
   await rejectionWorkflow.getByRole('button', { name: 'Start Purchase request approval' }).click();
   await rejectionWorkflow.getByLabel('Review comment').fill('Please review this rejection case.');
@@ -144,11 +144,11 @@ test('requester submits a request that superadmin approves or rejects in Board',
 
   await page.getByRole('button', { name: requesterLogin }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).not.toHaveURL(/\/login$/u);
+  await expect(page).toHaveURL(loginPageUrl);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).not.toHaveURL(loginPageUrl);
   const purchaseRequests = page
     .getByRole('navigation', { name: 'Models' })
     .getByRole('link', { name: 'Purchase Requests' });
@@ -265,10 +265,10 @@ test('requester submits a request that superadmin approves or rejects in Board',
 
   await page.getByRole('button', { name: 'superadmin' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
-  await page.getByLabel('Login').fill(requesterLogin);
-  await page.getByLabel('Password').fill(requesterPassword);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
+  await expect(page).toHaveURL(loginPageUrl);
+  await page.getByLabel('Email or Username').fill(requesterLogin);
+  await page.getByLabel('Password', { exact: true }).fill(requesterPassword);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page.getByRole('button', { name: requesterLogin })).toBeVisible();
 
   const finalRequesterSession = await page.evaluate(

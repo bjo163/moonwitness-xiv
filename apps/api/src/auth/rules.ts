@@ -37,6 +37,10 @@ export async function getRecordRuleDomain(req: FastifyRequest, modelName: string
     return [];
   }
 
+  // WhatsApp credentials and conversations always belong to the selected company,
+  // including when accessed through the generic model API by an administrator.
+  if (modelName.startsWith('whatsapp.')) return [['company_id', '=', auth.companyId ?? -1]];
+
   if (auth.role === 'system' || auth.role === 'superadmin') return [];
 
   const context: SecurityContext = {

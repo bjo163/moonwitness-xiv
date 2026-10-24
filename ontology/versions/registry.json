@@ -1,0 +1,38 @@
+{
+  "$schema": "./version-registry.schema.json",
+  "registry_version": 1,
+  "components": {
+    "ontology": {
+      "current": "1.0.0",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "status": "baseline",
+          "document_schema_versions": {
+            "knowledge-record": 1,
+            "provenance-graph": 1
+          },
+          "schemas": {
+            "knowledge-record": "ontology/1.0.0/knowledge-record.schema.json",
+            "provenance-graph": "ontology/1.0.0/provenance-graph.schema.json"
+          }
+        }
+      ]
+    },
+    "corpus": {
+      "current": "1.0.0",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "status": "baseline",
+          "document_schema_versions": {
+            "source-artifact-manifest": 1
+          },
+          "schemas": {
+            "source-artifact-manifest": "corpus/1.0.0/source-artifact-manifest.schema.json"
+          }
+        }
+      ]
+    }
+  }
+}

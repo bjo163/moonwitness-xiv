@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:synthetic-unknown",
+  "edition_id": "mw:edition:synthetic-unknown-v1",
+  "locale": "en",
+  "artifact": {
+    "representation": "source_bytes",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "byte_length": 42
+  },
+  "rights": { "state": "unknown", "allowed_uses": [] },
+  "publication": { "mode": "source_bytes" },
+  "attribution": { "text": "Synthetic", "display_locations": ["catalog"] },
+  "complaint_process_owner": "synthetic-steward"
+}

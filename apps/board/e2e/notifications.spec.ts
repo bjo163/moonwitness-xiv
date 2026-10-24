@@ -8,10 +8,10 @@ test('notification inbox displays a delivered message, marks it read, and expose
   const title = `Board notification ${suffix}`;
 
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
 
   const session = await page.evaluate(
     () =>
@@ -81,7 +81,7 @@ test('notification inbox displays a delivered message, marks it read, and expose
   expect(read.status()).toBe(200);
   expect((await read.json()).data).toMatchObject({ state: 'read' });
 
-  await page.goto('/settings');
+  await page.goto('/board/settings');
   await expect(page.getByRole('heading', { name: 'Notifications' }).last()).toBeVisible();
   await expect(page.getByText('In-app inbox', { exact: true })).toBeVisible();
   await expect(

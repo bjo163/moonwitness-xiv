@@ -75,6 +75,63 @@ describe('@moonwitness/client against the real API', () => {
     expect(fields.find((f) => f.name === 'name')).toMatchObject({ type: 'string', required: true });
   });
 
+  it('looks up both approved local citations and passages through the SDK', async () => {
+    const client = newClient();
+    await client.login({ login: 'superadmin', password: ADMIN_PASSWORD });
+
+    const citation = await client.getSourceCitation('mw:source:tanzil-quran-text');
+    expect(citation).toMatchObject({
+      sourceId: 'mw:source:tanzil-quran-text',
+      editionId: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2',
+      locale: 'ar',
+      publication: 'source_bytes',
+      availablePassages: ['Q7:46'],
+    });
+    expect(citation.citation).toContain('CC BY 3.0');
+
+    const passage = await client.getCorpusPassage(citation.editionId, 'Q7:46');
+    expect(passage).toMatchObject({
+      sourceId: citation.sourceId,
+      editionId: citation.editionId,
+      locator: 'Q7:46',
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+    expect(passage.text.length).toBeGreaterThan(0);
+    expect(passage.citation).toBe(citation.citation);
+
+    const webpCitation = await client.getSourceCitation('mw:source:ebible-webp-protestant');
+    expect(webpCitation).toMatchObject({
+      sourceId: 'mw:source:ebible-webp-protestant',
+      expressionId: 'mw:expression:webp-protestant',
+      editionId: 'mw:edition:webp-protestant-2020-stable',
+      locale: 'en-US',
+      availablePassages: ['Genesis 1:1'],
+    });
+    expect(webpCitation.expressionId).not.toBe(webpCitation.editionId);
+    const webpPassage = await client.getCorpusPassage(webpCitation.editionId, 'Genesis 1:1');
+    expect(webpPassage).toMatchObject({
+      sourceId: webpCitation.sourceId,
+      expressionId: webpCitation.expressionId,
+      editionId: webpCitation.editionId,
+      locator: 'Genesis 1:1',
+      sha256: 'ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1',
+    });
+    expect(webpPassage.text).toBe('In the beginning, God created the heavens and the earth.');
+
+    await expect(client.getSourceCitation('mw:source:unknown')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(client.getCorpusPassage(citation.editionId, 'Q7:47')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      client.getCorpusPassage(webpCitation.editionId, 'Genesis 1:2')
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(newClient().getCorpusPassage(citation.editionId, 'Q7:46')).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+
   it('performs CRUD with pagination totals and archive semantics', async () => {
     const client = newClient();
     await client.login({ login: 'superadmin', password: ADMIN_PASSWORD });

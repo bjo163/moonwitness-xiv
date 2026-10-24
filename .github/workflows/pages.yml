@@ -197,22 +197,22 @@ jobs:
           set -euo pipefail
           kind=next
           source_ref=main
-          base_path=/moonwitness-xi/next/
+          base_path=/moonwitness-xiv/next/
           channel=next
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PUBLISH" == "true" && "$SELECTED_REF" == v* ]]; then
             kind=stable
             source_ref="$SELECTED_REF"
-            base_path="/moonwitness-xi/$SELECTED_REF/"
+            base_path="/moonwitness-xiv/$SELECTED_REF/"
             channel=stable
           elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$PUBLISH" != "true" ]]; then
             kind=preview
             source_ref=dev
-            base_path=/moonwitness-xi/
+            base_path=/moonwitness-xiv/
             channel=preview
           elif [[ "$EVENT_REF" == refs/heads/dev ]]; then
             kind=preview
             source_ref=dev
-            base_path=/moonwitness-xi/
+            base_path=/moonwitness-xiv/
             channel=preview
           elif [[ "$SELECTED_REF" != main ]]; then
             source_ref="$SOURCE_SHA"
@@ -239,6 +239,12 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Build documentation package types
         run: node scripts/ci/build-workspace-package.mjs @moonwitness/types
+      - name: Build documentation package core knowledge contracts
+        run: pnpm --filter @moonwitness/knowledge build
+      - name: Build documentation package corpus
+        run: pnpm --filter @moonwitness/corpus build
+      - name: Build documentation package research
+        run: pnpm --filter @moonwitness/research build
       - name: Build documentation package ORM
         run: node scripts/ci/build-workspace-package.mjs @moonwitness/orm
       - name: Build documentation package base addon
@@ -259,6 +265,8 @@ jobs:
         run: node scripts/ci/build-workspace-package.mjs @moonwitness/orm-request
       - name: Build documentation package storage
         run: node scripts/ci/build-workspace-package.mjs @moonwitness/orm-storage
+      - name: Build documentation package knowledge
+        run: node scripts/ci/build-workspace-package.mjs @moonwitness/orm-knowledge
       - name: Test documentation generators
         run: node --test scripts/docs/generate-reference.test.mjs scripts/docs/update-readme.test.mjs scripts/docs/build-guide.test.mjs
       - name: Verify generated documentation reference
@@ -271,8 +279,6 @@ jobs:
         run: pnpm exec tsc --noEmit -p packages/orm/examples/tsconfig.json
       - name: Test documented addon examples
         run: pnpm --filter @moonwitness/orm exec vitest run tests/addon.test.ts
-      - name: Build documentation portal site
-        run: pnpm --filter @moonwitness/docs portal:build
       - name: Test documentation portal
         id: docs_portal_tests
         run: pnpm --filter @moonwitness/docs test
@@ -280,42 +286,6 @@ jobs:
         if: always() && steps.docs_portal_tests.outcome == 'failure'
         continue-on-error: true
         run: node scripts/summarize-junit-failures.mjs test-results/junit
-      - name: Require successful CI gate for trusted main source
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ steps.source_sha.outputs.sha }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 60); do
-            runs="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_SHA&event=push&per_page=100")"
-            run="$(jq --arg sha "$SOURCE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")] | sort_by(.created_at, .run_attempt) | last // empty' <<< "$runs")"
-            if [[ -n "$run" ]]; then
-              run_id="$(jq -r '.id' <<< "$run")"
-              run_attempt="$(jq -r '.run_attempt' <<< "$run")"
-              run_status="$(jq -r '.status' <<< "$run")"
-              run_conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
-              if [[ "$run_status" == "completed" ]]; then
-                if [[ "$run_conclusion" != "success" ]]; then
-                  echo "The newest main push CI run for $SOURCE_SHA concluded $run_conclusion." >&2
-                  exit 1
-                fi
-                jobs="$(gh api "repos/$GH_REPO/actions/runs/$run_id/attempts/$run_attempt/jobs?per_page=100")"
-                gate="$(jq '[.jobs[] | select(.name == "ci-gate")] | last // empty' <<< "$jobs")"
-                if [[ "$(jq -r 'if type == "object" then (.conclusion // "") else "" end' <<< "$gate")" != "success" ]]; then
-                  echo "The main push CI run has no successful ci-gate for $SOURCE_SHA." >&2
-                  exit 1
-                fi
-                echo "Verified main push ci-gate success for source SHA $SOURCE_SHA (run $run_id)."
-                exit 0
-              fi
-            fi
-            echo "Waiting for main push CI and ci-gate on source SHA $SOURCE_SHA (attempt $attempt/60)."
-            sleep 15
-          done
-          echo "Timed out waiting for successful ci-gate on $SOURCE_SHA." >&2
-          exit 1
       - name: Confirm docs-only source does not request an app version bump
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change-detection.outputs.docs_only == 'true'
         env:
@@ -375,7 +345,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
-      group: repository-write-coordinator
+      group: release-asset-updates
       cancel-in-progress: false
     permissions:
       contents: write
@@ -395,33 +365,17 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.build.outputs.selected_ref }}
           SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          DOCS_ARCHIVE_PATH: versioned-docs/docs-site-${{ needs.build.outputs.selected_ref }}.tar.gz
         run: |
           set -euo pipefail
-          file="versioned-docs/docs-site-$TAG.tar.gz"
-          test -s "$file"
-          release="$(gh api "repos/$GH_REPO/releases/tags/$TAG")"
-          test "$(jq -r '.published_at != null and .draft == false and .prerelease == false' <<< "$release")" = true
-          release_id="$(jq -r '.id' <<< "$release")"
-          expected="sha256:$(sha256sum "$file" | awk '{print $1}')"
-          expected_size="$(wc -c < "$file" | tr -d ' ')"
-          assets="$(gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100")"
-          asset="$(jq -c --arg name "$(basename "$file")" '[.[] | select(.name == $name)] | first // empty' <<< "$assets")"
-          if [[ -n "$asset" ]]; then
-            test "$(jq -r '.digest // empty' <<< "$asset")" = "$expected"
-            test "$(jq -r '.size' <<< "$asset")" = "$expected_size"
-          else
-            if ! gh release upload "$TAG" "$file" --repo "$GH_REPO"; then
-              assets="$(gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100")"
-              asset="$(jq -c --arg name "$(basename "$file")" '[.[] | select(.name == $name)] | first // empty' <<< "$assets")"
-            else
-              assets="$(gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100")"
-              asset="$(jq -c --arg name "$(basename "$file")" '[.[] | select(.name == $name)] | first // empty' <<< "$assets")"
-            fi
-            test -n "$asset"
-            test "$(jq -r '.digest // empty' <<< "$asset")" = "$expected"
-            test "$(jq -r '.size' <<< "$asset")" = "$expected_size"
+          test -s "$DOCS_ARCHIVE_PATH"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Invalid stable documentation tag: $TAG" >&2
+            exit 1
           fi
-          echo "Stored immutable documentation archive for $TAG at source SHA $SOURCE_SHA ($expected)." >> "$GITHUB_STEP_SUMMARY"
+          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
+          RELEASE_TAG="$TAG" SOURCE_SHA="$SOURCE_SHA" GH_REPOSITORY="$GH_REPO" \
+            node scripts/docs/reconcile-versioned-docs-asset.mjs "$DOCS_ARCHIVE_PATH" >> "$GITHUB_STEP_SUMMARY"
 
   compose-site:
     name: Compose versioned Pages site
@@ -430,7 +384,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
-      group: repository-write-coordinator
+      group: pages-site-compose
       cancel-in-progress: false
     permissions:
       contents: read
@@ -490,7 +444,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
-      group: repository-write-coordinator
+      group: pages-site-deployment
       cancel-in-progress: false
     permissions:
       pages: write
@@ -511,11 +465,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     concurrency:
-      group: repository-write-coordinator
+      group: maintenance-incident-documentation
       cancel-in-progress: false
     permissions:
+      contents: read
       issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - name: Upsert the documentation publication incident
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -534,11 +493,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     concurrency:
-      group: repository-write-coordinator
+      group: maintenance-incident-documentation
       cancel-in-progress: false
     permissions:
+      contents: read
       issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - name: Resolve the documentation publication incident after successful deploy
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -14,7 +14,7 @@ pnpm --filter @moonwitness/ui-catalog build
 pnpm --filter @moonwitness/ui-catalog test
 ```
 
-The static preview base defaults to `/moonwitness-xi/components/`, matching the
+The static preview base defaults to `/moonwitness-xiv/components/`, matching the
 repository-name subpath used by GitHub Pages. Override it with
 `MW_UI_CATALOG_BASE_PATH` when testing another mount path. Browser tests serve
 the built output at that nested path and check responsive layout, theme

@@ -1,23 +1,14 @@
-import { buildApp } from './app.js';
-import { config } from './config/env.js';
-import { Registry } from '@moonwitness/orm';
-import { databaseErrorContext } from './database/errors.js';
-import { verifyDefaultBaseAccounts, verifyRequiredModels } from './startup-checks.js';
-import { gracefulShutdown } from './lifecycle/graceful-shutdown.js';
-
-function startupErrorContext(error: unknown): Record<string, string> {
-  const name =
-    typeof error === 'object' && error !== null && 'name' in error && typeof error.name === 'string'
-      ? error.name
-      : 'Error';
-  const code = databaseErrorContext(error);
-  if (Object.keys(code).length > 0) return { name, ...code };
-  const message = error instanceof Error ? error.message.slice(0, 300) : 'Unknown startup error';
-  return { name, message };
-}
+import { formatStartupFailure, startupErrorContext } from './startup-diagnostics.js';
 
 async function main() {
   try {
+    // Keep configuration and app imports inside the guarded startup path. ESM
+    // evaluates static imports before main() and would otherwise bypass this catch.
+    const { config } = await import('./config/env.js');
+    const { buildApp } = await import('./app.js');
+    const { Registry } = await import('@moonwitness/orm');
+    const { verifyDefaultBaseAccounts, verifyRequiredModels } = await import('./startup-checks.js');
+    const { gracefulShutdown } = await import('./lifecycle/graceful-shutdown.js');
     const app = await buildApp();
 
     const registeredModels = Registry.getNames();
@@ -73,7 +64,7 @@ async function main() {
       process.once(signal, () => void shutdown(signal));
     }
   } catch (err) {
-    console.error('API startup failed:', startupErrorContext(err));
+    console.error(formatStartupFailure(err));
     process.exit(1);
   }
 }

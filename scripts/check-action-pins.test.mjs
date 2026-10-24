@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  findNodeVersionDrift,
   findPnpmVersionDrift,
   findUnpinnedActions,
   pnpmSetupOrderValid,
@@ -164,4 +165,40 @@ test('rejects expressions and malformed external action references', () => {
     },
   ]);
   assert.equal(findings.length, 2);
+});
+test('requires every workflow and image Node pin to match the root engines major', () => {
+  const matching = [
+    {
+      path: '.github/workflows/ci.yml',
+      content: [
+        "          node-version: '22'",
+        '          node-version: ${{ inputs.node-version }}',
+      ].join('\n'),
+    },
+    {
+      path: 'Dockerfile',
+      content: ['FROM node:22-bookworm-slim AS build', 'FROM node:22.11.0-slim AS runtime'].join(
+        '\n'
+      ),
+    },
+  ];
+  assert.deepEqual(findNodeVersionDrift(matching, '22.x'), []);
+  const drift = findNodeVersionDrift(
+    [
+      { path: '.github/workflows/ci.yml', content: "          node-version: '20'" },
+      { path: 'Dockerfile', content: 'FROM node:lts AS build' },
+    ],
+    '22.x'
+  );
+  assert.equal(drift.length, 2);
+  assert.match(drift[0].reason, /Node 22\.x line pinned by the root engines field/);
+  assert.equal(drift[1].reference, 'lts');
+});
+
+test('rejects a missing or imprecise engines declaration instead of guessing a major', () => {
+  for (const spec of [undefined, '', '>=22', '22']) {
+    const findings = findNodeVersionDrift([], spec);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].path, 'package.json');
+  }
 });

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
 import { defineAddon } from '@moonwitness/orm';
 import {
   mkdir,
@@ -13,18 +14,25 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { Transform, type Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export interface StoredObjectMetadata {
   readonly key: string;
   readonly sizeBytes: number;
-  readonly checksum: string;
+  readonly checksum?: string;
+  readonly lastModified?: Date;
 }
 
 export interface AttachmentStorage {
+  checkReady?(): Promise<void>;
   put(key: string, content: Uint8Array): Promise<StoredObjectMetadata>;
   get(key: string): Promise<Buffer | null>;
+  putStream?(key: string, content: Readable, maxBytes?: number): Promise<StoredObjectMetadata>;
+  getStream?(key: string): Promise<Readable | null>;
   delete(key: string): Promise<void>;
   list(): AsyncIterable<StoredObjectMetadata>;
 }
@@ -32,6 +40,10 @@ export interface AttachmentStorage {
 function validateKey(key: string): string {
   if (!UUID_PATTERN.test(key)) throw new Error('Invalid attachment storage key');
   return key.toLowerCase();
+}
+
+function isValidKey(key: string): boolean {
+  return UUID_PATTERN.test(key);
 }
 
 function validateScanOptions(olderThan: Date, limit: number): void {
@@ -60,6 +72,23 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
     this.directory = path.resolve(directory);
   }
 
+  async checkReady(): Promise<void> {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    const probePath = path.join(this.directory, `.readiness-${randomUUID()}.tmp`);
+    let probe: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      probe = await open(probePath, 'wx', 0o600);
+      await probe.writeFile(Buffer.from([0]));
+      await probe.sync();
+    } finally {
+      try {
+        await probe?.close();
+      } finally {
+        await rm(probePath, { force: true });
+      }
+    }
+  }
+
   private objectPath(key: string): string {
     return path.join(this.directory, validateKey(key));
   }
@@ -76,6 +105,41 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
       throw error;
     }
     return objectMetadata(key, content);
+  }
+
+  async putStream(
+    key: string,
+    content: Readable,
+    maxBytes = MAX_ATTACHMENT_BYTES
+  ): Promise<StoredObjectMetadata> {
+    const safeKey = validateKey(key);
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+      throw new Error('maxBytes must be a positive safe integer');
+    const target = this.objectPath(safeKey);
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    const hash = createHash('sha256');
+    let sizeBytes = 0;
+    const meter = new Transform({
+      transform(chunk: Buffer | Uint8Array, _encoding, callback) {
+        const bytes = Buffer.from(chunk);
+        sizeBytes += bytes.byteLength;
+        if (sizeBytes > maxBytes) {
+          callback(new Error('Attachment exceeds the configured storage size limit'));
+          return;
+        }
+        hash.update(bytes);
+        callback(null, bytes);
+      },
+    });
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    try {
+      await pipeline(content, meter, createWriteStream(temporary, { flags: 'wx', mode: 0o600 }));
+      await rename(temporary, target);
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    return { key: safeKey, sizeBytes, checksum: hash.digest('hex') };
   }
 
   async get(key: string): Promise<Buffer | null> {
@@ -103,6 +167,30 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
     }
   }
 
+  async getStream(key: string): Promise<Readable | null> {
+    const objectPath = this.objectPath(key);
+    let file: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      file = await open(objectPath, 'r');
+      const opened = await file.stat();
+      const current = await lstat(objectPath);
+      if (
+        !opened.isFile() ||
+        !current.isFile() ||
+        current.isSymbolicLink() ||
+        opened.dev !== current.dev ||
+        opened.ino !== current.ino
+      ) {
+        throw new Error('Attachment object must be a regular file');
+      }
+      return file.createReadStream({ autoClose: true });
+    } catch (error) {
+      if (isMissing(error)) return null;
+      await file?.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
   async getWithMetadata(key: string): Promise<StoredObjectMetadata | null> {
     const content = await this.get(key);
     return content ? objectMetadata(key, content) : null;
@@ -125,7 +213,11 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
       const key = entry.name.toLowerCase();
       const objectPath = this.objectPath(key);
       const [content, details] = await Promise.all([readFile(objectPath), stat(objectPath)]);
-      yield { ...objectMetadata(key, content), sizeBytes: details.size };
+      yield {
+        ...objectMetadata(key, content),
+        sizeBytes: details.size,
+        lastModified: details.mtime,
+      };
     }
   }
 
@@ -188,7 +280,7 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
 
 export interface AttachmentReference {
   readonly storageKey: string;
-  readonly sizeBytes: number;
+  readonly sizeBytes?: number;
   readonly checksum?: string | null;
 }
 
@@ -208,6 +300,7 @@ export interface ReconcileResult {
   readonly orphaned: readonly string[];
   readonly deleted: readonly string[];
   readonly failures: readonly string[];
+  readonly unsupportedReferences: readonly string[];
 }
 
 export interface ReconcileOptions {
@@ -237,7 +330,18 @@ export async function reconcileLocalAttachmentStorage(
     throw new Error('olderThan must not be in the future when apply is enabled');
 
   const byKey = new Map<string, AttachmentReference>();
-  for await (const reference of references) byKey.set(validateKey(reference.storageKey), reference);
+  const unsupportedReferences: string[] = [];
+  let totalReferences = 0;
+  for await (const reference of references) {
+    totalReferences += 1;
+    if (totalReferences > limit * 100)
+      throw new Error('Attachment reconciliation reference snapshot exceeds the safe bound');
+    if (!isValidKey(reference.storageKey)) {
+      unsupportedReferences.push(reference.storageKey);
+      continue;
+    }
+    byKey.set(validateKey(reference.storageKey), reference);
+  }
   const missing: string[] = [];
   const corrupt: string[] = [];
   let referenceCount = 0;
@@ -250,7 +354,7 @@ export async function reconcileLocalAttachmentStorage(
       missing.push(reference.storageKey);
     } else if (
       object.sizeBytes !== reference.sizeBytes ||
-      (reference.checksum && object.checksum.toLowerCase() !== reference.checksum.toLowerCase())
+      (reference.checksum && object.checksum?.toLowerCase() !== reference.checksum.toLowerCase())
     ) {
       corrupt.push(reference.storageKey);
     }
@@ -284,5 +388,97 @@ export async function reconcileLocalAttachmentStorage(
     orphaned,
     deleted,
     failures,
+    unsupportedReferences,
   };
 }
+
+/** Provider-neutral reconciliation. References may come from more than one database domain. */
+export async function reconcileAttachmentStorage(
+  storage: AttachmentStorage,
+  references: AsyncIterable<AttachmentReference>,
+  options: ReconcileOptions
+): Promise<ReconcileResult> {
+  const limit = options.limit ?? 1000;
+  validateScanOptions(options.olderThan, limit);
+  if (options.apply && options.olderThan.getTime() > Date.now()) {
+    throw new Error('olderThan must not be in the future when apply is enabled');
+  }
+  const byKey = new Map<string, AttachmentReference>();
+  const unsupportedReferences: string[] = [];
+  let totalReferences = 0;
+  for await (const reference of references) {
+    totalReferences += 1;
+    if (totalReferences > limit * 100) {
+      throw new Error('Attachment reconciliation reference snapshot exceeds the safe bound');
+    }
+    if (!isValidKey(reference.storageKey)) {
+      unsupportedReferences.push(reference.storageKey);
+      continue;
+    }
+    byKey.set(validateKey(reference.storageKey), reference);
+    if (byKey.size > limit * 100) {
+      throw new Error('Attachment reconciliation reference snapshot exceeds the safe bound');
+    }
+  }
+
+  const missing: string[] = [];
+  const corrupt: string[] = [];
+  for (const reference of byKey.values()) {
+    const content = await storage.get(reference.storageKey);
+    if (!content) {
+      missing.push(reference.storageKey);
+      continue;
+    }
+    const actual = objectMetadata(reference.storageKey, content);
+    if (
+      (reference.sizeBytes !== undefined && actual.sizeBytes !== reference.sizeBytes) ||
+      (reference.checksum && actual.checksum?.toLowerCase() !== reference.checksum.toLowerCase())
+    ) {
+      corrupt.push(reference.storageKey);
+    }
+  }
+
+  const orphaned: string[] = [];
+  const deleted: string[] = [];
+  const failures: string[] = [];
+  let scannedEntries = 0;
+  let checked = 0;
+  let truncated = false;
+  for await (const object of storage.list()) {
+    scannedEntries += 1;
+    if (!object.lastModified || !Number.isFinite(object.lastModified.getTime())) continue;
+    const modified = object.lastModified.getTime();
+    if (modified > options.olderThan.getTime()) continue;
+    if (byKey.has(object.key)) {
+      checked += 1;
+      continue;
+    }
+    if (orphaned.length === limit) {
+      truncated = true;
+      break;
+    }
+    checked += 1;
+    orphaned.push(object.key);
+    if (!options.apply) continue;
+    try {
+      await storage.delete(object.key);
+      deleted.push(object.key);
+    } catch {
+      failures.push(object.key);
+    }
+  }
+  return {
+    checked,
+    scannedEntries,
+    scanTruncated: truncated,
+    missing,
+    corrupt,
+    orphaned,
+    deleted,
+    failures,
+    unsupportedReferences,
+  };
+}
+
+export { S3AttachmentStorage, closeS3AttachmentStorage } from './s3.js';
+export type { S3AttachmentStorageOptions } from './s3.js';

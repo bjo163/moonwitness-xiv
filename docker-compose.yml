@@ -11,6 +11,38 @@ services:
       - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d moonwitness_db]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Private local malware scanner for WhatsApp media; never expose clamd beyond loopback.
+  clamav:
+    image: clamav/clamav-debian:1.5.4
+    container_name: moonwitness_clamav
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:3310:3310'
+    volumes:
+      - clamav_db:/var/lib/clamav
+
+  # Dev-only free-tier LLM gateway. Loopback-bound; dashboard password is preset below.
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    container_name: moonwitness_omniroute
+    restart: unless-stopped
+    stop_grace_period: 40s
+    environment:
+      DATA_DIR: /app/data
+      JWT_SECRET: dev-only-moonwitness-secret-change-me
+      INITIAL_PASSWORD: moonwitness-omniroute
+    ports:
+      - '127.0.0.1:20128:20128'
+    volumes:
+      - omniroute_data:/app/data
 
 volumes:
   pgdata:
+  clamav_db:
+  omniroute_data:

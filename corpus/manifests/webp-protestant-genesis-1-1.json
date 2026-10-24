@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:ebible-webp-protestant",
+  "edition_id": "mw:edition:webp-protestant-2020-stable",
+  "locale": "en-US",
+  "references": [
+    "https://ebible.org/engwebp/GEN01.htm",
+    "https://ebible.org/find/show.php?id=engwebp",
+    "https://ebible.org/engwebp/copyright.htm"
+  ],
+  "artifact": {
+    "representation": "source_bytes",
+    "media_type": "text/plain; charset=utf-8",
+    "sha256": "ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1",
+    "byte_length": 57,
+    "retrieved_at": "2026-10-15T17:45:53Z"
+  },
+  "rights": {
+    "state": "permitted",
+    "allowed_uses": ["read_analyze", "store", "quote_excerpt", "redistribute_full"],
+    "reviewer": "bjo163",
+    "decision_date": "2026-10-16",
+    "evidence_ref": "docs/roadmap/evidence/K2-006.md#source-and-rights",
+    "scope": "Only the exact English WEBP Genesis 1:1 verse body is stored and redistributed. The words and terminal punctuation are copied verbatim from the official WEBP text; HTML markup, its verse number, and an inline explanatory footnote anchor are omitted from the excerpt representation. World English Bible is an eBible.org trademark; this unchanged excerpt is attributed without implying endorsement, and any altered translation text must not be labeled World English Bible. No other verse, canon claim, textual equivalence, model training, or runtime fetch is included."
+  },
+  "attribution": {
+    "text": "World English Bible Protestant (WEBP), Genesis 1:1; eBible.org. 2020 stable text edition, public domain. “World English Bible” is an eBible.org trademark; this unchanged excerpt does not imply eBible.org endorsement. If translation words are changed, do not label the changed text “World English Bible”. Source: https://ebible.org/engwebp/GEN01.htm . Edition: https://ebible.org/find/show.php?id=engwebp . Rights: https://ebible.org/engwebp/copyright.htm .",
+    "display_locations": [
+      "corpus/manifests/webp-protestant-genesis-1-1.json",
+      "corpus/reference/sha256/ae/ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1",
+      "MoonWitness textual witness sample result"
+    ]
+  },
+  "complaint_process_owner": "bjo163",
+  "transformations": [
+    {
+      "recipe": "Extract the Genesis 1:1 verse body from the official WEBP chapter page; strip HTML markup, the displayed verse number, and its inline explanatory footnote anchor while preserving every translation word and terminal punctuation; encode UTF-8 with LF.",
+      "version": "1",
+      "output_sha256": "ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1"
+    }
+  ],
+  "publication": {
+    "mode": "source_bytes",
+    "release_ref": "K2-006 owner-approved WEBP Genesis 1:1 sample 2026-10-16"
+  }
+}

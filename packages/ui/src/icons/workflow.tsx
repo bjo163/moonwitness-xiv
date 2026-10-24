@@ -11,13 +11,13 @@ export function WorkflowIcon({ size = 24, title, ...props }: WorkflowIconProps) 
     <svg
       aria-hidden={title ? undefined : true}
       aria-labelledby={title ? titleId : undefined}
-      fill="none"
       height={size}
       role={title ? 'img' : undefined}
+      fill="none"
       stroke="currentColor"
+      strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth="1.8"
       viewBox="0 0 24 24"
       width={size}
       {...props}

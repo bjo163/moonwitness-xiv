@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.invalid/ontology/revelation-identity.schema.json",
+  "title": "MoonWitness revelation, witness, canon, and edition identities",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "policy", "entities", "relations"],
+  "properties": {
+    "format": { "const": "moonwitness-revelation-identity/v1" },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inferIdentityEquivalence", "canonImpliesRevelationIdentity"],
+      "properties": {
+        "inferIdentityEquivalence": { "const": false },
+        "canonImpliesRevelationIdentity": { "const": false }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/revelationIdentity" },
+          { "$ref": "#/$defs/textualWitness" },
+          { "$ref": "#/$defs/canon" },
+          { "$ref": "#/$defs/edition" }
+        ]
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" }
+    }
+  },
+  "$defs": {
+    "baseEntity": {
+      "type": "object",
+      "required": ["id", "identityClass", "label"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^mw:[a-z]+(?:-[a-z]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[a-z0-9]+(?:[._-][a-z0-9]+)*)*$"
+        },
+        "identityClass": { "type": "string" },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "revelationIdentity": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/baseEntity" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "pattern": "^mw:work:" },
+            "identityClass": { "const": "RevelationIdentity" },
+            "tradition": { "type": "string", "minLength": 1 }
+          },
+          "required": ["tradition"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "textualWitness": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/baseEntity" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "pattern": "^mw:expression:" },
+            "identityClass": { "const": "TextualWitness" },
+            "sourceArtifactId": { "type": "string", "pattern": "^mw:artifact:" }
+          },
+          "required": ["sourceArtifactId"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "canon": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/baseEntity" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "pattern": "^mw:concept:" },
+            "identityClass": { "const": "Canon" },
+            "tradition": { "type": "string", "minLength": 1 }
+          },
+          "required": ["tradition"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "edition": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/baseEntity" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "pattern": "^mw:edition:" },
+            "identityClass": { "const": "Edition" },
+            "sourceArtifactId": { "type": "string", "pattern": "^mw:artifact:" }
+          },
+          "required": ["sourceArtifactId"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "subjectId", "predicate", "objectId", "status", "evidenceIds"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^mw:relation:" },
+        "subjectId": { "type": "string", "minLength": 1 },
+        "predicate": {
+          "enum": ["witness_of", "member_of_canon", "edition_of", "explicit_identity_equivalence"]
+        },
+        "objectId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["candidate", "accepted", "rejected"] },
+        "evidenceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "type": "object", "properties": { "status": { "const": "accepted" } } },
+          "then": {
+            "type": "object",
+            "properties": { "evidenceIds": { "type": "array", "minItems": 1 } }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "predicate": { "const": "explicit_identity_equivalence" } }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "accepted" },
+              "evidenceIds": { "type": "array", "minItems": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

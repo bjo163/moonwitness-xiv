@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const basePath = process.env.MW_DOCS_BASE_PATH ?? '/moonwitness-xi/';
+const basePath = process.env.MW_DOCS_BASE_PATH ?? '/moonwitness-xiv/';
 const baseUrl = `http://127.0.0.1:4178${basePath}`;
 
 export default defineConfig({

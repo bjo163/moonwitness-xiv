@@ -1,0 +1,31 @@
+{
+  "format": "moonwitness-revelation-identity/v1",
+  "policy": {
+    "inferIdentityEquivalence": false,
+    "canonImpliesRevelationIdentity": false
+  },
+  "entities": [
+    {
+      "id": "mw:expression:webp-protestant",
+      "identityClass": "TextualWitness",
+      "label": "World English Bible Protestant (WEBP) textual witness",
+      "sourceArtifactId": "mw:artifact:webp-protestant-genesis-1-1"
+    },
+    {
+      "id": "mw:edition:webp-protestant-2020-stable",
+      "identityClass": "Edition",
+      "label": "World English Bible Protestant, 2020 stable text edition",
+      "sourceArtifactId": "mw:artifact:webp-protestant-genesis-1-1"
+    }
+  ],
+  "relations": [
+    {
+      "id": "mw:relation:webp-edition-of-witness",
+      "subjectId": "mw:edition:webp-protestant-2020-stable",
+      "predicate": "edition_of",
+      "objectId": "mw:expression:webp-protestant",
+      "status": "accepted",
+      "evidenceIds": ["mw:evidence:ebible-webp-edition-source"]
+    }
+  ]
+}

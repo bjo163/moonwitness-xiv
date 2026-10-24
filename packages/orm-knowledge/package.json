@@ -1,0 +1,37 @@
+{
+  "name": "@moonwitness/orm-knowledge",
+  "version": "1.0.0-rc.1",
+  "description": "Restricted witness testimony records and provenance-aware corrections",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@moonwitness/corpus": "workspace:*",
+    "@moonwitness/knowledge": "workspace:*",
+    "@moonwitness/orm": "workspace:*",
+    "@moonwitness/orm-base": "workspace:*",
+    "@moonwitness/orm-workflow": "workspace:*",
+    "@moonwitness/research": "workspace:*",
+    "objection": "^3.1.5"
+  },
+  "devDependencies": {
+    "@moonwitness/jobs": "workspace:*",
+    "@moonwitness/orm-notification": "workspace:*",
+    "@vitest/coverage-v8": "5.0.3",
+    "better-sqlite3": "^13.0.3",
+    "knex": "^3.3.0",
+    "pg": "^8.23.1",
+    "typescript": "~5.7.3",
+    "vitest": "5.0.3"
+  }
+}

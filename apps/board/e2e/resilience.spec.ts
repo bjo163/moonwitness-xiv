@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createE2eSuffix, E2E_SUPERADMIN_PASSWORD } from './constants.js';
+import { createE2eSuffix, E2E_SUPERADMIN_PASSWORD, loginPageUrl } from './constants.js';
 
 interface BoardSession {
   access_token: string;
@@ -12,10 +12,10 @@ interface CreatedRecord {
 
 async function loginSuperadmin(page: Page): Promise<BoardSession> {
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
   const session = await page.evaluate(
     () => JSON.parse(localStorage.getItem('mw-board-session') ?? 'null') as BoardSession | null
   );
@@ -54,7 +54,7 @@ test('list loading, offline errors, retry, and empty results preserve the curren
     await route.continue();
   });
 
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   await expect(page.locator('[data-slot="skeleton"]').first()).toBeVisible();
   await expect(page.getByRole('table').locator('[data-slot="skeleton"]')).toHaveCount(0);
   await expect(page.getByRole('table').locator('tbody tr').first()).toBeVisible();
@@ -62,7 +62,9 @@ test('list loading, offline errors, retry, and empty results preserve the curren
   const searchTerm = `no-resilience-match-${Date.now()}`;
   simulateOffline = true;
   await page.getByRole('textbox', { name: 'Search partners...' }).fill(searchTerm);
-  const error = page.getByRole('alert');
+  const error = page
+    .getByRole('alert')
+    .filter({ hasText: 'Could not load records. Check your connection and try again.' });
   await expect(error).toContainText('Could not load records. Check your connection and try again.');
   expect(failedRequests).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole('textbox', { name: 'Search partners...' })).toHaveValue(searchTerm);
@@ -94,7 +96,7 @@ test('rapid duplicate save submits a new record only once', async ({ page }) => 
     await route.continue();
   });
 
-  await page.goto('/m/base.partner/new');
+  await page.goto('/board/m/base.partner/new');
   await page.getByLabel('Name').fill(name);
   await page.getByLabel('Email', { exact: true }).fill(email);
   const save = page.getByRole('button', { name: 'Save Record' });
@@ -139,19 +141,19 @@ test('signing into another account clears the previous account records', async (
   expect(userResponse.status()).toBe(201);
   expect(userResponse.status()).toBe(201);
 
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   const search = page.getByRole('textbox', { name: 'Search partners...' });
   await search.fill(adminOnlyName);
   await expect(page.getByRole('table').getByText(adminOnlyName)).toBeVisible();
   await page.getByRole('button', { name: 'superadmin' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
+  await expect(page).toHaveURL(loginPageUrl);
 
-  await page.getByLabel('Login').fill(viewerLogin);
-  await page.getByLabel('Password').fill(viewerPassword);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
+  await page.getByLabel('Email or Username').fill(viewerLogin);
+  await page.getByLabel('Password', { exact: true }).fill(viewerPassword);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page).toHaveURL(/\/m\/base\.partner$/u);
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   await expect(page.getByRole('table').getByText(adminOnlyName)).toHaveCount(0);
 });
 
@@ -203,7 +205,7 @@ test('switching companies never renders a record from the previous query scope',
     });
   });
 
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   await expect(page.getByRole('table').getByText('Company A Scoped Record')).toBeVisible();
   await page.getByRole('button', { name: /^Switch company/u }).click();
   await page.getByRole('menuitem', { name: companyName }).click();

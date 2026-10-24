@@ -7,6 +7,15 @@ on:
         description: Full dev SHA to prepare from; this prevents a stale release write
         required: true
         type: string
+      channel:
+        description: Release channel to prepare
+        required: true
+        type: choice
+        options:
+          - rc
+          - stable
+          - hotfix
+        default: rc
 
 permissions:
   contents: read
@@ -22,8 +31,9 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
+      actions: write
     concurrency:
-      group: repository-write-coordinator
+      group: dev-branch-updates
       cancel-in-progress: false
     steps:
       - name: Validate requested source SHA
@@ -48,11 +58,13 @@ jobs:
       - name: Verify checkout and prepare release files
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_dev_sha }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test "$(git ls-remote origin refs/heads/dev | cut -f1)" = "$EXPECTED_SOURCE_SHA"
-          pnpm release:prepare -- --expected-head "$EXPECTED_SOURCE_SHA" --apply
+          pnpm release:prepare -- --expected-head "$EXPECTED_SOURCE_SHA" --channel "$RELEASE_CHANNEL" --apply
       - name: Commit and push prepared release atomically
+        id: publish
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_dev_sha }}
         run: |
@@ -75,3 +87,4 @@ jobs:
           fi
           git commit -m "chore(release): prepare workspace release"
           node scripts/push-expected-ref.mjs origin HEAD refs/heads/dev "$EXPECTED_SOURCE_SHA"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"

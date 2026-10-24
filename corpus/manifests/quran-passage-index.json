@@ -1,0 +1,12 @@
+{
+  "format": "moonwitness-quran-passage-index/v1",
+  "entries": [
+    {
+      "edition_id": "mw:edition:tanzil-quran-text-v1.1-uthmani-txt2",
+      "locator": "Q7:46",
+      "source_manifest_path": "corpus/manifests/tanzil-quran-text-v1.1-uthmani-q7-46.json",
+      "artifact_path": "corpus/reference/sha256/6f/6ff83b01099fb7992b5f7fa101cfab3d6556607ca6b1fe69d53cb76f97027760",
+      "sha256": "6ff83b01099fb7992b5f7fa101cfab3d6556607ca6b1fe69d53cb76f97027760"
+    }
+  ]
+}

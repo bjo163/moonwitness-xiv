@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
   collectMarkdownAnchors,
   findBrokenMarkdownLinks,
+  listMarkdownFiles,
+  checkMarkdownLinks,
   slugHeading,
   stripFencedCode,
 } from './check-docs.mjs';
@@ -52,5 +55,44 @@ test('links in code blocks are ignored and local fragments are validated', async
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a checkout reads only tracked documents so local and hosted gates share a file set', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'moonwitness-doc-tracked-'));
+  const root = await realpath(tempRoot);
+  const git = (args) => execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+  try {
+    git(['init', '--quiet']);
+    await writeFile(path.join(root, '.gitignore'), 'scratch-included/**\n');
+    await writeFile(path.join(root, 'release.md'), '# Release\n\n[notes](notes.md)\n');
+    await writeFile(path.join(root, 'notes.md'), '# Notes\n');
+    git(['add', 'release.md', 'notes.md']);
+    await writeFile(path.join(root, 'scratch-excluded.md'), '# Scratch\n\n[absent](nowhere.md)\n');
+    await mkdir(path.join(root, 'scratch-included'), { recursive: true });
+    await writeFile(
+      path.join(root, 'scratch-included', 'draft.md'),
+      '# Draft\n\n[absent](../nowhere.md)\n'
+    );
+
+    const listed = await listMarkdownFiles(root);
+    assert.deepEqual(listed.map((file) => path.relative(root, file).replaceAll('\\', '/')).sort(), [
+      'notes.md',
+      'release.md',
+    ]);
+    assert.equal(
+      await checkMarkdownLinks(root),
+      2,
+      'untracked scratch documents cannot fail a gate the runner never sees'
+    );
+
+    git(['add', '--force', 'scratch-included/draft.md']);
+    await assert.rejects(
+      checkMarkdownLinks(root),
+      /scratch-included\/draft\.md:3: missing target/u
+    );
+  } finally {
+    // Windows keeps the directory locked briefly after the `git` child exits.
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

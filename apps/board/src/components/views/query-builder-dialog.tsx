@@ -1,3 +1,4 @@
+import { SelectField } from '@moonwitness/ui/components/select-field';
 import { useState } from 'react';
 import { Filter, Plus, Trash2, Bookmark, Check, RotateCcw, Sparkles } from 'lucide-react';
 import type { ResolvedViews } from '@moonwitness/client';
@@ -10,7 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@moonwitness/ui/components/dialog';
-import { Doodle } from '@/components/manga/effects';
+import { Doodle } from '@moonwitness/ui/components/effects';
 import { cn } from '@/lib/utils';
 
 export interface FilterRule {
@@ -195,7 +196,7 @@ export function QueryBuilderDialog({
             </span>
             <div className="flex flex-wrap gap-1.5">
               {savedQueries.map((saved) => (
-                <button
+                <Button
                   key={saved.id}
                   type="button"
                   onClick={() => handleLoadSaved(saved)}
@@ -210,7 +211,7 @@ export function QueryBuilderDialog({
                   >
                     ×
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -220,7 +221,7 @@ export function QueryBuilderDialog({
         <div className="flex items-center justify-between border-2 border-ink bg-paper-raised p-2 font-mono text-xs">
           <span className="font-bold text-ink uppercase">Condition Matching:</span>
           <div className="flex items-center border border-ink bg-paper p-0.5 shadow-ink-sm">
-            <button
+            <Button
               type="button"
               onClick={() => setConjunction('all')}
               className={cn(
@@ -231,8 +232,8 @@ export function QueryBuilderDialog({
               )}
             >
               Match ALL (AND)
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => setConjunction('any')}
               className={cn(
@@ -243,7 +244,7 @@ export function QueryBuilderDialog({
               )}
             >
               Match ANY (OR)
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -264,7 +265,7 @@ export function QueryBuilderDialog({
                 </span>
 
                 {/* Field Selector */}
-                <select
+                <SelectField
                   value={rule.field}
                   onChange={(e) => handleUpdateRule(rule.id, { field: e.target.value })}
                   className="h-8 border-2 border-ink bg-paper px-2 text-xs text-ink outline-none min-w-[130px]"
@@ -274,10 +275,10 @@ export function QueryBuilderDialog({
                       {f.label} ({f.name})
                     </option>
                   ))}
-                </select>
+                </SelectField>
 
                 {/* Operator Selector */}
-                <select
+                <SelectField
                   value={rule.operator}
                   onChange={(e) =>
                     handleUpdateRule(rule.id, {
@@ -295,20 +296,20 @@ export function QueryBuilderDialog({
                   <option value="<=">&lt;=</option>
                   <option value="is_set">is set</option>
                   <option value="is_null">is not set</option>
-                </select>
+                </SelectField>
 
                 {/* Value Input */}
                 {!isNullOp && (
                   <div className="flex-1 min-w-[140px]">
                     {isBool ? (
-                      <select
+                      <SelectField
                         value={rule.value}
                         onChange={(e) => handleUpdateRule(rule.id, { value: e.target.value })}
                         className="h-8 w-full border-2 border-ink bg-paper px-2 text-xs text-ink outline-none"
                       >
                         <option value="true">True / Active</option>
                         <option value="false">False / Inactive</option>
-                      </select>
+                      </SelectField>
                     ) : (
                       <Input
                         placeholder="Search value..."
@@ -367,13 +368,13 @@ export function QueryBuilderDialog({
                 >
                   <Check className="size-3" /> Save
                 </Button>
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowSaveInput(false)}
                   className="text-xs text-ink-faint hover:text-pink px-1"
                 >
                   ×
-                </button>
+                </Button>
               </div>
             )}
           </div>

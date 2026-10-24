@@ -11,6 +11,11 @@ import {
   selectExactDevPullRequestCiRun,
 } from './collect-lifecycle-snapshot.mjs';
 import { projectLifecycleSnapshot } from './lifecycle-snapshot.mjs';
+import {
+  readCurrentDevPullRequestTechnicalGate,
+  withGitHubReadRetry,
+  writeSnapshotIfDevHeadIsCurrent,
+} from './collect-lifecycle-snapshot-cli.mjs';
 
 const sourceSha = 'a'.repeat(40);
 const planSha = 'b'.repeat(40);
@@ -20,6 +25,38 @@ const releaseSha = 'e'.repeat(40);
 const task = { id: 'M1.01', dependsOn: [], status: 'complete', evidence: 'evidence.md' };
 const indexTasks = [task, { id: 'M1.02', dependsOn: [], evidence: 'partial.md' }];
 const roadmap = '- [x] M1.01 Finished with evidence.\n- [ ] M1.02 In progress.\n';
+
+test('retries bounded transient GitHub API read failures and preserves permission errors', async () => {
+  const delays = [];
+  let attempts = 0;
+  const value = await withGitHubReadRetry(
+    async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const error = new Error('Command failed: gh api');
+        error.stderr = "gh: We couldn't respond to your request in time. (HTTP 504)";
+        throw error;
+      }
+      return { ok: true };
+    },
+    { sleep: async (milliseconds) => delays.push(milliseconds) }
+  );
+  assert.deepEqual(value, { ok: true });
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
+
+  let permissionAttempts = 0;
+  await assert.rejects(
+    withGitHubReadRetry(async () => {
+      permissionAttempts += 1;
+      const error = new Error('HTTP 403: Resource not accessible by integration');
+      error.stderr = error.message;
+      throw error;
+    }),
+    /HTTP 403/u
+  );
+  assert.equal(permissionAttempts, 1);
+});
 
 test('flattens every GitHub CLI pagination page and rejects malformed page shapes', () => {
   const checkPages = [
@@ -53,8 +90,8 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
             pull_requests: [
               {
                 number: 24,
-                head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xi' } },
-                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+                head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
               },
             ],
           },
@@ -67,8 +104,8 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
             pull_requests: [
               {
                 number: 24,
-                head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xi' } },
-                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+                head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
               },
             ],
           },
@@ -88,8 +125,8 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
             pull_requests: [
               {
                 number: 7,
-                head: { ref: 'feature', sha: devSha, repo: { full_name: 'fork/moonwitness-xi' } },
-                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+                head: { ref: 'feature', sha: devSha, repo: { full_name: 'fork/moonwitness-xiv' } },
+                base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
               },
             ],
           },
@@ -115,12 +152,12 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
         head: {
           ref: 'dev',
           sha: devSha,
-          repo: { full_name: 'bjo163/moonwitness-xi' },
+          repo: { full_name: 'bjo163/moonwitness-xiv' },
         },
-        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
       },
       devSha,
-      'bjo163/moonwitness-xi',
+      'bjo163/moonwitness-xiv',
       24
     ),
     true
@@ -129,11 +166,11 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
     isExactDevMainPullRequest(
       {
         number: 24,
-        head: { ref: 'dev', sha: devSha, repo: { full_name: 'fork/moonwitness-xi' } },
-        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+        head: { ref: 'dev', sha: devSha, repo: { full_name: 'fork/moonwitness-xiv' } },
+        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
       },
       devSha,
-      'bjo163/moonwitness-xi',
+      'bjo163/moonwitness-xiv',
       24
     ),
     false
@@ -142,11 +179,11 @@ test('selects exact same-repository dev-to-main PR gate and ignores duplicate pu
     isExactDevMainPullRequest(
       {
         number: 25,
-        head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xi' } },
-        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xi' } },
+        head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
       },
       devSha,
-      'bjo163/moonwitness-xi',
+      'bjo163/moonwitness-xiv',
       24
     ),
     false
@@ -187,6 +224,119 @@ test('fails immediately when a completed PR CI run omits its technical gate', ()
       ]),
     /did not report a completed ci-technical-gate/u
   );
+});
+
+test('returns an unverified snapshot immediately when no exact-source PR run exists', async () => {
+  let workflowReads = 0;
+  const result = await readCurrentDevPullRequestTechnicalGate({
+    repository: 'bjo163/moonwitness-xiv',
+    sourceSha: devSha,
+    readDevHead: async () => devSha,
+    readWorkflowRuns: async () => {
+      workflowReads += 1;
+      return [{ workflow_runs: [] }];
+    },
+    readPullRequest: async () => assert.fail('no exact-source run should be selected'),
+    readJobs: async () => assert.fail('no exact-source run should be selected'),
+  });
+
+  assert.deepEqual(result, { status: 'ready', checkRuns: [] });
+  assert.equal(workflowReads, 1);
+});
+
+test('captures a pending exact-source gate without waiting or treating it as verified', async () => {
+  const run = {
+    id: 42,
+    event: 'pull_request',
+    head_branch: 'dev',
+    head_sha: devSha,
+    status: 'in_progress',
+    pull_requests: [
+      {
+        number: 24,
+        head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+        base: { ref: 'main', sha: mainSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+      },
+    ],
+  };
+  const result = await readCurrentDevPullRequestTechnicalGate({
+    repository: 'bjo163/moonwitness-xiv',
+    sourceSha: devSha,
+    readDevHead: async () => devSha,
+    readWorkflowRuns: async () => [{ workflow_runs: [run] }],
+    readPullRequest: async () => ({
+      number: 24,
+      head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+      base: { ref: 'main', sha: mainSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+    }),
+    readJobs: async () => [
+      { jobs: [{ id: 25, name: 'ci-technical-gate', status: 'in_progress', conclusion: null }] },
+    ],
+  });
+
+  assert.deepEqual(result, {
+    status: 'ready',
+    checkRuns: [
+      {
+        id: 25,
+        name: 'ci-technical-gate',
+        head_sha: devSha,
+        status: 'in_progress',
+        conclusion: null,
+      },
+    ],
+  });
+});
+
+test('does not write a collected snapshot if dev advances after collection', async () => {
+  let writes = 0;
+  const written = await writeSnapshotIfDevHeadIsCurrent({
+    sourceSha: devSha,
+    readDevHead: async () => 'f'.repeat(40),
+    writeSnapshot: async () => {
+      writes += 1;
+    },
+  });
+
+  assert.equal(written, false);
+  assert.equal(writes, 0);
+});
+
+test('treats a PR head change during exact-run validation as a stale no-op', async () => {
+  let headReads = 0;
+  const run = {
+    id: 9,
+    event: 'pull_request',
+    head_branch: 'dev',
+    head_sha: devSha,
+    status: 'in_progress',
+    pull_requests: [
+      {
+        number: 24,
+        head: { ref: 'dev', sha: devSha, repo: { full_name: 'bjo163/moonwitness-xiv' } },
+        base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
+      },
+    ],
+  };
+  const result = await readCurrentDevPullRequestTechnicalGate({
+    repository: 'bjo163/moonwitness-xiv',
+    sourceSha: devSha,
+    readDevHead: async () => (++headReads === 1 ? devSha : 'f'.repeat(40)),
+    readWorkflowRuns: async () => [{ workflow_runs: [run] }],
+    readPullRequest: async () => ({
+      number: 24,
+      head: {
+        ref: 'dev',
+        sha: 'f'.repeat(40),
+        repo: { full_name: 'bjo163/moonwitness-xiv' },
+      },
+      base: { ref: 'main', repo: { full_name: 'bjo163/moonwitness-xiv' } },
+    }),
+    readJobs: async () => assert.fail('stale run must not read gate jobs'),
+  });
+
+  assert.deepEqual(result, { status: 'stale' });
+  assert.equal(headReads, 2);
 });
 
 test('accepts the completed exact PR technical gate for lifecycle evidence', () => {
@@ -233,6 +383,12 @@ test('parses the explicit source commit marker and derives canonical roadmap tas
     () => parseRoadmapTaskStates(`${roadmap}- [x] M1.99 Unknown.\n`, indexTasks),
     /unindexed task/u
   );
+});
+
+test('parses K-series checkboxes through the shared lifecycle snapshot path', () => {
+  const tasks = [{ id: 'K0-001', dependsOn: [], status: 'complete', evidence: 'k-evidence.md' }];
+  const states = parseRoadmapTaskStates('- [x] K0-001 Approved ADR.\n', tasks);
+  assert.deepEqual(states.get('K0-001'), { status: 'complete', acceptanceVerified: true });
 });
 
 test('collects current checks and ancestry without confusing evidence SHA with implementation SHA', async () => {

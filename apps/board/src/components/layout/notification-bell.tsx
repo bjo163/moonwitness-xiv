@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, Inbox } from 'lucide-react';
+import { CheckIcon, InboxIcon, NotificationIcon } from '@moonwitness/ui/icons';
 import { Button } from '@moonwitness/ui/components/button';
 import { useAuth } from '@/hooks/use-auth-context';
 import { client } from '@/lib/client';
@@ -25,7 +25,7 @@ interface InboxResponse {
 
 export function NotificationBell() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const queryKey = scopedQueryKey(['notification_inbox', user?.id]);
@@ -55,7 +55,7 @@ export function NotificationBell() {
           aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
           title="Notifications"
         >
-          <Bell className="size-4" />
+          <NotificationIcon className="size-4" />
           {unreadCount > 0 && (
             <span
               aria-hidden="true"
@@ -79,7 +79,7 @@ export function NotificationBell() {
             size="xs"
             onClick={() => {
               setOpen(false);
-              navigate('/m/notification.notification');
+              router.push('/board/m/notification.notification');
             }}
           >
             View all
@@ -100,7 +100,7 @@ export function NotificationBell() {
               {inbox.data.notifications.map((notification) => (
                 <li key={notification.id} className="flex gap-3 p-3">
                   <span className="mt-1 shrink-0 text-ink-soft">
-                    <Inbox className="size-4" aria-hidden="true" />
+                    <InboxIcon className="size-4" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold">{notification.title}</p>
@@ -115,7 +115,7 @@ export function NotificationBell() {
                         disabled={markRead.isPending}
                         onClick={() => markRead.mutate(notification.id)}
                       >
-                        <Check className="size-3" /> Mark read
+                        <CheckIcon className="size-3" /> Mark read
                       </Button>
                     )}
                   </div>
@@ -124,7 +124,7 @@ export function NotificationBell() {
             </ul>
           ) : (
             <div className="p-7 text-center">
-              <Inbox className="mx-auto size-6 text-ink-faint" aria-hidden="true" />
+              <InboxIcon className="mx-auto size-6 text-ink-faint" aria-hidden="true" />
               <p className="mt-2 font-display text-sm uppercase">You’re all caught up</p>
               <p className="mt-1 text-xs text-ink-soft">New in-app messages will appear here.</p>
             </div>

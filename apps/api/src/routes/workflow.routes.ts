@@ -132,7 +132,9 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
     const role = req.auth.role;
     if (!isWorkflowRole(role))
       return reply.code(403).send({ success: false, error: 'Unsupported workflow role' });
-    const data = await listAvailableWorkflowDefinitions(fastify.db, resourceModel, role);
+    const data = (await listAvailableWorkflowDefinitions(fastify.db, resourceModel, role)).filter(
+      (definition) => definition.code !== 'research.review'
+    );
     return { success: true, data };
   });
 
@@ -174,6 +176,7 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
         'workflow_instances.resource_model': resourceModel,
         'workflow_instances.resource_id': resourceId,
       })
+      .whereNot('workflow_definitions.code', 'research.review')
       .orderBy('workflow_instances.create_date', 'desc')
       .limit(limit)
       .select(
@@ -202,6 +205,8 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
     const body = parseStart(req.body);
     if (!body)
       return reply.code(400).send({ success: false, error: 'Invalid workflow start request' });
+    if (body.code === 'research.review')
+      return reply.code(404).send({ success: false, error: 'Workflow not found' });
     if (!(await canReadResource(req, body.resource_model, body.resource_id)))
       return reply.code(404).send({ success: false, error: 'Resource not found' });
     try {
@@ -232,23 +237,28 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
     if (!Number.isSafeInteger(id) || id < 1)
       return reply.code(400).send({ success: false, error: 'Invalid workflow ID' });
     const data = await fastify
-      .db('workflow_instances')
-      .where({ id, company_id: req.auth.companyId })
+      .db('workflow_instances as instance')
+      .leftJoin('workflow_definitions as definition', 'definition.id', 'instance.definition_id')
+      .where({ 'instance.id': id, 'instance.company_id': req.auth.companyId })
       .first(
-        'id',
-        'definition_id',
-        'definition_version',
-        'resource_model',
-        'resource_id',
-        'started_by_id',
-        'current_state',
-        'status',
-        'revision',
-        'due_at',
-        'completed_at',
-        'create_date'
+        'instance.id',
+        'instance.definition_id',
+        'instance.definition_version',
+        'instance.resource_model',
+        'instance.resource_id',
+        'instance.started_by_id',
+        'instance.current_state',
+        'instance.status',
+        'instance.revision',
+        'instance.due_at',
+        'instance.completed_at',
+        'instance.create_date',
+        'definition.code as definition_code'
       );
-    if (!data) return reply.code(404).send({ success: false, error: 'Workflow not found' });
+    if (!data || data.definition_code === 'research.review')
+      return reply.code(404).send({ success: false, error: 'Workflow not found' });
+    const publicData = { ...data };
+    delete publicData.definition_code;
     if (!(await canReadResource(req, data.resource_model, data.resource_id)))
       return reply.code(404).send({ success: false, error: 'Workflow not found' });
     const [events, approvals] = await Promise.all([
@@ -272,7 +282,7 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
         .orderBy('decided_at', 'asc')
         .select('action', 'actor_id', 'decision', 'comment', 'decided_at'),
     ]);
-    return { success: true, data: { ...data, events, approvals } };
+    return { success: true, data: { ...publicData, events, approvals } };
   });
 
   fastify.post<{ Params: IdParams; Body: unknown }>(
@@ -287,10 +297,19 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify) => {
       if (!Number.isSafeInteger(id) || id < 1 || !body)
         return reply.code(400).send({ success: false, error: 'Invalid workflow action request' });
       const instance = await fastify
-        .db('workflow_instances')
-        .where({ id, company_id: req.auth.companyId })
-        .first('resource_model', 'resource_id');
-      if (!instance || !(await canReadResource(req, instance.resource_model, instance.resource_id)))
+        .db('workflow_instances as instance')
+        .leftJoin('workflow_definitions as definition', 'definition.id', 'instance.definition_id')
+        .where({ 'instance.id': id, 'instance.company_id': req.auth.companyId })
+        .first(
+          'instance.resource_model',
+          'instance.resource_id',
+          'definition.code as definition_code'
+        );
+      if (
+        !instance ||
+        instance.definition_code === 'research.review' ||
+        !(await canReadResource(req, instance.resource_model, instance.resource_id))
+      )
         return reply.code(404).send({ success: false, error: 'Workflow not found' });
       try {
         const data = await transitionWorkflow(fastify.db, {

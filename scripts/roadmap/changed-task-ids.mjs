@@ -3,14 +3,14 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { taskIdPattern, taskIdSource } from './task-ids.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const taskIdPattern = /^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u;
 
 function taskLines(markdown) {
   return new Map(
     markdown.split(/\r?\n/u).flatMap((line) => {
-      const match = /^- \[[ xX]\] (M(?:0|[1-9][0-9]*)\.[0-9]{2})\b(.*)$/u.exec(line);
+      const match = new RegExp(`^- \\[[ xX]\\] (${taskIdSource})\\b(.*)$`, 'u').exec(line);
       return match ? [[match[1], line]] : [];
     })
   );
@@ -20,7 +20,7 @@ function taskSections(markdown, taskIds) {
   const lines = markdown.split(/\r?\n/u);
   const sections = new Map();
   for (let index = 0; index < lines.length; index += 1) {
-    const match = /^##\s+(M(?:0|[1-9][0-9]*)\.[0-9]{2})\b/u.exec(lines[index]);
+    const match = new RegExp(`^##\\s+(${taskIdSource})\\b`, 'u').exec(lines[index]);
     if (!match || !taskIds.has(match[1])) continue;
     const end = lines.findIndex((line, lineIndex) => lineIndex > index && /^##\s/u.test(line));
     sections.set(match[1], lines.slice(index, end < 0 ? lines.length : end).join('\n'));

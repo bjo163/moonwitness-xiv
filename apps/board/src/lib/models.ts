@@ -1,39 +1,42 @@
 import {
-  Box,
-  Building2,
-  Coins,
-  Contact,
-  CreditCard,
-  Globe2,
-  Hash,
-  KeyRound,
-  Landmark,
-  Languages,
-  LayoutDashboard,
-  MapPin,
-  ShieldCheck,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+  BankIcon,
+  CompanyIcon,
+  CreditCardIcon,
+  CurrencyIcon,
+  GlobeIcon,
+  HashIcon,
+  HomeIcon,
+  KeyIcon,
+  LanguageIcon,
+  MapPinIcon,
+  ModelIcon,
+  PartnerIcon,
+  SecurityIcon,
+  TeamIcon,
+  UsersIcon,
+} from '@moonwitness/ui/icons';
 
-const ICONS: Record<string, LucideIcon> = {
-  'base.partner': Contact,
-  'base.company': Building2,
-  'base.user': Users,
-  'base.country': Globe2,
-  'base.country_state': MapPin,
-  'base.bank': Landmark,
-  'base.partner_bank': CreditCard,
-  'base.sequence': Hash,
-  'base.currency': Coins,
-  'base.language': Languages,
-  'auth.refresh_token': KeyRound,
+const ICONS = {
+  'base.partner': PartnerIcon,
+  'base.company': CompanyIcon,
+  'base.user': UsersIcon,
+  'base.country': GlobeIcon,
+  'base.country_state': MapPinIcon,
+  'base.bank': BankIcon,
+  'base.partner_bank': CreditCardIcon,
+  'base.sequence': HashIcon,
+  'base.currency': CurrencyIcon,
+  'base.language': LanguageIcon,
+  'organization.team': TeamIcon,
+  'auth.refresh_token': KeyIcon,
 };
 
-export const DashboardIcon = LayoutDashboard;
+export const DashboardIcon = HomeIcon;
 
-export function modelIcon(model: string): LucideIcon {
-  return ICONS[model] ?? (model.startsWith('auth.') ? ShieldCheck : Box);
+export function modelIcon(model: string) {
+  return (
+    ICONS[model as keyof typeof ICONS] ?? (model.startsWith('auth.') ? SecurityIcon : ModelIcon)
+  );
 }
 
 /** `base.partner` → `Partner`; used until the model's view title has loaded. */

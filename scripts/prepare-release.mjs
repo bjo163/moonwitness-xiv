@@ -19,7 +19,7 @@ function parseArguments(args) {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--apply' || argument === '--include-content') options.set(argument, true);
-    else if (['--expected-head', '--date'].includes(argument)) {
+    else if (['--expected-head', '--date', '--channel'].includes(argument)) {
       const value = args[index + 1];
       if (!value || value.startsWith('--')) throw new Error(`${argument} requires a value.`);
       options.set(argument, value);
@@ -220,9 +220,19 @@ async function main(args) {
   const date = options.get('--date') ?? new Date().toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)))
     throw new Error('--date must be a valid UTC date in YYYY-MM-DD format.');
+  const channel = options.get('--channel') ?? 'rc';
+  if (!['rc', 'stable', 'hotfix'].includes(channel))
+    throw new Error(`Unsupported release channel: ${channel}`);
   const planOutput = execFileSync(
     process.execPath,
-    [path.join(repositoryRoot, 'scripts/release-plan.mjs'), '--head', headSha, '--json'],
+    [
+      path.join(repositoryRoot, 'scripts/release-plan.mjs'),
+      '--head',
+      headSha,
+      '--channel',
+      channel,
+      '--json',
+    ],
     { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
   );
   const plan = JSON.parse(planOutput);
@@ -248,6 +258,7 @@ async function main(args) {
     changelog,
     changelogSection,
   });
+  preparation.channel = channel;
   if (!apply) {
     process.stdout.write(
       `${JSON.stringify(

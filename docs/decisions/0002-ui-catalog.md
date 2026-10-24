@@ -19,7 +19,7 @@ Keep the catalog as the private workspace app `@moonwitness/ui-catalog` under
 `apps/ui-catalog`. Use Vite and React already used by the Board, import only
 public `@moonwitness/ui` component/icon subpaths, and load the package's shared
 token and component stylesheets. Build by default with the repository Pages
-subpath `/moonwitness-xi/components/`; allow preview environments to override
+subpath `/moonwitness-xiv/components/`; allow preview environments to override
 that path with `MW_UI_CATALOG_BASE_PATH`.
 
 Use Playwright against the built preview for deep-link, small-screen, theme,

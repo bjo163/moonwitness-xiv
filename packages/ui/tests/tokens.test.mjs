@@ -123,7 +123,10 @@ test('component CSS contains no global element or ID selectors', async () => {
     selectorGroup
       .split(',')
       .map((selector) => selector.trim())
-      .some((selector) => !selector.startsWith('.mw-ui-'))
+      .some(
+        (selector) =>
+          !selector.startsWith('.mw-ui-') && !/^(?:from|to|\d+(?:\.\d+)?%)$/u.test(selector)
+      )
   );
   assert.equal(
     invalidSelector,
@@ -140,6 +143,7 @@ test('semantic text pairs meet WCAG AA in both theme mappings', () => {
     ['muted-foreground', 'muted'],
     ['primary-foreground', 'primary'],
     ['destructive-foreground', 'destructive'],
+    ['on-error', 'error'],
     ['on-success', 'success'],
     ['on-warning', 'warning'],
     ['on-info', 'info'],
@@ -178,7 +182,18 @@ test('control boundaries and focus indicators meet the 3:1 non-text target', () 
 test('pink accent uses dark foreground instead of low-contrast white', () => {
   assert.ok(contrast(tokenValue('on-pink'), tokenValue('pink')) >= 4.5);
   assert.ok(contrast('#ffffff', tokenValue('pink')) < 4.5);
-  assert.equal(tokenValue('destructive-foreground'), 'var(--mw-on-pink)');
+  assert.equal(tokenValue('destructive-foreground'), 'var(--mw-on-error)');
+});
+
+test('editorial accent text has readable theme-aware colors on both surfaces', () => {
+  for (const selector of [':root', '\\.dark']) {
+    for (const token of ['magenta-readable', 'cyan-readable', 'yellow-readable']) {
+      assert.ok(
+        contrast(resolvedValue(token, selector), resolvedValue('surface', selector)) >= 4.5,
+        `${token} on surface in ${selector} is below 4.5:1`
+      );
+    }
+  }
 });
 
 test('status semantics and chart palette are theme-stable and chart-safe by contract', () => {
@@ -195,11 +210,23 @@ test('status semantics and chart palette are theme-stable and chart-safe by cont
     assert.match(tokenValue(name), /^#[\da-f]{6}$/i);
     assert.equal(declaration(name, '\\.dark'), undefined);
   }
+  assert.notEqual(tokenValue('error'), tokenValue('magenta'));
+  assert.equal(tokenValue('destructive'), 'var(--mw-error)');
+  assert.notEqual(resolvedValue('error', ':root'), resolvedValue('error', '\\.dark'));
   assert.match(css, /Charts use color plus labels, shape, or line style/);
 });
 
 test('type, spacing, shape, shadow and reduced-motion scales are present', () => {
   for (const name of [
+    'paper-cream',
+    'ink-black',
+    'ink-panel',
+    'yellow',
+    'yellow-readable',
+    'magenta-readable',
+    'cyan-readable',
+    'signal-blue',
+    'font-brush',
     'font-display',
     'font-sans',
     'font-mono',
@@ -207,16 +234,67 @@ test('type, spacing, shape, shadow and reduced-motion scales are present', () =>
     'line-height-normal',
     'space-1',
     'space-8',
+    'panel-gap-compact',
+    'panel-gap-comfortable',
+    'panel-padding-compact',
+    'panel-padding-comfortable',
+    'frame-width',
+    'torn-safe-inset',
+    'decorative-rotation',
     'radius-sm',
     'radius-lg',
     'shadow-ink',
     'motion-fast',
     'motion-normal',
+    'motion-slow',
+    'motion-delay',
+    'motion-draw',
+    'motion-effect',
+    'motion-pulse',
+    'motion-progress',
+    'motion-spin',
+    'motion-ease',
+    'motion-ease-emphasis',
   ]) {
     assert.ok(tokenValue(name).length > 0, `Expected --mw-${name}`);
   }
+  assert.equal(tokenValue('paper-cream'), '#f3efe4');
+  assert.equal(tokenValue('ink-black'), '#0d0d0d');
+  assert.equal(tokenValue('yellow'), '#ffe031');
+  assert.equal(tokenValue('signal-blue'), '#00b8f0');
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /--mw-motion-normal:\s*0ms/);
+});
+
+test('shared controls and overlays use the semantic motion scale', async () => {
+  const componentCss = await readFile(
+    new URL('../src/styles/components.css', import.meta.url),
+    'utf8'
+  );
+  assert.match(componentCss, /transform var\(--mw-motion-fast\) var\(--mw-motion-ease\)/u);
+  assert.match(componentCss, /animation-duration: var\(--mw-motion-normal\) !important/u);
+  assert.match(componentCss, /mw-ui-tabs-trigger[\s\S]*?var\(--mw-motion-fast\)/u);
+  assert.match(componentCss, /animation: mw-ui-spin var\(--mw-motion-spin\) linear infinite/u);
+});
+
+test('interactive surfaces expose opt-in feedback only for hover pointers without reduced motion', async () => {
+  const componentCss = await readFile(
+    new URL('../src/styles/components.css', import.meta.url),
+    'utf8'
+  );
+  assert.match(
+    componentCss,
+    /\.mw-ui-interactive-surface:focus-within\s*\{[^}]*--mw-interactive-surface-border/u
+  );
+  assert.match(
+    componentCss,
+    /@media\s*\(hover:\s*hover\)\s*and\s*\(prefers-reduced-motion:\s*no-preference\)/u
+  );
+  assert.match(
+    componentCss,
+    /\.mw-ui-interactive-surface:hover\s*\{[^}]*--mw-interactive-surface-border/u
+  );
+  assert.match(componentCss, /\.mw-ui-interactive-marker[\s\S]*?var\(--mw-motion-fast\)/u);
 });
 
 test('shared tokens avoid app-specific global styling and external font loading', () => {

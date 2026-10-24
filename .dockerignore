@@ -7,5 +7,11 @@ node_modules
 **/dist
 logs
 backups
+storage
+apps/api/storage
 coverage
+test-results
+playwright-report
+**/.next*
+**/*.tsbuildinfo
 .turbo

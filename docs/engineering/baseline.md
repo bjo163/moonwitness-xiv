@@ -1,6 +1,6 @@
 # Baseline kualitas MoonWitness
 
-Recorded on 2026-10-04 from local Windows workspace, branch dev at source before this baseline commit. Re-run against the final source SHA in GitHub CI; the values below are measurements, not release guarantees.
+Baseline awal direkam pada 2026-10-04 dari Windows developer workspace. Nilainya di bawah dipertahankan sebagai snapshot historis, bukan kondisi terkini atau release threshold. Snapshot hosted terbaru yang bisa diverifikasi tercatat di bagian akhir untuk source `2d872862510096732f52f7ec3cd4779ec0044539` pada branch `dev`.
 
 | Check                                           | Command                                    | Result                                                                                                       |
 | ----------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -34,6 +34,26 @@ Board oxlint exits zero but reports 15 warnings:
 | 1     | src/components/views/list-view.tsx            | react(preserve-manual-memoization)           |
 
 Treat these as baseline debt, then address in focused changes with behavior tests. Do not suppress warning rules wholesale.
+
+## Current hosted snapshot — 2026-10-16 — `2d87286`
+
+Exact-source CI run [38822624487](https://github.com/bjo163/moonwitness-xiv/actions/runs/38822624487) used Ubuntu 24.04, Node 22, pnpm 11.17.0, and frozen workspace install. Source SHA: `2d872862510096732f52f7ec3cd4779ec0044539`. This commit changes roadmap evidence only; CI ran against that exact tree.
+
+| Check                                                   | Exact-source result | Scope and caveat                                                                                                                                                                                                   |
+| ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm lint`, `pnpm format:check`, `pnpm typecheck`      | Pass                | Quality job; Board lint separately passed with 0 warnings and 0 errors across 55 files.                                                                                                                            |
+| Board bundle budget + architecture + docs/assets checks | Pass                | Route-aware bundle budgets, architecture tests/check, docs export check, and full docs build passed.                                                                                                               |
+| Unit tests                                              | Pass                | `pnpm test:unit:ci`; sanitized JUnit and coverage/performance reports were uploaded. Aggregate test/skip counts and coverage percentage are not stated here because the available job summary did not expose them. |
+| PostgreSQL integration + application restore drill      | Pass                | Dedicated PostgreSQL 16 service; `REQUIRE_POSTGRES_TESTS=true`; JUnit report scan and upload passed.                                                                                                               |
+| Board and docs portal browser                           | Pass                | Chromium Board suite and portal navigation/responsive suite passed; sanitized browser reports uploaded.                                                                                                            |
+| Container smoke/security                                | Pass                | Exact CI container job passed.                                                                                                                                                                                     |
+| CodeQL / Gitleaks                                       | Pass                | CodeQL run [38822624376](https://github.com/bjo163/moonwitness-xiv/actions/runs/38822624376); Gitleaks run [38822624204](https://github.com/bjo163/moonwitness-xiv/actions/runs/38822624204).                      |
+| `ci-technical-gate`                                     | Pass                | All required technical lanes passed.                                                                                                                                                                               |
+| Final `ci-gate`                                         | Blocked             | Failed only because no fresh CODEOWNER approval existed for this exact SHA; this is an external promotion gate, not a technical test failure.                                                                      |
+
+The hosted Board production build reported CSS 64.39 kB (12.28 kB gzip), the entry JavaScript chunk 247.82 kB (79.43 kB gzip), and the lazy model-page chunk 108.04 kB (26.33 kB gzip). These are one CI build's compressed-size observations, not the total JS downloaded by every route and not a newly adopted threshold. The previous single-main-chunk measurement is historical and should not be compared directly because the current output is split across chunks.
+
+The root pipeline now has dedicated unit/integration, browser, UI, container, docs, and automation lanes. A successful technical run may still fail final promotion for CODEOWNER approval. Test reports are retained as workflow artifacts; this text deliberately does not infer exact test totals, skip counts, coverage, or duration from job success alone.
 
 ## Performance measurement plan
 

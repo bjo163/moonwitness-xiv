@@ -48,7 +48,7 @@ These names are documentation only; the current workflows do not read them. Neve
 ## Create and validate an App
 
 1. Create a GitHub App owned by the organization/user that owns the repository. Disable user-to-server permissions and webhook subscriptions unless a separately reviewed feature requires them.
-2. Set repository permissions to the narrow list above, install it only on `bjo163/moonwitness-xi`, and record its owner, purpose, permission review date, and rotation owner in an access-controlled operations record.
+2. Set repository permissions to the narrow list above, install it only on `bjo163/moonwitness-xiv`, and record its owner, purpose, permission review date, and rotation owner in an access-controlled operations record.
 3. Generate a private key once and add it directly as an Actions secret. Never paste it into chat, issue comments, command-line arguments, workflow summaries, or local repository files.
 4. Before enabling writes, use a temporary validation workflow/job with `contents: read` and GitHub's implicit `metadata: read` to request repository metadata. Print only the HTTP success/failure and repository name; do not print token, headers, private key, or full response headers. Delete the temporary validation job after a successful check.
 5. Add only the write scopes required for the production operation, then run the workflow on a controlled manual dispatch. Confirm the installation token expires, cannot access a second repository, and cannot perform an unrelated write.

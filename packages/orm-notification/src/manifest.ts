@@ -21,6 +21,13 @@ export const manifest = defineAddon({
       title: 'Example email notification',
       body: 'Fake adapter example only. No email is sent.',
     }),
+    seed(NotificationTemplate, 'notification.template_whatsapp_inbound', {
+      code: 'whatsapp.inbound_message',
+      channel: 'in_app',
+      locale: 'en',
+      title: 'New WhatsApp message',
+      body: 'A new message arrived in your company WhatsApp inbox.',
+    }),
     ...(['in_app', 'email'] as const).flatMap((channel) =>
       (
         [

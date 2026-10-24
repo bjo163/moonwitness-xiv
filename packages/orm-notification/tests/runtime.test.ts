@@ -70,7 +70,7 @@ describe('notification addon', () => {
       notificationManifest.models.map(({ modelName }) => modelName).sort()
     );
     expect(await NotificationTemplate.query().count({ count: '*' }).first()).toMatchObject({
-      count: 2,
+      count: 3,
     });
     expect(await NotificationPreference.query().count({ count: '*' }).first()).toMatchObject({
       count: 4,

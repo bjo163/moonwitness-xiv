@@ -1,8 +1,10 @@
 import { planMaintainerIssueIntake } from './issue-intake.mjs';
+import { taskIdCaptureSource, taskIdPattern } from './task-ids.mjs';
 
-const taskIdPattern = /^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u;
-const markerPattern =
-  /^<!-- moonwitness-task: ([1-9][0-9]*):(M(?:0|[1-9][0-9]*)\.[0-9]{2}) -->$/gmu;
+const markerPattern = new RegExp(
+  `^<!-- moonwitness-task: ([1-9][0-9]*):${taskIdCaptureSource} -->$`,
+  'gmu'
+);
 const commandPattern = /^\/mw (status|scope|close|reopen)(?: ([a-z_]+))? -- ([\s\S]{1,2000})$/u;
 
 function record(value) {

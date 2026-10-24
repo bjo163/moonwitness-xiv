@@ -69,12 +69,91 @@ export class WorkflowError extends Error {
       | 'DUPLICATE_APPROVAL'
       | 'INSTANCE_NOT_FOUND'
       | 'INSTANCE_CLOSED'
+      | 'INVALID_EVENT_PAYLOAD'
       | 'IDEMPOTENCY_CONFLICT',
     message: string
   ) {
     super(message);
     this.name = 'WorkflowError';
   }
+}
+
+/** JSON-safe data recorded with a workflow event, never exposed by default ORM serialization. */
+export type WorkflowEventPayload =
+  | null
+  | boolean
+  | number
+  | string
+  | WorkflowEventPayload[]
+  | { [key: string]: WorkflowEventPayload };
+
+/** Locked transition data supplied to a transaction-scoped event payload preparer. */
+export interface WorkflowPayloadPreparationContext {
+  readonly trx: Knex.Transaction;
+  readonly instance: Readonly<InstanceRow>;
+  readonly action: string;
+  readonly fromState: string;
+  readonly toState: string;
+  readonly sequence: number;
+  readonly revision: number;
+  readonly actorId: number;
+  readonly role: WorkflowRole;
+  readonly idempotencyKey: string;
+  readonly eventTime: string;
+}
+
+export type WorkflowEventPayloadPreparer = (
+  context: WorkflowPayloadPreparationContext
+) => WorkflowEventPayload | Promise<WorkflowEventPayload>;
+
+type JsonValue = WorkflowEventPayload;
+
+function canonicalJson(value: unknown): string {
+  const normalize = (item: unknown, seen: Set<object>, depth: number): JsonValue => {
+    if (depth > 32)
+      throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload exceeds maximum depth');
+    if (item === null || typeof item === 'string' || typeof item === 'boolean') return item;
+    if (typeof item === 'number' && Number.isFinite(item)) return item;
+    if (Array.isArray(item)) {
+      if (seen.has(item))
+        throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload must be JSON');
+      if (item.length > 4096)
+        throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload has too many array items');
+      seen.add(item);
+      const result = item.map((entry) => normalize(entry, seen, depth + 1));
+      seen.delete(item);
+      return result;
+    }
+    if (typeof item === 'object') {
+      const prototype = Object.getPrototypeOf(item);
+      if ((prototype !== Object.prototype && prototype !== null) || seen.has(item))
+        throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload must be plain JSON');
+      const keys = Object.keys(item);
+      if (keys.length > 4096)
+        throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload has too many object keys');
+      seen.add(item);
+      const result = Object.create(null) as Record<string, JsonValue>;
+      for (const key of keys.sort()) {
+        const descriptor = Object.getOwnPropertyDescriptor(item, key);
+        if (!descriptor || !('value' in descriptor))
+          throw new WorkflowError(
+            'INVALID_EVENT_PAYLOAD',
+            'Event payload must use data properties'
+          );
+        const entry: unknown = descriptor.value;
+        if (entry === undefined)
+          throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload must be JSON');
+        result[key] = normalize(entry, seen, depth + 1);
+      }
+      seen.delete(item);
+      return result;
+    }
+    throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload must be JSON');
+  };
+  const serialized = JSON.stringify(normalize(value, new Set(), 0));
+  if (serialized.length > 65_536)
+    throw new WorkflowError('INVALID_EVENT_PAYLOAD', 'Event payload exceeds maximum size');
+  return serialized;
 }
 
 function isRole(value: unknown): value is WorkflowRole {
@@ -190,6 +269,7 @@ async function insertEvent(
     revision: number;
     idempotencyKey: string;
     comment: string | null;
+    payload?: string | null;
     createdAt: string;
   }
 ): Promise<void> {
@@ -203,6 +283,7 @@ async function insertEvent(
     revision: values.revision,
     idempotency_key: values.idempotencyKey,
     comment: values.comment,
+    payload: values.payload ?? null,
     created_at: values.createdAt,
   });
 }
@@ -366,17 +447,106 @@ export interface TransitionWorkflowInput {
   readonly expectedRevision: number;
   readonly idempotencyKey: string;
   readonly comment?: string;
+  /** Optional canonical JSON attached to this immutable transition event. */
+  readonly payload?: WorkflowEventPayload;
+  /**
+   * Prepare event data from authoritative rows inside the locked transition transaction.
+   * When set, `payload` is required and is persisted as the stable replay-intent value.
+   * The callback runs only for a new transition, never for an idempotent replay.
+   */
+  readonly preparePayload?: WorkflowEventPayloadPreparer;
+  /** Verify immutable rows on an idempotent replay. Must be read-only and transaction-scoped. */
+  readonly verifyPreparedPayloadReplay?: (context: {
+    readonly trx: Knex.Transaction;
+    readonly instance: Readonly<InstanceRow>;
+    readonly event: Readonly<Record<string, unknown>>;
+  }) => void | Promise<void>;
   readonly now?: Date;
+}
+
+const preparedPayloadEnvelopeVersion = 1;
+
+function payloadMatchesReplay(
+  storedPayload: string | null | undefined,
+  staticPayload: string | null,
+  preparedRequest: string | null
+): boolean {
+  if (preparedRequest === null) return (storedPayload ?? null) === staticPayload;
+  if (!storedPayload) return false;
+  try {
+    const stored = JSON.parse(storedPayload) as Record<string, unknown>;
+    if (
+      stored.workflowPreparedPayload !== preparedPayloadEnvelopeVersion ||
+      !('request' in stored) ||
+      !('event' in stored)
+    ) {
+      return false;
+    }
+    return (
+      canonicalJson(stored) === storedPayload && canonicalJson(stored.request) === preparedRequest
+    );
+  } catch {
+    return false;
+  }
+}
+
+const replayVerificationErrors = new WeakMap<Error, { readonly cause: unknown }>();
+
+async function verifyReplay(
+  input: TransitionWorkflowInput,
+  trx: Knex.Transaction,
+  instance: InstanceRow,
+  event: Record<string, unknown>
+): Promise<void> {
+  if (!input.verifyPreparedPayloadReplay) return;
+  try {
+    await input.verifyPreparedPayloadReplay({
+      trx,
+      instance: Object.freeze({ ...instance }),
+      event: Object.freeze({ ...event }),
+    });
+  } catch (error) {
+    const marker = error instanceof Error ? error : new Error('Replay verification failed');
+    replayVerificationErrors.set(marker, { cause: error });
+    throw marker;
+  }
 }
 
 export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInput) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u.test(input.idempotencyKey))
     throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'A valid idempotency key is required');
   const now = input.now ?? new Date();
+  if (input.preparePayload && input.payload === undefined) {
+    throw new WorkflowError(
+      'INVALID_EVENT_PAYLOAD',
+      'A stable request payload is required when preparing an event payload'
+    );
+  }
+  if (input.preparePayload && input.payload === null) {
+    throw new WorkflowError(
+      'INVALID_EVENT_PAYLOAD',
+      'A stable request payload is required when preparing an event payload'
+    );
+  }
+  const staticPayload = input.payload === undefined ? null : canonicalJson(input.payload);
+  const preparedRequest = input.preparePayload ? (staticPayload as string) : null;
+  let payload = input.preparePayload ? null : staticPayload;
   const transaction = db.transaction(async (trx) => {
     const prior = await trx('workflow_events')
       .where({ idempotency_key: input.idempotencyKey })
-      .first('instance_id', 'actor_id', 'action');
+      .first(
+        'instance_id',
+        'actor_id',
+        'action',
+        'payload',
+        'id',
+        'sequence',
+        'revision',
+        'from_state',
+        'to_state',
+        'created_at',
+        'idempotency_key'
+      );
     if (prior) {
       if (
         prior.instance_id !== input.instanceId ||
@@ -387,11 +557,14 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
           'IDEMPOTENCY_CONFLICT',
           'Idempotency key belongs to a different workflow action'
         );
+      if (!payloadMatchesReplay(prior.payload, staticPayload, preparedRequest))
+        throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Idempotent retry has a different payload');
       const existing = await trx<InstanceRow>('workflow_instances')
         .where({ id: prior.instance_id, company_id: input.companyId })
         .first();
       if (!existing)
         throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Event has no matching instance');
+      await verifyReplay(input, trx, existing, prior as Record<string, unknown>);
       return rowFrom(existing);
     }
     const instance = await trx<InstanceRow>('workflow_instances')
@@ -401,7 +574,19 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
     if (!instance) throw new WorkflowError('INSTANCE_NOT_FOUND', 'Workflow instance not found');
     const replay = await trx('workflow_events')
       .where({ idempotency_key: input.idempotencyKey })
-      .first('instance_id', 'actor_id', 'action');
+      .first(
+        'instance_id',
+        'actor_id',
+        'action',
+        'payload',
+        'id',
+        'sequence',
+        'revision',
+        'from_state',
+        'to_state',
+        'created_at',
+        'idempotency_key'
+      );
     if (replay) {
       if (
         replay.instance_id !== input.instanceId ||
@@ -412,6 +597,9 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
           'IDEMPOTENCY_CONFLICT',
           'Idempotency key belongs to a different workflow action'
         );
+      if (!payloadMatchesReplay(replay.payload, staticPayload, preparedRequest))
+        throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Idempotent retry has a different payload');
+      await verifyReplay(input, trx, instance, replay as Record<string, unknown>);
       return rowFrom(instance);
     }
     if (instance.status !== 'active')
@@ -433,6 +621,7 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
       throw new WorkflowError('FORBIDDEN', 'The requester cannot approve their own request');
 
     let toState = transition.to;
+    let approvalDecision: 'approved' | 'rejected' | null = null;
     if (transition.requiredApprovals) {
       const previousApproval = await trx('workflow_approvals')
         .where({
@@ -443,33 +632,50 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
         .first('id');
       if (previousApproval)
         throw new WorkflowError('DUPLICATE_APPROVAL', 'Actor already voted on this transition');
-      await WorkflowApproval.query(trx).insert({
-        instance_id: instance.id,
-        action: transition.action,
-        actor_id: input.actorId,
-        decision: 'approved',
-        comment: input.comment ?? null,
-        decided_at: now.toISOString(),
-      });
       const result = await trx('workflow_approvals')
         .where({ instance_id: instance.id, action: transition.action, decision: 'approved' })
         .count({ count: '*' })
         .first();
       const approvals =
         typeof result?.count === 'number' ? result.count : Number(result?.count ?? 0);
-      if (approvals < transition.requiredApprovals) toState = instance.current_state;
+      if (approvals + 1 < transition.requiredApprovals) toState = instance.current_state;
+      approvalDecision = 'approved';
     } else if (input.action === 'reject') {
+      approvalDecision = 'rejected';
+    }
+
+    const nextRevision = instance.revision + 1;
+    if (input.preparePayload) {
+      const prepared = await input.preparePayload({
+        trx,
+        instance: Object.freeze({ ...instance }),
+        action: transition.action,
+        fromState: instance.current_state,
+        toState,
+        sequence: nextRevision,
+        revision: nextRevision,
+        actorId: input.actorId,
+        role: input.role,
+        idempotencyKey: input.idempotencyKey,
+        eventTime: now.toISOString(),
+      });
+      const preparedEvent = canonicalJson(prepared);
+      payload = canonicalJson({
+        workflowPreparedPayload: preparedPayloadEnvelopeVersion,
+        request: JSON.parse(preparedRequest as string) as WorkflowEventPayload,
+        event: JSON.parse(preparedEvent) as WorkflowEventPayload,
+      });
+    }
+    if (approvalDecision) {
       await WorkflowApproval.query(trx).insert({
         instance_id: instance.id,
         action: transition.action,
         actor_id: input.actorId,
-        decision: 'rejected',
+        decision: approvalDecision,
         comment: input.comment ?? null,
         decided_at: now.toISOString(),
       });
     }
-
-    const nextRevision = instance.revision + 1;
     const status =
       toState === 'approved' ? 'completed' : toState === 'rejected' ? 'rejected' : 'active';
     const patch = await trx('workflow_instances')
@@ -494,6 +700,7 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
       revision: nextRevision,
       idempotencyKey: input.idempotencyKey,
       comment: input.comment ?? null,
+      payload,
       createdAt: now.toISOString(),
     });
     if (transition.notifyStarter && toState === transition.to) {
@@ -517,27 +724,47 @@ export async function transitionWorkflow(db: Knex, input: TransitionWorkflowInpu
     };
   });
   return transaction.catch(async (error) => {
+    const verificationError =
+      error instanceof Error ? replayVerificationErrors.get(error) : undefined;
+    if (verificationError) throw verificationError.cause;
     if (error instanceof WorkflowError) throw error;
-    const prior = await db('workflow_events')
-      .where({ idempotency_key: input.idempotencyKey })
-      .first('instance_id', 'actor_id', 'action');
-    if (!prior) throw error;
-    if (
-      prior.instance_id !== input.instanceId ||
-      prior.actor_id !== input.actorId ||
-      prior.action !== input.action
-    ) {
-      throw new WorkflowError(
-        'IDEMPOTENCY_CONFLICT',
-        'Idempotency key belongs to a different workflow action'
-      );
-    }
-    const existing = await db<InstanceRow>('workflow_instances')
-      .where({ id: prior.instance_id, company_id: input.companyId })
-      .first();
-    if (!existing)
-      throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Event has no matching instance');
-    return rowFrom(existing);
+    return db.transaction(async (trx) => {
+      const prior = await trx('workflow_events')
+        .where({ idempotency_key: input.idempotencyKey })
+        .first(
+          'instance_id',
+          'actor_id',
+          'action',
+          'payload',
+          'id',
+          'sequence',
+          'revision',
+          'from_state',
+          'to_state',
+          'created_at',
+          'idempotency_key'
+        );
+      if (!prior) throw error;
+      if (
+        prior.instance_id !== input.instanceId ||
+        prior.actor_id !== input.actorId ||
+        prior.action !== input.action
+      ) {
+        throw new WorkflowError(
+          'IDEMPOTENCY_CONFLICT',
+          'Idempotency key belongs to a different workflow action'
+        );
+      }
+      if (!payloadMatchesReplay(prior.payload, staticPayload, preparedRequest))
+        throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Idempotent retry has a different payload');
+      const existing = await trx<InstanceRow>('workflow_instances')
+        .where({ id: prior.instance_id, company_id: input.companyId })
+        .first();
+      if (!existing)
+        throw new WorkflowError('IDEMPOTENCY_CONFLICT', 'Event has no matching instance');
+      await verifyReplay(input, trx, existing, prior as Record<string, unknown>);
+      return rowFrom(existing);
+    });
   });
 }
 

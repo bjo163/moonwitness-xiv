@@ -1,0 +1,32 @@
+{
+  "name": "@moonwitness/corpus",
+  "version": "1.0.0-rc.1",
+  "description": "Deterministic offline corpus ingestion",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./recipe-schema": "./schemas/ingestion-recipe.schema.json"
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@moonwitness/knowledge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "~5.7.3",
+    "vitest": "^5.0.3"
+  }
+}

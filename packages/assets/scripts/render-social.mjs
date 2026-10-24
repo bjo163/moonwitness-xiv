@@ -1,4 +1,4 @@
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, copyFile } from 'node:fs/promises';
 import { Buffer } from 'node:buffer';
 import { dirname, resolve } from 'node:path';
 import { stdout } from 'node:process';
@@ -10,6 +10,7 @@ const repositoryRoot = resolve(packageRoot, '../..');
 const brandRoot = resolve(packageRoot, 'brand');
 const proofPath = resolve(repositoryRoot, 'docs/design/assets/brand-identity-contact-sheet.png');
 const socialPath = resolve(brandRoot, 'social-card.png');
+const docsSocialPath = resolve(repositoryRoot, 'docs/assets/moonwitness/brand/social-card.png');
 
 function dataUrl(svg) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
@@ -27,6 +28,8 @@ try {
   );
   await socialPage.locator('img').evaluate((image) => image.decode());
   await socialPage.screenshot({ path: socialPath, animations: 'disabled' });
+  await mkdir(dirname(docsSocialPath), { recursive: true });
+  await copyFile(socialPath, docsSocialPath);
   await socialPage.close();
 
   const previews = await Promise.all(
@@ -55,7 +58,8 @@ try {
       const samples = scaleSamples
         ? `<div><img src="${src}" style="width:16px;height:16px" alt=""><span>16px</span></div>
            <div><img src="${src}" style="width:24px;height:24px" alt=""><span>24px</span></div>
-           <div><img src="${src}" style="width:32px;height:32px" alt=""><span>32px</span></div>`
+           <div><img src="${src}" style="width:32px;height:32px" alt=""><span>32px</span></div>
+           <div><img src="${src}" style="width:48px;height:48px" alt=""><span>48px</span></div>`
         : '<span>native proportions</span>';
       return `<article><h2>${filename}</h2><div class="samples">${samples}
         <img class="large" src="${src}" alt="${filename}">
@@ -69,8 +73,8 @@ try {
   await previewPage.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
     *{box-sizing:border-box}body{margin:0;padding:24px;background:#e8e4d9;color:#0d0d0d;font:14px Arial,sans-serif}
     h1{margin:0 0 18px;font-size:22px}main{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    article{min-height:112px;padding:10px 12px;border:2px solid #0d0d0d;background:#fffdf6;box-shadow:3px 3px #0d0d0d}
-    article:nth-child(even){background:#0e0e10;color:#fffdf6}.samples{display:flex;align-items:center;gap:18px;height:56px}
+    article{min-height:124px;padding:10px 12px;border:2px solid #0d0d0d;background:#fffdf6;box-shadow:3px 3px #0d0d0d}
+    article:nth-child(even){background:#0e0e10;color:#fffdf6}.samples{display:flex;align-items:center;gap:18px;height:64px}
     .samples div{display:flex;align-items:center;gap:4px;font-size:10px}.samples .large{max-width:240px;max-height:42px;margin-left:auto}
     </style></head><body><h1>MoonWitness brand assets — scale and theme check</h1><main>${rows}</main></body></html>`);
   await previewPage.locator('main article').last().waitFor();

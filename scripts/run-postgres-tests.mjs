@@ -33,7 +33,20 @@ await mkdir(reportDirectory, { recursive: true });
 
 for (const args of [
   ...(built ? [] : [['build']]),
+  [
+    '--filter',
+    '@moonwitness/orm-knowledge',
+    'exec',
+    'vitest',
+    'run',
+    'tests/postgres.integration.test.ts',
+    'tests/research-actor-identity.postgres.integration.test.ts',
+    'tests/privacy-revocation.postgres.integration.test.ts',
+    'tests/research-suggestion-store.postgres.integration.test.ts',
+    '--reporter=default',
+  ],
   ['--filter', '@moonwitness/api', 'exec', 'tsc', '--noEmit', '-p', 'tsconfig.integration.json'],
+  // These suites share one PostgreSQL server; serial files avoid lock-test timeout contention.
   [
     '--filter',
     '@moonwitness/api',
@@ -42,6 +55,9 @@ for (const args of [
     'run',
     'tests/postgres.integration.test.ts',
     'tests/postgres.performance.integration.test.ts',
+    'tests/local-retrieval.postgres.integration.test.ts',
+    'tests/local-ai-suggestion.postgres.integration.test.ts',
+    '--no-file-parallelism',
     '--reporter=default',
     '--reporter=junit',
     `--outputFile.junit=${resolve(reportDirectory, 'postgres.xml')}`,

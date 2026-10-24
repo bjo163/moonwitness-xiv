@@ -39,6 +39,19 @@ test('README partial update preserves every byte outside the generated block', (
   assert.ok(updated.includes('| `@moonwitness/api` | App |'));
 });
 
+test('a line-feed generated block adopts the CRLF README instead of mixing line endings', () => {
+  const prefix = `# Manual introduction\r\n${beginMarker}\r\n`;
+  const suffix = `${endMarker}\r\n## Manual quickstart\r\n`;
+  const source = `${prefix}old generated content\r\n${suffix}`;
+  const updated = replaceGeneratedReadmeBlock(source, renderReadmeReference(metadata));
+  assert.equal(updated.includes('\r\n'), true);
+  const uniform = updated
+    .split('\n')
+    .every((line, index, all) => index === all.length - 1 || line.endsWith('\r'));
+  assert.equal(uniform, true);
+  assert.equal(replaceGeneratedReadmeBlock(updated, renderReadmeReference(metadata)), updated);
+});
+
 test('missing, duplicate, reversed, or inline markers fail without returning a rewrite', () => {
   assert.throws(() => replaceGeneratedReadmeBlock('manual text', 'generated'), /exactly one/u);
   assert.throws(

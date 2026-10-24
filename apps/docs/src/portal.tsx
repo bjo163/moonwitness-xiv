@@ -57,11 +57,11 @@ type RoadmapProgress = {
 
 const guideBundle: GuideBundle = guideBundleSource;
 const roadmapProgress: RoadmapProgress = roadmapProgressSource;
-const repository = 'https://github.com/bjo163/moonwitness-xi';
+const repository = 'https://github.com/bjo163/moonwitness-xiv';
 const sourceRef = import.meta.env.MW_DOCS_SOURCE_REF ?? 'main';
 const applicationVersion = import.meta.env.MW_DOCS_APPLICATION_VERSION;
 const docsChannel = import.meta.env.MW_DOCS_CHANNEL ?? 'preview';
-const uiCatalogPath = '/moonwitness-xi/components/';
+const uiCatalogPath = '/moonwitness-xiv/components/';
 const pages: SearchPageData[] = guideBundle.sections.flatMap((section) =>
   section.items.map((item) => ({
     ...item,

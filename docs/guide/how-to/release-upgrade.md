@@ -40,6 +40,32 @@ sensitif memerlukan review CODEOWNER yang fresh. Version bump/changelog/tag/imag
 diatur oleh release workflow dan keputusan stable release eksplisit; mendorong kode ke `dev` sendiri
 bukan stable release atau production deployment.
 
+### Siklus release otomatis
+
+`release-orchestrate.yml` dijalankan setelah CI `push` pada `main` selesai atau lewat dispatch manual
+yang hanya menerima `main`. Workflow ini memverifikasi source SHA masih sama dengan `main` saat ini,
+memakai checkout exact SHA, dan mewajibkan `ci-gate` sukses terbaru pada SHA tersebut sebelum
+menyentuh tag. Baseline tag wajib sudah memiliki GitHub Release yang published; tag tanpa release
+memblokir orchestration dengan status `baseline-unpublished` dan tidak boleh dihapus, dipindah, atau
+di-retag untuk melewatinya.
+
+1. **Release candidate:** dispatch **Orchestrate release** dengan `channel=rc` atau tunggu CI `main`
+   berikutnya. Orchestrator menyiapkan versi di `dev`; preparation push memicu CI dan promotion
+   secara eksplisit karena push `GITHUB_TOKEN` tidak memicu workflow. Setelah PR promosi di-merge dan
+   CI `main` selesai, orchestrator membuat tag pada SHA `main` hasil verifikasi lalu men-dispatch
+   publication. Publikasi RC tidak mengubah alias `latest`.
+2. **Stable:** setelah RC terakhir published, dispatch `channel=stable` dengan
+   `confirm_version=vX.Y.Z` untuk menyiapkan versi final di `dev`. Setelah promosi di-merge, dispatch
+   lagi dengan nilai konfirmasi yang sama. Job stable berjalan di environment `release`;
+   `release.yml` memeriksa ulang nilai konfirmasi sebelum menulis registry.
+3. **Hotfix:** dispatch `channel=hotfix`. Channel ini hanya menerima perubahan patch dan tetap
+   memerlukan konfirmasi stable sebelum persiapan dan publikasi.
+
+Jangan mengandalkan push bot atau tag yang dibuat `GITHUB_TOKEN` untuk memulai workflow lain.
+Periksa hasil run dispatch dan SHA head yang tepat; status lokal bukan bukti publikasi hosted. Detail
+kontrak ada di [release artifact flow](../../operations/release-artifact-flow.md) dan
+[workflow trigger map](../../operations/workflow-triggers.md).
+
 Lihat [master roadmap](../../../ROADMAP.md) untuk status readiness aktual. Jangan menganggap static
 UI catalog sebagai docs portal yang telah dipublikasikan; aktivasi Pages memiliki acceptance M6.06
 dan M6.07 sendiri.

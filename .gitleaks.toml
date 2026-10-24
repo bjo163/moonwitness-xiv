@@ -10,6 +10,7 @@ regexes = [
   '''^\s*"tokensSha256": "269a6e000da6fa288380cf36ec127df09cc86d6a38a1d4613a975b54d3664d5a"$''',
   '''^\s*idempotencyKey: 'duplicate-vote-0001',$''',
   '''^\s*idempotencyKey: 'reject-decision-0001',$''',
+  '''^\s*idempotency_key: 'synthetic-resurrection-revoke-001',\r?$''',
   '''^\s*\/\^\\s\*"tokensSha256": "269a6e000da6fa288380cf36ec127df09cc86d6a38a1d4613a975b54d3664d5a"\$\/u,$''',
   '''^\s*\/\^\\s\*idempotencyKey: 'duplicate-vote-0001',\$\/u,$''',
   '''^\s*\/\^\\s\*idempotencyKey: 'reject-decision-0001',\$\/u,$''',
@@ -21,8 +22,8 @@ regexes = [
 
 [[rules]]
 id = "moonwitness-runtime-secret"
-description = "High-entropy MoonWitness runtime authentication or metrics secret"
-regex = '''(?i)^[ \t]*(?:export[ \t]+)?(?:JWT_SECRET|METRICS_TOKEN)[ \t]*[:=][ \t]*["']?([A-Za-z0-9_-]{32,})["']?[ \t]*(?:#.*)?$'''
+description = "High-entropy MoonWitness runtime authentication, metrics, or WhatsApp credential"
+regex = '''(?i)^[ \t]*(?:export[ \t]+)?(?:JWT_SECRET|METRICS_TOKEN|WHATSAPP_INTERNAL_TOKEN|WHATSAPP_SESSION_KEY)[ \t]*[:=][ \t]*["']?([A-Za-z0-9_+/=-]{32,})["']?[ \t]*(?:#.*)?\r?$'''
 secretGroup = 1
 entropy = 4.2
-keywords = ["JWT_SECRET", "METRICS_TOKEN"]
+keywords = ["JWT_SECRET", "METRICS_TOKEN", "WHATSAPP_INTERNAL_TOKEN", "WHATSAPP_SESSION_KEY"]

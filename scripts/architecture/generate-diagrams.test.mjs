@@ -5,12 +5,20 @@ import { URL } from 'node:url';
 import {
   createModelGraph,
   createWorkspaceGraph,
+  hashSources,
   hashWorkspaceGraph,
   renderModelSvg,
   renderSequenceSvg,
   renderWorkspaceSvg,
   validateFlows,
 } from './generate-diagrams.mjs';
+
+test('source fingerprints are stable across LF and CRLF checkouts', () => {
+  assert.equal(
+    hashSources([{ path: 'packages/addon/src/manifest.ts', contents: 'export {}\n' }]),
+    hashSources([{ path: 'packages/addon/src/manifest.ts', contents: 'export {}\r\n' }])
+  );
+});
 
 test('workspace graph keeps only known internal dependencies and records their source', () => {
   const graph = createWorkspaceGraph([

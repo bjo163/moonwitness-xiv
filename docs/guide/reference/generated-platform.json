@@ -23,6 +23,7 @@
         "reset:superadmin-password",
         "revoke:auth-sessions",
         "start",
+        "start:built",
         "test",
         "visual-audit:server"
       ]
@@ -31,7 +32,7 @@
       "name": "@moonwitness/board",
       "version": "1.0.0-rc.1",
       "directory": "apps/board",
-      "scripts": ["build", "dev", "lint", "preview", "typecheck"]
+      "scripts": ["build", "dev", "lint", "preview", "start", "start:built", "typecheck"]
     },
     {
       "name": "@moonwitness/docs",
@@ -49,7 +50,7 @@
       "name": "@moonwitness/assets",
       "version": "1.0.0-rc.1",
       "directory": "packages/assets",
-      "scripts": []
+      "scripts": ["artwork:prepare", "brand:prepare", "fonts:prepare"]
     },
     {
       "name": "@moonwitness/auth",
@@ -64,6 +65,12 @@
       "scripts": ["build", "test"]
     },
     {
+      "name": "@moonwitness/corpus",
+      "version": "1.0.0-rc.1",
+      "directory": "packages/corpus",
+      "scripts": ["build", "test", "typecheck"]
+    },
+    {
       "name": "@moonwitness/eslint-config",
       "version": "1.0.0-rc.1",
       "directory": "packages/eslint-config",
@@ -74,6 +81,18 @@
       "version": "1.0.0-rc.1",
       "directory": "packages/jobs",
       "scripts": ["build", "test"]
+    },
+    {
+      "name": "@moonwitness/knowledge",
+      "version": "1.0.0-rc.1",
+      "directory": "packages/knowledge",
+      "scripts": ["build", "test", "typecheck"]
+    },
+    {
+      "name": "@moonwitness/local-ai",
+      "version": "1.0.0-rc.1",
+      "directory": "packages/local-ai",
+      "scripts": ["build", "test", "typecheck"]
     },
     {
       "name": "@moonwitness/logger",
@@ -97,6 +116,12 @@
       "name": "@moonwitness/orm-integration",
       "version": "1.0.0-rc.1",
       "directory": "packages/orm-integration",
+      "scripts": ["build", "test"]
+    },
+    {
+      "name": "@moonwitness/orm-knowledge",
+      "version": "1.0.0-rc.1",
+      "directory": "packages/orm-knowledge",
       "scripts": ["build", "test"]
     },
     {
@@ -130,6 +155,12 @@
       "scripts": ["build", "test"]
     },
     {
+      "name": "@moonwitness/research",
+      "version": "1.0.0-rc.1",
+      "directory": "packages/research",
+      "scripts": ["build", "test", "typecheck"]
+    },
+    {
       "name": "@moonwitness/types",
       "version": "1.0.0-rc.1",
       "directory": "packages/types",
@@ -153,15 +184,18 @@
       "reset:superadmin-password": "tsx src/commands/reset-superadmin-password.ts",
       "revoke:auth-sessions": "tsx src/commands/revoke-auth-sessions.ts",
       "start": "node dist/server.js",
+      "start:built": "node dist/server.js",
       "test": "vitest run",
       "visual-audit:server": "tsx src/commands/visual-audit-server.ts"
     },
     "@moonwitness/board": {
-      "build": "tsc -b && vite build",
-      "dev": "vite",
+      "build": "node ../../scripts/copy-board-public-assets.mjs && next build",
+      "dev": "node ../../scripts/copy-board-public-assets.mjs && next dev -p 5173",
       "lint": "oxlint",
-      "preview": "vite preview",
-      "typecheck": "tsc -b"
+      "preview": "node ../../scripts/prepare-board-standalone.mjs && node .next/standalone/apps/board/server.js",
+      "start": "node ../../scripts/prepare-board-standalone.mjs && node ../../scripts/start-board.mjs",
+      "start:built": "node ../../scripts/prepare-board-standalone.mjs && node ../../scripts/start-board.mjs",
+      "typecheck": "tsc --noEmit"
     },
     "@moonwitness/docs": {
       "dev": "vite",
@@ -178,6 +212,11 @@
       "preview": "vite preview",
       "test": "playwright test"
     },
+    "@moonwitness/assets": {
+      "artwork:prepare": "node scripts/prepare-artwork.mjs",
+      "brand:prepare": "node scripts/prepare-brand-master.mjs",
+      "fonts:prepare": "node scripts/prepare-fonts.mjs"
+    },
     "@moonwitness/auth": {
       "build": "tsc",
       "test": "tsc -p tsconfig.check.json && vitest run"
@@ -186,9 +225,24 @@
       "build": "tsc",
       "test": "tsc -p tsconfig.check.json && vitest run"
     },
+    "@moonwitness/corpus": {
+      "build": "tsc -p tsconfig.json",
+      "test": "vitest run",
+      "typecheck": "tsc --noEmit -p tsconfig.test.json"
+    },
     "@moonwitness/jobs": {
       "build": "tsc",
       "test": "tsc -p tsconfig.check.json && vitest run"
+    },
+    "@moonwitness/knowledge": {
+      "build": "tsc -p tsconfig.json",
+      "test": "vitest run",
+      "typecheck": "tsc --noEmit -p tsconfig.test.json"
+    },
+    "@moonwitness/local-ai": {
+      "build": "tsc -p tsconfig.json",
+      "test": "vitest run",
+      "typecheck": "tsc --noEmit -p tsconfig.test.json"
     },
     "@moonwitness/logger": {
       "build": "tsc",
@@ -205,6 +259,10 @@
     "@moonwitness/orm-integration": {
       "build": "tsc",
       "test": "tsc -p tsconfig.check.json && vitest run"
+    },
+    "@moonwitness/orm-knowledge": {
+      "build": "tsc",
+      "test": "vitest run"
     },
     "@moonwitness/orm-notification": {
       "build": "tsc",
@@ -226,6 +284,11 @@
       "build": "tsc",
       "test": "tsc -p tsconfig.check.json && vitest run"
     },
+    "@moonwitness/research": {
+      "build": "tsc -p tsconfig.json",
+      "test": "tsc -p tsconfig.test.json && vitest run",
+      "typecheck": "tsc --noEmit -p tsconfig.test.json"
+    },
     "@moonwitness/types": {
       "build": "tsc",
       "test": "pnpm build && node --test tests/*.test.mjs"
@@ -235,12 +298,13 @@
       "test": "pnpm build && node --test tests/*.test.mjs"
     },
     "root": {
-      "architecture:check": "pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && pnpm --filter @moonwitness/orm-workflow build && node scripts/architecture/generate-diagrams.mjs --check",
+      "architecture:check": "pnpm --filter @moonwitness/knowledge build && pnpm --filter @moonwitness/corpus build && pnpm --filter @moonwitness/research build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-knowledge build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && node scripts/architecture/generate-diagrams.mjs --check",
       "architecture:check:built": "node scripts/architecture/generate-diagrams.mjs --check",
-      "architecture:generate": "pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && pnpm --filter @moonwitness/orm-workflow build && node scripts/architecture/generate-diagrams.mjs",
+      "architecture:generate": "pnpm --filter @moonwitness/knowledge build && pnpm --filter @moonwitness/corpus build && pnpm --filter @moonwitness/research build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-knowledge build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && node scripts/architecture/generate-diagrams.mjs",
+      "assets:check:bounds": "node packages/assets/scripts/check-svg-bounds.mjs",
       "assets:check:docs": "node scripts/export-doc-assets.mjs --check",
       "assets:export:docs": "node scripts/export-doc-assets.mjs",
-      "assets:generate": "node packages/assets/scripts/generate.mjs && node packages/assets/scripts/generate-illustrations.mjs && node scripts/export-doc-assets.mjs",
+      "assets:generate": "pnpm --filter @moonwitness/assets brand:prepare && node packages/assets/scripts/generate.mjs && node packages/assets/scripts/generate-illustrations.mjs && node packages/assets/scripts/generate-sounds.mjs && pnpm --filter @moonwitness/assets fonts:prepare && pnpm --filter @moonwitness/assets artwork:prepare && node scripts/export-doc-assets.mjs && node scripts/copy-board-public-assets.mjs",
       "assets:generate:illustrations": "node packages/assets/scripts/generate-illustrations.mjs && node scripts/export-doc-assets.mjs",
       "assets:render": "node packages/assets/scripts/render-social.mjs",
       "assets:validate": "node packages/assets/scripts/validate.mjs",
@@ -253,26 +317,29 @@
       "automation:check:ubuntu-runner-candidate": "node scripts/check-ubuntu-runner-candidate.mjs",
       "automation:check:workflow-trust": "node scripts/check-workflow-checkout-trust.mjs",
       "board:budget": "node scripts/check-board-bundle.mjs",
+      "board:ui:check": "node --test scripts/check-board-shared-ui.test.mjs && node scripts/check-board-shared-ui.mjs",
       "board:visual:update": "pnpm test:e2e --grep 'responsive screen audit|responsive protected screens' --update-snapshots",
       "build": "node scripts/ci/build-workspace.mjs",
       "ci:affected": "node scripts/select-affected.mjs",
       "dependency:candidate": "node scripts/dependency-candidate.mjs",
       "dependency:plan": "node scripts/dependency-update-plan.mjs",
-      "dev": "pnpm --filter @moonwitness/api dev",
+      "dev": "pnpm --filter @moonwitness/ui build && node scripts/run-local-services.mjs dev",
+      "dev:api": "pnpm --filter @moonwitness/api dev",
       "dev:board": "pnpm --filter @moonwitness/board dev",
       "docs:build": "pnpm docs:check && node scripts/docs/build-guide.mjs && pnpm --filter @moonwitness/docs portal:build",
       "docs:build:built": "pnpm docs:check:built && node scripts/docs/build-guide.mjs && pnpm --filter @moonwitness/docs portal:build:built",
       "docs:change:classify": "node scripts/classify-docs-change.mjs",
-      "docs:check": "pnpm --filter @moonwitness/types build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && node --test scripts/docs/generate-reference.test.mjs scripts/docs/update-readme.test.mjs scripts/docs/build-guide.test.mjs && node scripts/docs/generate-reference.mjs --check && node scripts/docs/update-readme.mjs --check && pnpm docs:links && pnpm docs:examples:check:built",
+      "docs:check": "pnpm --filter @moonwitness/types build && pnpm --filter @moonwitness/knowledge build && pnpm --filter @moonwitness/corpus build && pnpm --filter @moonwitness/research build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && pnpm --filter @moonwitness/orm-knowledge build && node --test scripts/docs/generate-reference.test.mjs scripts/docs/update-readme.test.mjs scripts/docs/build-guide.test.mjs && node scripts/docs/generate-reference.mjs --check && node scripts/docs/update-readme.mjs --check && pnpm docs:links && pnpm docs:examples:check:built",
       "docs:check:built": "node --test scripts/docs/generate-reference.test.mjs scripts/docs/update-readme.test.mjs scripts/docs/build-guide.test.mjs && node scripts/docs/generate-reference.mjs --check && node scripts/docs/update-readme.mjs --check && pnpm docs:links && pnpm docs:examples:check:built",
       "docs:examples:check": "pnpm --filter @moonwitness/orm build && pnpm exec tsc --noEmit -p packages/orm/examples/tsconfig.json && pnpm --filter @moonwitness/orm exec vitest run tests/addon.test.ts",
       "docs:examples:check:built": "pnpm exec tsc --noEmit -p packages/orm/examples/tsconfig.json && pnpm --filter @moonwitness/orm exec vitest run tests/addon.test.ts",
-      "docs:generate": "pnpm --filter @moonwitness/types build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && node scripts/docs/generate-reference.mjs && node scripts/docs/update-readme.mjs",
+      "docs:generate": "pnpm --filter @moonwitness/types build && pnpm --filter @moonwitness/knowledge build && pnpm --filter @moonwitness/corpus build && pnpm --filter @moonwitness/research build && pnpm --filter @moonwitness/orm build && pnpm --filter @moonwitness/orm-base build && pnpm --filter @moonwitness/auth build && pnpm --filter @moonwitness/jobs build && pnpm --filter @moonwitness/orm-integration build && pnpm --filter @moonwitness/orm-notification build && pnpm --filter @moonwitness/orm-organization build && pnpm --filter @moonwitness/orm-workflow build && pnpm --filter @moonwitness/orm-request build && pnpm --filter @moonwitness/orm-storage build && pnpm --filter @moonwitness/orm-knowledge build && node scripts/docs/generate-reference.mjs && node scripts/docs/update-readme.mjs",
       "docs:links": "node scripts/check-docs.mjs && node scripts/check-doc-navigation.mjs && node --test scripts/check-docs.test.mjs scripts/check-doc-navigation.test.mjs scripts/check-external-doc-links.test.mjs",
       "docs:links:external": "node scripts/check-external-doc-links.mjs",
       "docs:publication:check": "node scripts/check-docs-publication.mjs apps/docs/dist",
       "format": "prettier --write .",
       "format:check": "prettier --check .",
+      "hooks:install": "node scripts/setup-git-hooks.mjs",
       "jobs:outbox": "pnpm --filter @moonwitness/api jobs:outbox",
       "jobs:scheduler": "pnpm --filter @moonwitness/api jobs:scheduler",
       "jobs:worker": "pnpm --filter @moonwitness/api jobs:worker",
@@ -288,6 +355,7 @@
       "release:classify": "node scripts/classify-release-commits.mjs",
       "release:dry-run": "node scripts/release-dry-run.mjs",
       "release:plan": "node scripts/release-plan.mjs",
+      "release:preflight:built": "node scripts/release-preflight.mjs",
       "release:prepare": "node scripts/prepare-release.mjs",
       "release:verify-attestations": "node scripts/verify-release-attestations.mjs",
       "reset:superadmin-password": "pnpm --filter @moonwitness/api reset:superadmin-password",
@@ -295,6 +363,8 @@
       "roadmap:issues:audit": "node scripts/roadmap/audit-issues.mjs",
       "roadmap:issues:plan": "node scripts/roadmap/sync-issues.mjs",
       "roadmap:progress": "node scripts/roadmap/progress-dashboard.mjs",
+      "start": "node scripts/run-local-services.mjs start",
+      "start:built": "node scripts/run-local-services.mjs start:built",
       "test": "pnpm test:unit",
       "test:action-pins": "node --test scripts/check-action-pins.test.mjs",
       "test:action-tags": "node --test scripts/check-action-tag-pins.test.mjs",
@@ -306,7 +376,7 @@
       "test:assets:source": "pnpm assets:validate && node --test packages/assets/tests/*.test.mjs scripts/export-doc-assets.test.mjs",
       "test:board-budget": "node --test scripts/check-board-bundle.test.mjs",
       "test:board-csv": "node --experimental-strip-types --test scripts/board/csv-export.test.mjs",
-      "test:ci-gate": "node --test scripts/ci-gate.test.mjs",
+      "test:ci-gate": "node --test scripts/ci-gate.test.mjs scripts/review-ci-evidence.test.mjs",
       "test:coverage-policy": "node --test scripts/check-coverage.test.mjs",
       "test:dependency-candidate": "node --test scripts/dependency-candidate.test.mjs scripts/smoke-containers.test.mjs",
       "test:dependency-plan": "node --test scripts/dependency-update-plan.test.mjs",
@@ -314,31 +384,34 @@
       "test:docs-portal": "pnpm --filter @moonwitness/docs test",
       "test:docs-publication": "node --test scripts/check-docs-publication.test.mjs scripts/write-docs-metadata.test.mjs scripts/classify-docs-change.test.mjs scripts/main-ci-policy.test.mjs scripts/maintenance-incident.test.mjs scripts/docs/versioned-site.test.mjs",
       "test:e2e": "node scripts/run-e2e.mjs",
+      "test:e2e:built": "node scripts/run-e2e.mjs --built",
       "test:e2e:diagnostics": "node --test scripts/e2e-preflight-report.test.mjs scripts/summarize-playwright-failures.test.mjs scripts/summarize-junit-failures.test.mjs scripts/ci-diagnostics.test.mjs scripts/ci/build-workspace-package.test.mjs scripts/ci/workspace-build-diagnostics.test.mjs scripts/docker-workspace-manifests.test.mjs scripts/package-manager.test.mjs scripts/ci-build-reuse.test.mjs",
       "test:e2e:visual": "pnpm --filter @moonwitness/board exec playwright test e2e/visual-audit.spec.ts --config playwright.visual.config.ts",
       "test:e2e:visual:matrix": "node scripts/run-visual-matrix.mjs",
-      "test:expected-ref": "node --test scripts/push-expected-ref.test.mjs",
+      "test:expected-ref": "node --test scripts/push-expected-ref.test.mjs scripts/sync-main-to-dev.test.mjs",
       "test:flaky-policy": "node --test scripts/flaky-policy.test.mjs scripts/playwright-flake-reporter.test.mjs",
       "test:integration": "node scripts/run-postgres-tests.mjs",
       "test:integration:built": "node scripts/run-postgres-tests.mjs --built",
+      "test:knowledge-cli:built": "node --test scripts/knowledge/validate.test.mjs scripts/knowledge/snapshot.test.mjs scripts/knowledge/legacy-inventory.test.mjs scripts/knowledge/ingest.test.mjs scripts/knowledge/revelation-identity.test.mjs scripts/knowledge/rebuild.test.mjs",
       "test:maintenance-incidents": "node --test scripts/maintenance-incident.test.mjs",
       "test:package-manager": "node --test scripts/package-manager.test.mjs",
       "test:platform-audit": "node --test scripts/platform-audit.test.mjs",
       "test:promotion-policy": "node --test scripts/git-range.test.mjs scripts/promotion-risk.test.mjs scripts/promotion-approval.test.mjs",
       "test:promotion-report": "node --test scripts/render-promotion-report.test.mjs",
-      "test:release-asset-reconcile": "node --test scripts/reconcile-release-assets.test.mjs",
+      "test:release-asset-reconcile": "node --test scripts/reconcile-release-assets.test.mjs scripts/docs/reconcile-versioned-docs-asset.test.mjs",
       "test:release-classification": "node --test scripts/release-classification.test.mjs",
       "test:release-dry-run": "node --test scripts/release-dry-run.test.mjs",
       "test:release-image-publish": "node --test scripts/publish-release-image.test.mjs",
       "test:release-latest-policy": "node --test scripts/release-latest-policy.test.mjs",
+      "test:release-orchestration": "node --test scripts/release-orchestrator.test.mjs scripts/create-release-tag.test.mjs scripts/release-orchestrate-workflow.test.mjs",
       "test:release-plan": "node --test scripts/release-plan.test.mjs",
       "test:release-prepare": "node --test scripts/prepare-release.test.mjs",
       "test:release-prepare-workflow": "node --test scripts/release-prepare-workflow.test.mjs",
       "test:release-verify-attestations": "node --test scripts/verify-release-attestations.test.mjs",
-      "test:release-workflow": "node --test scripts/release-workflow.test.mjs scripts/release-loop.test.mjs",
+      "test:release-workflow": "node --test scripts/release-workflow.test.mjs scripts/release-loop.test.mjs scripts/github-release-lifecycle.test.mjs scripts/release-artifact-identity.test.mjs",
       "test:render-changelog": "node --test scripts/render-changelog.test.mjs",
       "test:restore-drill": "node scripts/verify-application-restore.mjs",
-      "test:roadmap": "node --test scripts/roadmap/validate-roadmap.test.mjs scripts/roadmap/sync-issues.test.mjs scripts/roadmap/changed-task-ids.test.mjs scripts/roadmap/select-issue-sync-batch.test.mjs scripts/roadmap/lifecycle.test.mjs scripts/roadmap/lifecycle-snapshot.test.mjs scripts/roadmap/collect-lifecycle-snapshot.test.mjs scripts/roadmap/issue-intake.test.mjs scripts/roadmap/progress-dashboard.test.mjs scripts/roadmap/progress-workflow.test.mjs scripts/roadmap/audit-issues.test.mjs",
+      "test:roadmap": "node --test scripts/roadmap/validate-roadmap.test.mjs scripts/roadmap/sync-issues.test.mjs scripts/roadmap/changed-task-ids.test.mjs scripts/roadmap/select-issue-sync-batch.test.mjs scripts/roadmap/lifecycle.test.mjs scripts/roadmap/lifecycle-snapshot.test.mjs scripts/roadmap/collect-lifecycle-snapshot.test.mjs scripts/roadmap/resume-stale-issue-sync.test.mjs scripts/roadmap/issue-sync-continuation.test.mjs scripts/roadmap/issue-sync-workflow.test.mjs scripts/roadmap/issue-intake.test.mjs scripts/roadmap/progress-dashboard.test.mjs scripts/roadmap/progress-workflow.test.mjs scripts/roadmap/audit-issues.test.mjs",
       "test:secrets": "node --test scripts/check-gitleaks-config.test.mjs",
       "test:security-policy": "node --test scripts/security-scan-policy.test.mjs scripts/check-trivy-sarif.test.mjs",
       "test:ubuntu-runner-candidate": "node --test scripts/check-ubuntu-runner-candidate.test.mjs",
@@ -347,9 +420,10 @@
       "test:ui-catalog": "pnpm --filter @moonwitness/ui-catalog build && pnpm --filter @moonwitness/ui-catalog test",
       "test:unit": "pnpm build && pnpm test:unit:built",
       "test:unit-runner-policy": "node --test scripts/unit-runner-policy.test.mjs",
-      "test:unit:built": "pnpm --filter @moonwitness/types test && pnpm --filter @moonwitness/api exec vitest run --exclude tests/postgres.integration.test.ts --exclude tests/postgres.performance.integration.test.ts && pnpm --filter @moonwitness/auth test && pnpm --filter @moonwitness/client test && pnpm --filter @moonwitness/jobs test && pnpm --filter @moonwitness/logger test && pnpm --filter @moonwitness/orm test && pnpm test:board-csv && pnpm test:addon-conformance && pnpm --filter @moonwitness/orm-base test && pnpm --filter @moonwitness/orm-integration test && pnpm --filter @moonwitness/orm-notification test && pnpm --filter @moonwitness/orm-organization test && pnpm --filter @moonwitness/orm-request test && pnpm --filter @moonwitness/orm-storage test && pnpm --filter @moonwitness/orm-workflow test && pnpm test:assets && pnpm test:ui && pnpm test:platform-audit && pnpm test:board-budget && pnpm board:budget && pnpm test:release-workflow && pnpm test:release-latest-policy && pnpm test:release-image-publish && pnpm test:release-asset-reconcile && pnpm test:release-dry-run && pnpm test:release-verify-attestations && pnpm test:expected-ref && pnpm test:release-plan && pnpm test:versioned-docs",
+      "test:unit:built": "pnpm --filter @moonwitness/types test && pnpm --filter @moonwitness/api exec vitest run --exclude tests/postgres.integration.test.ts --exclude tests/postgres.performance.integration.test.ts && pnpm --filter @moonwitness/auth test && pnpm --filter @moonwitness/client test && pnpm --filter @moonwitness/jobs test && pnpm --filter @moonwitness/logger test && pnpm --filter @moonwitness/orm test && pnpm test:board-csv && pnpm test:addon-conformance && pnpm --filter @moonwitness/orm-base test && pnpm --filter @moonwitness/orm-integration test && pnpm --filter @moonwitness/orm-knowledge test && pnpm --filter @moonwitness/orm-notification test && pnpm --filter @moonwitness/orm-organization test && pnpm --filter @moonwitness/orm-request test && pnpm --filter @moonwitness/orm-storage test && pnpm --filter @moonwitness/orm-workflow test && pnpm --filter @moonwitness/knowledge typecheck && pnpm --filter @moonwitness/knowledge test && pnpm --filter @moonwitness/corpus typecheck && pnpm --filter @moonwitness/corpus test && pnpm --filter @moonwitness/research typecheck && pnpm --filter @moonwitness/research test && pnpm test:knowledge-cli:built && pnpm test:assets && pnpm test:ui && pnpm test:platform-audit && pnpm test:board-budget && pnpm board:budget && pnpm test:release-workflow && pnpm test:release-latest-policy && pnpm test:release-image-publish && pnpm test:release-asset-reconcile && pnpm test:release-dry-run && pnpm test:release-verify-attestations && pnpm test:expected-ref && pnpm test:release-plan && pnpm test:release-orchestration && pnpm test:versioned-docs",
       "test:unit:ci": "node scripts/run-unit-tests.mjs",
       "test:versioned-docs": "node --test scripts/docs/versioned-site.test.mjs",
+      "test:whatsapp": "pnpm --filter @moonwitness/api exec vitest run tests/whatsapp.media.test.ts tests/whatsapp.routes.test.ts",
       "test:workflow-trust": "node --test scripts/check-workflow-checkout-trust.test.mjs",
       "test:workspace-version-policy": "node --test scripts/workspace-version-policy.test.mjs",
       "typecheck": "pnpm build && pnpm --filter @moonwitness/board typecheck",
@@ -366,6 +440,12 @@
       "valueType": "secret"
     },
     {
+      "name": "AI_MODE",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
       "name": "API_HOST",
       "configuredInExample": true,
       "secret": false,
@@ -378,13 +458,67 @@
       "valueType": "integer"
     },
     {
+      "name": "ATTACHMENT_S3_ACCESS_KEY",
+      "configuredInExample": true,
+      "secret": true,
+      "valueType": "secret"
+    },
+    {
+      "name": "ATTACHMENT_S3_BUCKET",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "ATTACHMENT_S3_ENDPOINT",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "ATTACHMENT_S3_FORCE_PATH_STYLE",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "boolean"
+    },
+    {
+      "name": "ATTACHMENT_S3_REGION",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "ATTACHMENT_S3_SECRET_KEY",
+      "configuredInExample": true,
+      "secret": true,
+      "valueType": "secret"
+    },
+    {
       "name": "ATTACHMENT_STORAGE_DIR",
       "configuredInExample": true,
       "secret": false,
       "valueType": "string"
     },
     {
+      "name": "ATTACHMENT_STORAGE_DRIVER",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
       "name": "AUTH_LOGIN_RATE_MAX",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "integer"
+    },
+    {
+      "name": "BOARD_HOST",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "BOARD_PORT",
       "configuredInExample": true,
       "secret": false,
       "valueType": "integer"
@@ -450,6 +584,18 @@
       "valueType": "secret"
     },
     {
+      "name": "LOCAL_AI_ENDPOINT",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "LOCAL_AI_TIMEOUT_MS",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "integer"
+    },
+    {
       "name": "LOG_DIR",
       "configuredInExample": true,
       "secret": false,
@@ -484,6 +630,12 @@
       "configuredInExample": true,
       "secret": true,
       "valueType": "secret"
+    },
+    {
+      "name": "MOONWITNESS_CORPUS_ROOT",
+      "configuredInExample": false,
+      "secret": false,
+      "valueType": "string"
     },
     {
       "name": "NODE_ENV",
@@ -538,6 +690,60 @@
       "configuredInExample": true,
       "secret": true,
       "valueType": "secret"
+    },
+    {
+      "name": "WHATSAPP_CLAMAV_URL",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "WHATSAPP_FFMPEG_PATH",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "WHATSAPP_GATEWAY_EXPECTED_VERSION",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "WHATSAPP_GATEWAY_PASSWORD",
+      "configuredInExample": true,
+      "secret": true,
+      "valueType": "secret"
+    },
+    {
+      "name": "WHATSAPP_GATEWAY_TIMEOUT_MS",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "integer"
+    },
+    {
+      "name": "WHATSAPP_GATEWAY_URL",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "WHATSAPP_GATEWAY_USERNAME",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
+    },
+    {
+      "name": "WHATSAPP_WEBHOOK_SECRET",
+      "configuredInExample": true,
+      "secret": true,
+      "valueType": "secret"
+    },
+    {
+      "name": "WHATSAPP_WEBHOOK_URL",
+      "configuredInExample": true,
+      "secret": false,
+      "valueType": "string"
     },
     {
       "name": "WORKER_HEALTH_HOST",
@@ -2958,6 +3164,1515 @@
       "accessRules": []
     },
     {
+      "name": "knowledge",
+      "version": "1.6.0",
+      "depends": ["base"],
+      "models": [
+        {
+          "name": "knowledge.concept_profile_version",
+          "table": "knowledge_concept_profile_versions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "concept_id",
+              "kind": "string",
+              "column": "concept_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "profile_digest",
+              "kind": "string",
+              "column": "profile_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "profile_id",
+              "kind": "string",
+              "column": "profile_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "profile_json",
+              "kind": "text",
+              "column": "profile_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "version",
+              "kind": "integer",
+              "column": "version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL"]
+            }
+          ],
+          "uniqueConstraints": [["company", "profile_id", "version"]]
+        },
+        {
+          "name": "knowledge.privacy_projection",
+          "table": "knowledge_privacy_projections",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "projection_digest",
+              "kind": "string",
+              "column": "projection_digest",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "projection_json",
+              "kind": "text",
+              "column": "projection_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "projection_key",
+              "kind": "string",
+              "column": "projection_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "revoked_at",
+              "kind": "string",
+              "column": "revoked_at",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "state",
+              "kind": "enum",
+              "column": "state",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["active", "revoked"]
+            },
+            {
+              "name": "subject_ref_sha256",
+              "kind": "string",
+              "column": "subject_ref_sha256",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "synthetic",
+              "kind": "boolean",
+              "column": "synthetic",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]"
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL", "RESTRICTED"]
+            }
+          ],
+          "uniqueConstraints": [["company", "projection_key"]]
+        },
+        {
+          "name": "knowledge.privacy_revocation",
+          "table": "knowledge_privacy_revocations",
+          "fields": [
+            {
+              "name": "actor",
+              "kind": "belongsTo",
+              "column": "actor_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "consent_decision_ref_sha256",
+              "kind": "string",
+              "column": "consent_decision_ref_sha256",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "decided_at",
+              "kind": "string",
+              "column": "decided_at",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "event_digest",
+              "kind": "string",
+              "column": "event_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "idempotency_key",
+              "kind": "string",
+              "column": "idempotency_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "subject_ref_sha256",
+              "kind": "string",
+              "column": "subject_ref_sha256",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            }
+          ],
+          "uniqueConstraints": [["company", "idempotency_key"]]
+        },
+        {
+          "name": "knowledge.research_active_release",
+          "table": "knowledge_research_active_releases",
+          "fields": [
+            {
+              "name": "activated_at",
+              "kind": "string",
+              "column": "activated_at",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "corpus_key",
+              "kind": "string",
+              "column": "corpus_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "release",
+              "kind": "belongsTo",
+              "column": "release_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "knowledge.research_graph_release"
+            }
+          ],
+          "uniqueConstraints": [["corpus_key"]]
+        },
+        {
+          "name": "knowledge.research_actor_identity",
+          "table": "knowledge_research_actor_identities",
+          "fields": [
+            {
+              "name": "canonical_user_id",
+              "kind": "string",
+              "column": "canonical_user_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "provisioned_by",
+              "kind": "belongsTo",
+              "column": "provisioned_by_id",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "reason",
+              "kind": "text",
+              "column": "reason",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "request_id",
+              "kind": "string",
+              "column": "request_id",
+              "declaredRequired": false,
+              "required": false,
+              "unique": true,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "user",
+              "kind": "belongsTo",
+              "column": "user_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            }
+          ],
+          "uniqueConstraints": [["user"]]
+        },
+        {
+          "name": "knowledge.research_graph_record",
+          "table": "knowledge_research_graph_records",
+          "fields": [
+            {
+              "name": "content_digest",
+              "kind": "string",
+              "column": "content_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "content_json",
+              "kind": "text",
+              "column": "content_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "record_key",
+              "kind": "string",
+              "column": "record_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "record_kind",
+              "kind": "enum",
+              "column": "record_kind",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "values": ["assertion", "evidence", "expression", "node", "relation", "source"]
+            },
+            {
+              "name": "release",
+              "kind": "belongsTo",
+              "column": "release_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "knowledge.research_graph_release"
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "values": ["INTERNAL", "PUBLIC", "RESTRICTED"]
+            }
+          ],
+          "uniqueConstraints": [["record_key", "release"]]
+        },
+        {
+          "name": "knowledge.research_graph_release",
+          "table": "knowledge_research_graph_releases",
+          "fields": [
+            {
+              "name": "manifest_digest",
+              "kind": "string",
+              "column": "manifest_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "manifest_json",
+              "kind": "text",
+              "column": "manifest_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "previous_release_digest",
+              "kind": "string",
+              "column": "previous_release_digest",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "record_count",
+              "kind": "integer",
+              "column": "record_count",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "release_digest",
+              "kind": "string",
+              "column": "release_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "schema_version",
+              "kind": "string",
+              "column": "schema_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            }
+          ],
+          "uniqueConstraints": []
+        },
+        {
+          "name": "knowledge.research_review_event",
+          "table": "knowledge_research_review_events",
+          "fields": [
+            {
+              "name": "event_digest",
+              "kind": "string",
+              "column": "event_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "event_id",
+              "kind": "string",
+              "column": "event_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "event_json",
+              "kind": "text",
+              "column": "event_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "idempotency_key",
+              "kind": "string",
+              "column": "idempotency_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "research_release_digest",
+              "kind": "string",
+              "column": "research_release_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "subject_id",
+              "kind": "string",
+              "column": "subject_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "subject_revision",
+              "kind": "integer",
+              "column": "subject_revision",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "workflow_event_sequence",
+              "kind": "integer",
+              "column": "workflow_event_sequence",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "workflow_instance_id",
+              "kind": "integer",
+              "column": "workflow_instance_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            }
+          ],
+          "uniqueConstraints": [
+            ["idempotency_key"],
+            ["workflow_event_sequence", "workflow_instance_id"]
+          ]
+        },
+        {
+          "name": "knowledge.research_suggestion_version",
+          "table": "knowledge_research_suggestion_versions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "status",
+              "kind": "enum",
+              "column": "status",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["unreviewed"]
+            },
+            {
+              "name": "suggestion_digest",
+              "kind": "string",
+              "column": "suggestion_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "suggestion_id",
+              "kind": "string",
+              "column": "suggestion_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "suggestion_json",
+              "kind": "text",
+              "column": "suggestion_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "version",
+              "kind": "integer",
+              "column": "version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL"]
+            }
+          ],
+          "uniqueConstraints": [["company", "suggestion_id", "version"]]
+        },
+        {
+          "name": "knowledge.story_page_version",
+          "table": "knowledge_story_page_versions",
+          "fields": [
+            {
+              "name": "media_ref_json",
+              "kind": "text",
+              "column": "media_ref_json",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "original_text",
+              "kind": "text",
+              "column": "original_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "original_text_digest",
+              "kind": "string",
+              "column": "original_text_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "page_id",
+              "kind": "string",
+              "column": "page_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "page_order",
+              "kind": "integer",
+              "column": "page_order",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "story_version",
+              "kind": "belongsTo",
+              "column": "story_version_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "knowledge.story_version"
+            }
+          ],
+          "uniqueConstraints": [
+            ["page_id", "story_version"],
+            ["page_order", "story_version"]
+          ]
+        },
+        {
+          "name": "knowledge.story_version",
+          "table": "knowledge_story_versions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "page_count",
+              "kind": "integer",
+              "column": "page_count",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "previous_story_digest",
+              "kind": "string",
+              "column": "previous_story_digest",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "story_digest",
+              "kind": "string",
+              "column": "story_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "story_id",
+              "kind": "string",
+              "column": "story_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "story_json",
+              "kind": "text",
+              "column": "story_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "title",
+              "kind": "string",
+              "column": "title",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "version",
+              "kind": "integer",
+              "column": "version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL"]
+            }
+          ],
+          "uniqueConstraints": [["company", "story_id", "version"]]
+        },
+        {
+          "name": "knowledge.textual_alignment_candidate_version",
+          "table": "knowledge_textual_alignment_candidate_versions",
+          "fields": [
+            {
+              "name": "candidate_digest",
+              "kind": "string",
+              "column": "candidate_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "candidate_id",
+              "kind": "string",
+              "column": "candidate_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "candidate_json",
+              "kind": "text",
+              "column": "candidate_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "version",
+              "kind": "integer",
+              "column": "version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL"]
+            }
+          ],
+          "uniqueConstraints": [["candidate_id", "company", "version"]]
+        },
+        {
+          "name": "knowledge.witness_correction",
+          "table": "knowledge_witness_corrections",
+          "fields": [
+            {
+              "name": "asserted_time_precision",
+              "kind": "enum",
+              "column": "asserted_time_precision",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["day", "instant", "month", "unknown", "year"]
+            },
+            {
+              "name": "asserted_time_text",
+              "kind": "string",
+              "column": "asserted_time_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "correction_text",
+              "kind": "text",
+              "column": "correction_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reason",
+              "kind": "text",
+              "column": "reason",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "sequence",
+              "kind": "integer",
+              "column": "sequence",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_digest",
+              "kind": "string",
+              "column": "source_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_label",
+              "kind": "string",
+              "column": "source_label",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_locator",
+              "kind": "string",
+              "column": "source_locator",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "synthetic",
+              "kind": "boolean",
+              "column": "synthetic",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]"
+            },
+            {
+              "name": "testimony",
+              "kind": "belongsTo",
+              "column": "testimony_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "knowledge.witness_testimony"
+            },
+            {
+              "name": "uncertainty_note",
+              "kind": "text",
+              "column": "uncertainty_note",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            }
+          ],
+          "uniqueConstraints": [["sequence", "testimony"]]
+        },
+        {
+          "name": "knowledge.witness_interpretation",
+          "table": "knowledge_witness_interpretations",
+          "fields": [
+            {
+              "name": "assertion_ref",
+              "kind": "string",
+              "column": "assertion_ref",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "epistemic_status",
+              "kind": "enum",
+              "column": "epistemic_status",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["contested", "hypothesis", "rejected", "supported"]
+            },
+            {
+              "name": "evidence_ref",
+              "kind": "string",
+              "column": "evidence_ref",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "interpretation_text",
+              "kind": "text",
+              "column": "interpretation_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "method_label",
+              "kind": "string",
+              "column": "method_label",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "method_version",
+              "kind": "string",
+              "column": "method_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "synthetic",
+              "kind": "boolean",
+              "column": "synthetic",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]"
+            },
+            {
+              "name": "testimony",
+              "kind": "belongsTo",
+              "column": "testimony_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "knowledge.witness_testimony"
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL", "PUBLIC", "RESTRICTED"]
+            }
+          ],
+          "uniqueConstraints": []
+        },
+        {
+          "name": "knowledge.witness_testimony",
+          "table": "knowledge_witness_testimonies",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "created_by",
+              "kind": "belongsTo",
+              "column": "created_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "external_key",
+              "kind": "string",
+              "column": "external_key",
+              "declaredRequired": true,
+              "required": true,
+              "unique": true,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "original_text",
+              "kind": "text",
+              "column": "original_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "received_time_precision",
+              "kind": "enum",
+              "column": "received_time_precision",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["day", "instant", "month", "unknown", "year"]
+            },
+            {
+              "name": "received_time_text",
+              "kind": "string",
+              "column": "received_time_text",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_digest",
+              "kind": "string",
+              "column": "source_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_label",
+              "kind": "string",
+              "column": "source_label",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "source_locator",
+              "kind": "string",
+              "column": "source_locator",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "synthetic",
+              "kind": "boolean",
+              "column": "synthetic",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]"
+            },
+            {
+              "name": "uncertainty_note",
+              "kind": "text",
+              "column": "uncertainty_note",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL", "PUBLIC", "RESTRICTED"]
+            }
+          ],
+          "uniqueConstraints": []
+        }
+      ],
+      "menus": [
+        {
+          "model": "knowledge.witness_correction",
+          "label": "Witness Corrections",
+          "group": "Knowledge",
+          "sequence": 81,
+          "developmentOnly": true
+        },
+        {
+          "model": "knowledge.witness_interpretation",
+          "label": "Witness Interpretations",
+          "group": "Knowledge",
+          "sequence": 82,
+          "developmentOnly": true
+        },
+        {
+          "model": "knowledge.witness_testimony",
+          "label": "Witness Testimony",
+          "group": "Knowledge",
+          "sequence": 80,
+          "developmentOnly": true
+        }
+      ],
+      "views": [
+        "knowledge.witness_correction",
+        "knowledge.witness_interpretation",
+        "knowledge.witness_testimony"
+      ],
+      "seeds": {
+        "base.access_group": 2,
+        "base.group_membership": 2,
+        "knowledge.privacy_projection": 1,
+        "knowledge.witness_testimony": 2,
+        "knowledge.witness_correction": 2,
+        "knowledge.witness_interpretation": 2,
+        "base.model_access": 15
+      },
+      "accessRules": [
+        {
+          "group": "base.group_user",
+          "model": "knowledge.concept_profile_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.privacy_projection",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.privacy_revocation",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_active_release",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_actor_identity",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_graph_record",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_graph_release",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_review_event",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.research_suggestion_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.story_page_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.story_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.textual_alignment_candidate_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.witness_correction",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.witness_interpretation",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.witness_testimony",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        }
+      ]
+    },
+    {
       "name": "notification",
       "version": "1.0.0",
       "depends": ["base", "jobs"],
@@ -3243,7 +4958,7 @@
       ],
       "views": ["notification.notification", "notification.preference", "notification.template"],
       "seeds": {
-        "notification.template": 2,
+        "notification.template": 3,
         "notification.preference": 4,
         "base.model_access": 2
       },
@@ -3963,7 +5678,7 @@
     },
     {
       "name": "workflow",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "depends": ["base", "jobs", "notification"],
       "models": [
         {
@@ -4170,6 +5885,16 @@
               "optional": false,
               "hasDefault": false,
               "relation": "workflow.instance"
+            },
+            {
+              "name": "payload",
+              "kind": "text",
+              "column": "payload",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
             },
             {
               "name": "revision",
@@ -4509,7 +6234,87 @@
     },
     {
       "method": "GET",
+      "path": "/api/corpus/passages/:editionId/:locator"
+    },
+    {
+      "method": "GET",
+      "path": "/api/corpus/sources/:sourceId"
+    },
+    {
+      "method": "GET",
       "path": "/api/models"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/actor-identities"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/concept-profiles/:profileId"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/duplicate-candidates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/evidence/resolve"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/graph/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/privacy/projections"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/privacy/revocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/relations/:relationId/explanation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/retrieval/chunk"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/reviews"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/reviews/:id/decision"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/reviews/:subjectId/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/stories/:storyId"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/stories/:storyId"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/suggestions/:suggestionId"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/suggestions/generate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/witnesses/:witnessId"
     },
     {
       "method": "POST",
@@ -4581,6 +6386,118 @@
     },
     {
       "method": "GET",
+      "path": "/whatsapp/account"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/agents"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/connect"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/archive"
+    },
+    {
+      "method": "PUT",
+      "path": "/whatsapp/conversations/:id/assignment"
+    },
+    {
+      "method": "PUT",
+      "path": "/whatsapp/conversations/:id/labels"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/messages"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/notes"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/notes"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/pin"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/read"
+    },
+    {
+      "method": "PUT",
+      "path": "/whatsapp/conversations/:id/state"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/disconnect"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/gowa/webhook/:deviceId"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/labels"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/labels"
+    },
+    {
+      "method": "DELETE",
+      "path": "/whatsapp/labels/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/media/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/media/:id/thumbnail"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/messages/:id/edit"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/messages/:id/forward"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/messages/:id/reaction"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/messages/:id/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/messages/:id/revoke"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/readyz"
+    },
+    {
+      "method": "GET",
       "path": "/workflows/definitions"
     },
     {
@@ -4600,5 +6517,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "02d350aef379d0bbec1da0bc5438849bf7a4933bf49225ed94c758dbba4b7630"
+  "generatedFromSha256": "e74e84553ba256692153d5d389d07d489471bbd546554ba69f1b7c5670c88166"
 }

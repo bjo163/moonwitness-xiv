@@ -1,0 +1,17 @@
+{
+  "id": "mw:assertion:synthetic-output",
+  "kind": "Assertion",
+  "schema_version": 1,
+  "lifecycle": "candidate",
+  "created_at": "2026-10-15T00:00:00Z",
+  "updated_at": "2026-10-15T00:00:00Z",
+  "origin_ref": "synthetic:fixture:assertion",
+  "visibility": "INTERNAL",
+  "content_revision": 1,
+  "derivation": {
+    "activity_id": "mw:provenance-activity:synthetic-run",
+    "input_ids": ["mw:content:synthetic-input"],
+    "method_id": "mw:method:synthetic-extraction",
+    "method_version": "1.0.0"
+  }
+}

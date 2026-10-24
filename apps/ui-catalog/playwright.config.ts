@@ -5,7 +5,7 @@ const repositoryRoot = resolve(import.meta.dirname, '../..');
 const flakeReporter = resolve(repositoryRoot, 'scripts/playwright-flake-reporter.mjs');
 const ci = process.env.CI === 'true';
 
-const baseURL = 'http://127.0.0.1:4174/moonwitness-xi/components/';
+const baseURL = 'http://127.0.0.1:4174/moonwitness-xiv/components/';
 
 export default defineConfig({
   testDir: './tests',

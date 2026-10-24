@@ -19,3 +19,7 @@ services:
   board:
     ports:
       - '127.0.0.1:4174:8080'
+
+networks:
+  default:
+    internal: true

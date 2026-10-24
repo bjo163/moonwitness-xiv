@@ -1,28 +1,34 @@
+'use client';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
-import { motion } from 'motion/react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
 import type { ModelInfo } from '@moonwitness/client';
 import { ToastHost } from '@moonwitness/ui/components/toast';
-import { SettingsIcon as MoonWitnessSettingsIcon } from '@moonwitness/ui/icons/settings';
-import { UserIcon as MoonWitnessUserIcon } from '@moonwitness/ui/icons/user';
 import {
-  Building2,
-  Calendar,
-  Check,
-  Code2,
-  Globe,
-  Keyboard,
-  LogOut,
-  Menu,
-  Moon,
-  Search,
-  Sun,
-  User,
-  Users,
-} from 'lucide-react';
+  CalendarIcon,
+  CheckIcon,
+  CodeIcon,
+  CompanyIcon,
+  GlobeIcon,
+  KeyboardIcon,
+  LogoutIcon,
+  MenuIcon,
+  MoonIcon,
+  KnowledgeIcon,
+  SearchIcon,
+  StoryIcon,
+  SunIcon,
+  SettingsIcon,
+  UserIcon,
+  MessageIcon,
+  PartnerIcon,
+} from '@moonwitness/ui/icons';
 import { useQuery } from '@tanstack/react-query';
 import { client } from '@/lib/client';
 import { scopedQueryKey } from '@/lib/query-scope';
+import { canReadResearch } from '@/lib/research-access';
 import { useAuth } from '@/hooks/use-auth-context';
 import { useModels } from '@/hooks/use-model';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,68 +54,78 @@ import {
   DropdownMenuTrigger,
 } from '@moonwitness/ui/components/dropdown-menu';
 import { Logo } from '@/components/manga/logo';
-import { Doodle } from '@/components/manga/effects';
+import { Doodle } from '@moonwitness/ui/components/effects';
 import { ShortcutsDialog } from '@/components/manga/shortcuts-dialog';
 import { ActivityBell } from './activity-bell';
 import { NotificationBell } from './notification-bell';
 import { Sheet, SheetContent, SheetTrigger } from '@moonwitness/ui/components/sheet';
+import { SoundToggle } from '@moonwitness/ui/components/audio';
 
 function NavItem({
   to,
   label,
   icon: Icon,
-  tilt,
   onNavigate,
 }: {
   to: string;
   label: string;
   icon: typeof DashboardIcon;
-  tilt: number;
   onNavigate?: () => void;
 }) {
+  const pathname = usePathname();
+  const active = pathname === to || (to !== '/board' && pathname?.startsWith(`${to}/`));
   return (
-    <NavLink
-      to={to}
-      end={to === '/'}
+    <Link
+      href={to}
       onClick={onNavigate}
       title={label}
-      className={({ isActive }) =>
-        cn(
-          'group relative flex min-w-0 items-center gap-3 px-3 py-2 font-display text-lg uppercase tracking-wide text-ink/70 transition-colors hover:text-ink',
-          isActive && 'text-on-accent hover:text-on-accent'
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          {isActive && (
-            <motion.span
-              layoutId="nav-active"
-              className="absolute inset-0 -z-0 border-2 border-ink bg-lime shadow-[3px_3px_0_0_var(--ink)]"
-              style={{ rotate: tilt }}
-              transition={{ type: 'spring', stiffness: 500, damping: 34 }}
-            />
-          )}
-          <Icon className="relative size-5" strokeWidth={2.4} />
-          <span className="relative min-w-0 whitespace-normal leading-tight">{label}</span>
-        </>
+      className={cn(
+        'group relative flex min-h-10 min-w-0 items-center gap-3 border-l-4 border-transparent px-2 py-2 font-display text-base uppercase tracking-wide text-ink/70 transition-[background-color,color,border-color] duration-[var(--mw-motion-fast)] ease-[var(--mw-motion-ease)] hover:bg-ink/10 hover:text-ink',
+        active && 'border-l-pink bg-pink text-on-pink hover:bg-pink hover:text-on-pink'
       )}
-    </NavLink>
+      aria-current={active ? 'page' : undefined}
+    >
+      <>
+        <Icon className="relative size-5" strokeWidth={2.4} />
+        <span className="relative min-w-0 whitespace-normal leading-tight">{label}</span>
+      </>
+    </Link>
   );
 }
 
 function ModelNavigation({
   groups,
   isLoading,
+  canReadResearch,
+  canEditStories,
   onNavigate,
 }: {
   groups: Array<[string, ModelInfo[]]>;
   isLoading: boolean;
+  canReadResearch: boolean;
+  canEditStories: boolean;
   onNavigate?: () => void;
 }) {
   return (
     <nav aria-label="Models" className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-      <NavItem to="/" label="Dashboard" icon={DashboardIcon} tilt={-1.5} onNavigate={onNavigate} />
+      <NavItem to="/board" label="Dashboard" icon={DashboardIcon} onNavigate={onNavigate} />
+      {canReadResearch && (
+        <NavItem
+          to="/board/knowledge"
+          label="Knowledge explorer"
+          icon={KnowledgeIcon}
+          onNavigate={onNavigate}
+        />
+      )}
+      {canEditStories && (
+        <NavItem
+          to="/board/stories/workbench"
+          label="Story workbench"
+          icon={StoryIcon}
+          onNavigate={onNavigate}
+        />
+      )}
+      <NavItem to="/board/whatsapp" label="WhatsApp" icon={MessageIcon} onNavigate={onNavigate} />
       {isLoading &&
         Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-8 bg-ink/10" />)}
       {groups.map(([group, items]) => (
@@ -117,13 +133,12 @@ function ModelNavigation({
           <p className="px-3 pb-1 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">
             {group}
           </p>
-          {items.map((item, i) => (
+          {items.map((item) => (
             <NavItem
               key={item.model}
-              to={`/m/${item.model}`}
+              to={`/board/m/${item.model}`}
               label={item.menu.label ?? modelLabel(item.model)}
               icon={modelIcon(item.model)}
-              tilt={i % 2 ? 1.2 : -1.5}
               onNavigate={onNavigate}
             />
           ))}
@@ -133,7 +148,7 @@ function ModelNavigation({
   );
 }
 
-export function AppShell() {
+export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const { data: models, isLoading } = useModels();
@@ -145,6 +160,9 @@ export function AppShell() {
   const [activeCompanyId, setActiveCompanyId] = useState<number | undefined>(() =>
     client.getCompanyId()
   );
+  const researchAccess = canReadResearch(user?.role, client.getCompanyId());
+  const canEditStories =
+    (user?.role === 'user' || user?.role === 'superadmin') && Boolean(client.getCompanyId());
   const [developmentMode, setDevelopmentMode] = useState(readDevelopmentMode);
 
   const toggleDevelopmentMode = useCallback(() => {
@@ -155,7 +173,7 @@ export function AppShell() {
     updateDevelopmentMode(developmentMode);
   }, [developmentMode]);
 
-  const navigate = useNavigate();
+  const router = useRouter();
 
   // Query accessible companies for the tenant switcher
   const { data: companiesData } = useQuery({
@@ -242,7 +260,7 @@ export function AppShell() {
           model: 'base.activity',
           title: a.summary,
           type: 'activity',
-          targetUrl: `/m/${a.resource_model}/${a.resource_id}`,
+          targetUrl: `/board/m/${a.resource_model}/${a.resource_id}`,
         });
       }
       return items;
@@ -301,16 +319,24 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <ToastHost theme={theme} />
       {/* Sidebar: scoped .dark tokens keep it ink-black with light ink in BOTH themes. */}
-      <aside className="dark sticky top-0 hidden h-dvh flex-col border-r-4 border-[#0d0d0d] bg-[#0d0d0d] text-ink lg:flex">
-        <div className="relative border-b-2 border-dashed border-ink/20 px-5 py-5">
-          <Logo />
+      <aside className="dark sticky top-0 hidden h-dvh flex-col border-r-4 border-ink bg-night text-ink lg:flex">
+        <div className="relative flex items-center gap-3 border-b-2 border-dashed border-ink/20 px-4 py-4">
+          <Logo compact decorative surface="dark" className="size-9 shrink-0" />
+          <span className="font-display text-sm uppercase tracking-[0.16em] text-ink">
+            MoonWitness
+          </span>
         </div>
-        <ModelNavigation groups={visibleGroups} isLoading={isLoading} />
+        <ModelNavigation
+          groups={visibleGroups}
+          isLoading={isLoading}
+          canReadResearch={researchAccess}
+          canEditStories={canEditStories}
+        />
         <div className="border-t-2 border-dashed border-ink/20 p-3">
-          <button
+          <Button
             type="button"
             onClick={toggleDevelopmentMode}
             aria-pressed={developmentMode}
@@ -318,12 +344,12 @@ export function AppShell() {
               'flex w-full items-center gap-3 border-2 px-3 py-2 text-left font-mono text-xs uppercase tracking-wider transition-colors',
               developmentMode
                 ? 'border-lime bg-lime text-on-accent font-bold'
-                : 'border-ink/30 text-ink-soft hover:border-ink hover:text-ink'
+                : 'border-ink/30 bg-transparent text-ink-soft hover:border-ink hover:text-ink'
             )}
           >
-            <Code2 className="size-4" />
+            <CodeIcon className="size-4" />
             {developmentMode ? 'Development Mode: On' : 'Development Mode'}
-          </button>
+          </Button>
         </div>
         <div className="flex items-center gap-2 border-t-2 border-dashed border-ink/20 px-5 py-4 font-mono text-[11px] uppercase tracking-widest text-ink-faint">
           <Doodle kind="bolt" className="size-4" /> +1 every day
@@ -331,7 +357,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-20 flex min-w-0 items-center gap-2 border-b-2 border-ink bg-paper/90 px-3 py-3 backdrop-blur sm:gap-3 sm:px-6">
+        <header className="sticky top-0 z-20 flex min-w-0 items-center gap-1 border-b-2 border-ink bg-paper/90 px-3 py-3 backdrop-blur sm:gap-3 sm:px-6">
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
               <Button
@@ -340,24 +366,29 @@ export function AppShell() {
                 className="shrink-0 lg:hidden"
                 aria-label="Open model navigation"
               >
-                <Menu className="size-4" />
+                <MenuIcon className="size-4" />
               </Button>
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="dark w-[min(18rem,85vw)] gap-0 border-r-4 border-[#0d0d0d] bg-[#0d0d0d] p-0 text-ink"
+              className="dark w-[min(18rem,85vw)] gap-0 border-r-4 border-ink bg-night p-0 text-ink"
               aria-label="Model navigation"
             >
-              <div className="border-b-2 border-dashed border-ink/20 px-5 py-5">
-                <Logo />
+              <div className="flex items-center gap-3 border-b-2 border-dashed border-ink/20 px-4 py-4">
+                <Logo compact decorative surface="dark" className="size-9 shrink-0" />
+                <span className="font-display text-sm uppercase tracking-[0.16em] text-ink">
+                  MoonWitness
+                </span>
               </div>
               <ModelNavigation
                 groups={visibleGroups}
                 isLoading={isLoading}
+                canReadResearch={researchAccess}
+                canEditStories={canEditStories}
                 onNavigate={() => setMobileNavOpen(false)}
               />
               <div className="border-t-2 border-dashed border-ink/20 p-3">
-                <button
+                <Button
                   type="button"
                   onClick={toggleDevelopmentMode}
                   aria-pressed={developmentMode}
@@ -365,12 +396,12 @@ export function AppShell() {
                     'flex w-full items-center gap-3 border-2 px-3 py-2 text-left font-mono text-xs uppercase tracking-wider transition-colors',
                     developmentMode
                       ? 'border-lime bg-lime text-on-accent font-bold'
-                      : 'border-ink/30 text-ink-soft hover:border-ink hover:text-ink'
+                      : 'border-ink/30 bg-transparent text-ink-soft hover:border-ink hover:text-ink'
                   )}
                 >
-                  <Code2 className="size-4" />
+                  <CodeIcon className="size-4" />
                   {developmentMode ? 'Development Mode: On' : 'Development Mode'}
-                </button>
+                </Button>
               </div>
               <div className="flex items-center gap-2 border-t-2 border-dashed border-ink/20 px-5 py-4 font-mono text-[11px] uppercase tracking-widest text-ink-faint">
                 <Doodle kind="bolt" className="size-4" /> +1 every day
@@ -379,18 +410,18 @@ export function AppShell() {
           </Sheet>
 
           {/* Omnisearch trigger button */}
-          <button
+          <Button
             id="open-command-palette"
             ref={commandPaletteTriggerRef}
             onClick={() => setPaletteOpen(true)}
             className="press flex h-10 min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-none border-2 border-ink bg-paper-raised px-2 text-left text-sm text-ink-faint shadow-ink-sm sm:max-w-md sm:px-3"
           >
-            <Search className="size-4 shrink-0 text-ink" strokeWidth={2.6} />
+            <SearchIcon className="size-4 shrink-0 text-ink" strokeWidth={2.6} />
             <span className="truncate">Search records, models, commands…</span>
             <kbd className="ml-auto hidden shrink-0 border border-ink px-1.5 font-mono text-[11px] text-ink sm:block">
               Ctrl K
             </kbd>
-          </button>
+          </Button>
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             {/* Tenant / Company Switcher */}
@@ -404,7 +435,7 @@ export function AppShell() {
                     aria-label={`Switch company. Current scope: ${currentCompany?.name ?? 'Global Scope'}`}
                     title={`Company scope: ${currentCompany?.name ?? 'Global Scope'}`}
                   >
-                    <Building2 className="size-3.5 text-lime-600 dark:text-lime" />
+                    <CompanyIcon className="size-3.5 text-lime-600 dark:text-lime" />
                     <span className="hidden sm:inline">Tenant:</span>
                     <span className="hidden max-w-[120px] truncate font-bold md:inline">
                       {currentCompany ? currentCompany.name : 'Global Scope'}
@@ -421,10 +452,10 @@ export function AppShell() {
                     className="flex items-center justify-between text-xs cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <Globe className="size-3.5 text-ink-faint" />
+                      <GlobeIcon className="size-3.5 text-ink-faint" />
                       Global (All Companies)
                     </span>
-                    {!activeCompanyId && <Check className="size-3.5 text-lime" />}
+                    {!activeCompanyId && <CheckIcon className="size-3.5 text-lime" />}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {companies.map((c) => (
@@ -434,10 +465,10 @@ export function AppShell() {
                       className="flex items-center justify-between text-xs cursor-pointer"
                     >
                       <span className="flex items-center gap-2 truncate">
-                        <Building2 className="size-3.5 text-ink-faint" />
+                        <CompanyIcon className="size-3.5 text-ink-faint" />
                         {c.name}
                       </span>
-                      {activeCompanyId === c.id && <Check className="size-3.5 text-lime" />}
+                      {activeCompanyId === c.id && <CheckIcon className="size-3.5 text-lime" />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -447,6 +478,7 @@ export function AppShell() {
             {/* Activity Notification Center */}
             <ActivityBell />
             <NotificationBell />
+            <SoundToggle />
 
             {/* Keyboard Shortcuts Trigger */}
             <Button
@@ -458,7 +490,7 @@ export function AppShell() {
               aria-label="Keyboard Shortcuts"
               title="Keyboard Shortcuts (Ctrl + /)"
             >
-              <Keyboard className="size-4" />
+              <KeyboardIcon className="size-4" />
             </Button>
 
             {/* Theme Toggle */}
@@ -470,7 +502,7 @@ export function AppShell() {
               onClick={toggle}
               aria-label="Toggle theme"
             >
-              {theme === 'dark' ? <Sun /> : <Moon />}
+              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </Button>
 
             {/* User Dropdown */}
@@ -498,30 +530,30 @@ export function AppShell() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <NavLink to="/profile" className="flex cursor-pointer items-center gap-2">
-                    <MoonWitnessUserIcon className="size-4" /> Profile
-                  </NavLink>
+                  <Link href="/board/profile" className="flex cursor-pointer items-center gap-2">
+                    <UserIcon className="size-4" /> Profile
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <NavLink to="/settings" className="flex cursor-pointer items-center gap-2">
-                    <MoonWitnessSettingsIcon className="size-4" /> Settings
-                  </NavLink>
+                  <Link href="/board/settings" className="flex cursor-pointer items-center gap-2">
+                    <SettingsIcon className="size-4" /> Settings
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="sm:hidden" onSelect={toggle}>
-                  {theme === 'dark' ? <Sun /> : <Moon />}
+                  {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
                   Toggle theme
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem id="logout" onSelect={() => void logout()}>
-                  <LogOut /> Sign out
+                  <LogoutIcon /> Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
-          <Outlet key={activeCompanyId ?? 'default-company'} />
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8 lg:px-10">
+          <div key={activeCompanyId ?? 'default-company'}>{children}</div>
         </main>
       </div>
 
@@ -547,12 +579,12 @@ export function AppShell() {
               {searchResults.map((item) => {
                 const ItemIcon =
                   item.type === 'partner'
-                    ? Users
+                    ? PartnerIcon
                     : item.type === 'user'
-                      ? User
+                      ? UserIcon
                       : item.type === 'activity'
-                        ? Calendar
-                        : Building2;
+                        ? CalendarIcon
+                        : CompanyIcon;
 
                 return (
                   <CommandItem
@@ -561,7 +593,7 @@ export function AppShell() {
                     onSelect={() => {
                       setPaletteOpen(false);
                       setPaletteQuery('');
-                      navigate(item.targetUrl ?? `/m/${item.model}/${item.id}`);
+                      router.push(item.targetUrl ?? `/board/m/${item.model}/${item.id}`);
                     }}
                     className="flex items-center gap-2 cursor-pointer"
                   >
@@ -588,11 +620,16 @@ export function AppShell() {
                     onSelect={() => {
                       setPaletteOpen(false);
                       setPaletteQuery('');
-                      navigate(`/m/${item.model}`);
+                      router.push(`/board/m/${item.model}`);
                     }}
                   >
                     <Icon /> {item.menu.label ?? modelLabel(item.model)}
-                    <span className="ml-auto font-mono text-xs text-ink-faint">{item.model}</span>
+                    <span
+                      className="ml-auto max-w-[45%] truncate font-mono text-xs text-ink-faint"
+                      title={item.model}
+                    >
+                      {item.model}
+                    </span>
                   </CommandItem>
                 );
               })}

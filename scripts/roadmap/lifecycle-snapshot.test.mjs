@@ -60,6 +60,44 @@ test('projects fresh exact-repository snapshot through lifecycle evaluator and c
   assert.equal(projected.get('M11.07').shouldClose, true);
 });
 
+test('projects a K-series task from exact-source lifecycle evidence and issue marker', () => {
+  const kTasks = [{ id: 'K0-001', dependsOn: [] }];
+  const kSnapshot = {
+    ...snapshot,
+    tasks: [
+      {
+        taskId: 'K0-001',
+        status: 'complete',
+        acceptanceVerified: true,
+        evidenceSha: sourceSha,
+        sourceSha,
+        sourceInDev: true,
+        requiredChecks: [
+          { name: 'CI', headSha: devSha, status: 'completed', conclusion: 'success' },
+        ],
+      },
+    ],
+  };
+  const kIssues = [
+    {
+      number: 43,
+      state: 'open',
+      body: `<!-- moonwitness-task: ${repositoryId}:K0-001 -->\nNotes`,
+    },
+  ];
+  const projected = projectLifecycleSnapshot({
+    snapshot: kSnapshot,
+    tasks: kTasks,
+    issues: kIssues,
+    repositoryId,
+    sourceSha,
+    now,
+  });
+  assert.equal(projected.get('K0-001').workStatus, 'complete');
+  assert.equal(projected.get('K0-001').deliveryStage, 'verified-dev');
+  assert.equal(projected.get('K0-001').shouldClose, true);
+});
+
 test('keeps manually closed incomplete issue closed and flags maintainer triage', () => {
   const incomplete = {
     ...snapshot,

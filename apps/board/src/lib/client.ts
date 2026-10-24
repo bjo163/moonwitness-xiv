@@ -1,10 +1,11 @@
 import { MoonWitnessClient } from '@moonwitness/client';
 
 /**
- * Single SDK instance. In dev the Vite proxy makes the API same-origin; set
- * VITE_API_URL when the board is deployed on a different origin than the API.
+ * Single SDK instance. Next rewrites keep browser requests on this app's origin.
  */
 export const client = new MoonWitnessClient({
-  baseUrl: import.meta.env.VITE_API_URL ?? window.location.origin,
+  baseUrl:
+    process.env.NEXT_PUBLIC_API_URL ??
+    (typeof window === 'undefined' ? 'http://localhost' : window.location.origin),
   storageKey: 'mw-board-session',
 });

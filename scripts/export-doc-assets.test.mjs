@@ -86,9 +86,8 @@ test('static export rejects traversal and duplicate asset paths from a manifest'
   );
 });
 
-test('committed Pages assets match the package manifest and shared UI tokens', async () => {
+test('committed Pages assets match the public package manifest and shared UI tokens', async () => {
   const result = await exportDocAssets({ check: true });
-  assert.equal(result.assetCount, 56);
   assert.equal(result.changedCount, 0);
 
   const [mappingSource, readme, documentationPage] = await Promise.all([
@@ -97,8 +96,16 @@ test('committed Pages assets match the package manifest and shared UI tokens', a
     readFile(new URL('../docs/design/brand-assets.md', import.meta.url), 'utf8'),
   ]);
   const mapping = JSON.parse(mappingSource);
-  assert.equal(mapping.assets.length, 56);
+  const packageManifest = JSON.parse(
+    await readFile(new URL('../packages/assets/manifest.json', import.meta.url), 'utf8')
+  );
+  assert.equal(
+    result.assetCount,
+    packageManifest.assets.filter(({ kind }) => kind !== 'source').length
+  );
+  assert.equal(mapping.assets.length, result.assetCount);
   assert.ok(mapping.assets.every(({ output }) => output.startsWith('docs/assets/moonwitness/')));
+  assert.ok(mapping.assets.every(({ kind }) => kind !== 'source'));
   const banner = mapping.assets.find(
     ({ source }) => source === 'packages/assets/brand/readme-banner.svg'
   );
@@ -113,10 +120,39 @@ test('committed Pages assets match the package manifest and shared UI tokens', a
   );
   const nestedPagesUrl = new URL(
     '../assets/moonwitness/brand/readme-banner.svg',
-    'https://example.github.io/moonwitness-xi/design/brand-assets.html'
+    'https://example.github.io/moonwitness-xiv/design/brand-assets.html'
   );
   assert.equal(
     nestedPagesUrl.pathname,
-    '/moonwitness-xi/assets/moonwitness/brand/readme-banner.svg'
+    '/moonwitness-xiv/assets/moonwitness/brand/readme-banner.svg'
   );
+});
+test('one fingerprint covers a CRLF and an LF checkout of the same assets', () => {
+  const assetManifest = {
+    schemaVersion: 1,
+    assets: [
+      { path: 'brand/banner.svg', kind: 'banner', format: 'svg' },
+      { path: 'brand/icon.png', kind: 'icon', format: 'png' },
+    ],
+  };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+  const banner = ['<svg>', '  <path/>', '</svg>', ''].join('\u000a');
+  const tokens = [':root { --mw-paper: #f3efe4; }', ''].join('\u000a');
+  const build = (eol) =>
+    createDocAssetArtifacts({
+      assetManifest,
+      assetManifestContents: Buffer.from(JSON.stringify(assetManifest)),
+      assetSources: new Map([
+        ['brand/banner.svg', Buffer.from(banner.replaceAll('\u000a', eol))],
+        ['brand/icon.png', png],
+      ]),
+      tokenContents: Buffer.from(tokens.replaceAll('\u000a', eol)),
+    });
+
+  const lf = build('\u000a');
+  const crlf = build('\u000d\u000a');
+  for (const [output, contents] of lf) {
+    assert.deepEqual(crlf.get(output), contents, `${output} is platform-independent`);
+  }
+  assert.deepEqual(lf.get('brand/icon.png'), png, 'binary assets keep their exact bytes');
 });

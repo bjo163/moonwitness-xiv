@@ -99,3 +99,23 @@ test('composition parts retain landmarks and semantic table markup', () => {
   assert.match(html, /<table[^>]*class="mw-ui-table"/);
   assert.match(html, /<th[^>]*scope="col"/);
 });
+
+test('table overflow wrapper becomes a labeled keyboard-focusable region on request', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(Table, {
+      scrollLabel: 'Installed add-ons table horizontal scroll',
+      'aria-label': 'Installed add-ons',
+      children: React.createElement(TableBody, {
+        children: React.createElement(TableRow, {
+          children: React.createElement(TableCell, { children: 'Base' }),
+        }),
+      }),
+    })
+  );
+
+  assert.match(
+    html,
+    /<div class="mw-ui-table-wrap" data-slot="table-wrap" role="region" aria-label="Installed add-ons table horizontal scroll" tabindex="0">/u
+  );
+  assert.match(html, /<table[^>]*aria-label="Installed add-ons"/u);
+});

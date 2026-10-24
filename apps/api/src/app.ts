@@ -1,5 +1,6 @@
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { createLocalAiRuntime, type LocalAiRuntime } from '@moonwitness/local-ai';
 import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import sensible from '@fastify/sensible';
@@ -13,9 +14,30 @@ import { genericRoutes } from './routes/generic.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { jobsRoutes } from './routes/jobs.routes.js';
 import { notificationRoutes } from './routes/notification.routes.js';
+import { whatsappRoutes } from './routes/whatsapp.routes.js';
 import { workflowRoutes } from './routes/workflow.routes.js';
-import { config } from './config/env.js';
-import { LocalFileAttachmentStorage, type AttachmentStorage } from '@moonwitness/orm-storage';
+import { corpusRoutes } from './routes/corpus.routes.js';
+import { evidenceRoutes } from './routes/evidence.routes.js';
+import { researchExplanationRoutes } from './routes/research-explanation.routes.js';
+import { researchActorIdentityRoutes } from './routes/research-actor-identity.routes.js';
+import { researchDuplicateCandidateRoutes } from './routes/research-duplicate-candidates.routes.js';
+import { researchReviewRoutes } from './routes/research-review.routes.js';
+import { researchPrivacyRoutes } from './routes/research-privacy.routes.js';
+import { researchWitnessRoutes } from './routes/research-witness.routes.js';
+import { conceptProfileRoutes } from './routes/concept-profile.routes.js';
+import { storyWorkbenchRoutes } from './routes/story-workbench.routes.js';
+import { localRetrievalRoutes } from './routes/local-retrieval.routes.js';
+import { localAiSuggestionRoutes } from './routes/local-ai-suggestion.routes.js';
+import { ensureResearchReviewWorkflow } from './research-review-workflow.js';
+import { config, localAiConfig } from './config/env.js';
+import { checkWhatsAppGatewayVersion } from './whatsapp/version-guard.js';
+import { whatsappLogErrorContext } from './whatsapp/log-redaction.js';
+import {
+  LocalFileAttachmentStorage,
+  S3AttachmentStorage,
+  closeS3AttachmentStorage,
+  type AttachmentStorage,
+} from '@moonwitness/orm-storage';
 import { createDatabase } from './database/knex.js';
 import { databaseErrorCode, databaseErrorContext } from './database/errors.js';
 import type { Knex } from 'knex';
@@ -27,11 +49,23 @@ import { manifest as notificationAddon } from '@moonwitness/orm-notification';
 import { manifest as workflowAddon } from '@moonwitness/orm-workflow';
 import { manifest as organizationAddon } from '@moonwitness/orm-organization';
 import { manifest as integrationAddon } from '@moonwitness/orm-integration';
+import { whatsappManifest } from './whatsapp/manifest.js';
 import { manifest as requestAddon } from '@moonwitness/orm-request';
+import { manifest as knowledgeAddon } from '@moonwitness/orm-knowledge';
 
 import { createLogger, type LogLevel } from '@moonwitness/logger';
+import { installPrivacySafeNotFoundHandler } from './not-found.js';
 import { isRecord } from '@moonwitness/types';
 import observabilityPlugin from './plugins/observability.plugin.js';
+import { createAttachmentStorage } from './storage/attachment-storage.js';
+import { createAttachmentScanner, type AttachmentScanner } from './whatsapp/clamav-scanner.js';
+import { createVideoPoster } from './whatsapp/media-thumbnail.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    localAi: LocalAiRuntime;
+  }
+}
 
 function errorProperty(error: unknown, key: string): unknown {
   return isRecord(error) && key in error ? error[key] : undefined;
@@ -46,8 +80,16 @@ export interface BuildAppOptions {
   /** Overrides AUTH_LOGIN_RATE_MAX (used by tests). */
   loginRateMax?: number;
   metricsToken?: string;
+  /** Overrides the WhatsApp gateway probe for isolated tests. */
+  checkWhatsAppGateway?: () => Promise<boolean>;
   /** Overrides attachment storage for isolated tests or custom providers. */
   attachmentStorage?: AttachmentStorage;
+  /** Overrides the malware scanner for isolated tests. */
+  attachmentScanner?: AttachmentScanner | null;
+  /** Overrides video poster generation for isolated tests. */
+  createVideoPoster?: typeof createVideoPoster;
+  /** Overrides contact avatar CDN access for isolated tests. */
+  fetchContactAvatar?: typeof fetch;
   /** @deprecated Use attachmentStorage; retained for existing test/app callers. */
   attachmentStorageDirectory?: string;
 }
@@ -76,11 +118,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       authAddon,
       jobsManifest,
       integrationAddon,
+      whatsappManifest,
       requestAddon,
       notificationAddon,
       organizationAddon,
       workflowAddon,
+      knowledgeAddon,
     ]);
+    await ensureResearchReviewWorkflow(db);
     await initializeSuperadminPassword(superadminPassword);
   } catch (error) {
     if (!options.db) await db.destroy();
@@ -98,6 +143,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const app = Fastify({
     bodyLimit: 1024 * 1024,
     requestIdHeader: false,
+    logController: new LogController({ disableRequestLogging: true }),
     genReqId: (request) => requestIdFromHeader(request.headers['x-request-id']) ?? randomUUID(),
     loggerInstance: appLogger,
     ajv: {
@@ -105,6 +151,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         coerceTypes: false,
       },
     },
+  });
+  app.decorate('localAi', createLocalAiRuntime(localAiConfig));
+
+  app.addHook('onResponse', async (request, reply) => {
+    request.log.info({ req: request, res: { statusCode: reply.statusCode } }, 'request completed');
   });
 
   app.addHook('onSend', async (request, reply, payload) => {
@@ -173,6 +224,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   // Error handling
   app.setErrorHandler((error, request, reply) => {
+    const isWhatsAppRoute = request.routeOptions.url?.startsWith('/whatsapp/') === true;
     const code = databaseErrorCode(error);
     if (code) {
       // Driver errors can contain SQL bindings, including password hashes.
@@ -193,28 +245,54 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           : 'Database request failed',
       });
     }
-    request.log.error(error);
+    if (isWhatsAppRoute) {
+      request.log.error({ error: whatsappLogErrorContext(error) }, 'WhatsApp request failed');
+    } else {
+      request.log.error(error);
+    }
 
     // Objection.js ValidationError
     if (errorProperty(error, 'name') === 'ValidationError') {
       const message = error instanceof Error ? error.message : 'Validation failed';
       return reply.status(400).send({
         success: false,
-        error: message,
+        error: isWhatsAppRoute ? 'Invalid WhatsApp request' : message,
         type: 'ValidationError',
-        data: errorProperty(error, 'data'),
+        ...(isWhatsAppRoute ? {} : { data: errorProperty(error, 'data') }),
       });
     }
 
     const statusCode = errorProperty(error, 'statusCode');
     return reply.status(typeof statusCode === 'number' ? statusCode : 500).send({
       success: false,
-      error: error instanceof Error ? error.message : 'Internal Server Error',
+      error: isWhatsAppRoute
+        ? 'WhatsApp request failed'
+        : error instanceof Error
+          ? error.message
+          : 'Internal Server Error',
     });
   });
 
+  installPrivacySafeNotFoundHandler(app);
+
+  const attachmentStorage =
+    options.attachmentStorage ??
+    (options.attachmentStorageDirectory
+      ? new LocalFileAttachmentStorage(options.attachmentStorageDirectory)
+      : createAttachmentStorage());
+  if (attachmentStorage instanceof S3AttachmentStorage) {
+    app.addHook('onClose', async () => closeS3AttachmentStorage(attachmentStorage));
+  }
+
   // Install the handler before route plugins inherit their error handling scope.
-  await app.register(healthRoutes, { metricsToken: options.metricsToken ?? config.metricsToken });
+  await app.register(healthRoutes, {
+    metricsToken: options.metricsToken ?? config.metricsToken,
+    checkWhatsAppGateway: options.checkWhatsAppGateway ?? (() => checkWhatsAppGatewayVersion()),
+    checkAttachmentStorage: async () => {
+      await attachmentStorage.checkReady?.();
+      return true;
+    },
+  });
   await app.register(authRoutes, {
     authService: createAuthService({
       refreshTtlSeconds: authConfig.refreshTtlSeconds,
@@ -224,15 +302,32 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     loginRateMax: options.loginRateMax ?? authConfig.loginRateMax,
   });
   await app.register(genericRoutes, {
-    attachmentStorage:
-      options.attachmentStorage ??
-      new LocalFileAttachmentStorage(
-        options.attachmentStorageDirectory ?? config.attachmentStorageDirectory
-      ),
+    attachmentStorage,
+  });
+  await app.register(whatsappRoutes, {
+    attachmentStorage,
+    attachmentScanner:
+      options.attachmentScanner === undefined
+        ? createAttachmentScanner()
+        : options.attachmentScanner,
+    createVideoPoster: options.createVideoPoster,
+    fetchContactAvatar: options.fetchContactAvatar,
   });
   await app.register(jobsRoutes);
   await app.register(notificationRoutes);
   await app.register(workflowRoutes);
+  await app.register(corpusRoutes);
+  await app.register(evidenceRoutes);
+  await app.register(researchExplanationRoutes);
+  await app.register(researchActorIdentityRoutes);
+  await app.register(researchDuplicateCandidateRoutes);
+  await app.register(researchReviewRoutes);
+  await app.register(researchPrivacyRoutes);
+  await app.register(researchWitnessRoutes);
+  await app.register(conceptProfileRoutes);
+  await app.register(storyWorkbenchRoutes);
+  await app.register(localRetrievalRoutes);
+  await app.register(localAiSuggestionRoutes);
 
   return app;
 }

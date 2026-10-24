@@ -1,3 +1,13 @@
+import {
+  Table,
+  TableHead,
+  TableRow,
+  TableHeader,
+  TableBody,
+  TableCell,
+} from '@moonwitness/ui/components/table';
+import { SelectField } from '@moonwitness/ui/components/select-field';
+import { Input } from '@moonwitness/ui/components/input';
 import { useState, useRef, useMemo, useCallback } from 'react';
 import {
   Upload,
@@ -20,7 +30,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@moonwitness/ui/components/dialog';
-import { Doodle } from '@/components/manga/effects';
+import { Doodle } from '@moonwitness/ui/components/effects';
 import { cn } from '@/lib/utils';
 
 interface ImportWizardDialogProps {
@@ -343,7 +353,7 @@ export function ImportWizardDialog({
               <p className="font-mono text-xs text-ink-faint mt-1">
                 Standard RFC-4180 CSV, UTF-8 encoded
               </p>
-              <input
+              <Input
                 ref={fileInputRef}
                 type="file"
                 accept=".csv,.txt"
@@ -374,23 +384,23 @@ export function ImportWizardDialog({
             </div>
 
             <div className="max-h-60 overflow-y-auto border-2 border-ink bg-card divide-y-2 divide-ink">
-              <table className="w-full font-mono text-xs text-left">
-                <thead className="bg-paper-raised border-b-2 border-ink text-ink font-bold uppercase">
-                  <tr>
-                    <th className="p-2.5">CSV Column</th>
-                    <th className="p-2.5">Sample Value</th>
-                    <th className="p-2.5">Target Field</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y border-ink/20">
+              <Table className="w-full font-mono text-xs text-left">
+                <TableHead className="bg-paper-raised border-b-2 border-ink text-ink font-bold uppercase">
+                  <TableRow>
+                    <TableHeader className="p-2.5">CSV Column</TableHeader>
+                    <TableHeader className="p-2.5">Sample Value</TableHeader>
+                    <TableHeader className="p-2.5">Target Field</TableHeader>
+                  </TableRow>
+                </TableHead>
+                <TableBody className="divide-y border-ink/20">
                   {parsed.headers.map((hdr, i) => (
-                    <tr key={hdr} className="hover:bg-paper-raised/60">
-                      <td className="p-2.5 font-bold text-ink">{hdr}</td>
-                      <td className="p-2.5 text-ink-faint truncate max-w-[150px]">
+                    <TableRow key={hdr} className="hover:bg-paper-raised/60">
+                      <TableCell className="p-2.5 font-bold text-ink">{hdr}</TableCell>
+                      <TableCell className="p-2.5 text-ink-faint truncate max-w-[150px]">
                         {parsed.rows[0]?.[i] ?? '—'}
-                      </td>
-                      <td className="p-2.5">
-                        <select
+                      </TableCell>
+                      <TableCell className="p-2.5">
+                        <SelectField
                           value={columnMapping[hdr] || ''}
                           onChange={(e) =>
                             setColumnMapping((prev) => ({
@@ -406,12 +416,12 @@ export function ImportWizardDialog({
                               {f.label} {f.required ? '(*)' : ''}
                             </option>
                           ))}
-                        </select>
-                      </td>
-                    </tr>
+                        </SelectField>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="flex items-center justify-between pt-2">
@@ -451,42 +461,44 @@ export function ImportWizardDialog({
             </div>
 
             <div className="max-h-60 overflow-x-auto border-2 border-ink bg-card">
-              <table className="w-full font-mono text-xs text-left">
-                <thead className="bg-paper-raised border-b-2 border-ink text-ink font-bold uppercase">
-                  <tr>
-                    <th className="p-2 border-r border-ink/20">#</th>
+              <Table className="w-full font-mono text-xs text-left">
+                <TableHead className="bg-paper-raised border-b-2 border-ink text-ink font-bold uppercase">
+                  <TableRow>
+                    <TableHeader className="p-2 border-r border-ink/20">#</TableHeader>
                     {Object.entries(columnMapping)
                       .filter(([, target]) => Boolean(target))
                       .map(([csvHdr, target]) => {
                         const meta = views.fields.find((f) => f.name === target);
                         return (
-                          <th key={csvHdr} className="p-2 border-r border-ink/20">
+                          <TableHeader key={csvHdr} className="p-2 border-r border-ink/20">
                             {meta?.label ?? target}
-                          </th>
+                          </TableHeader>
                         );
                       })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y border-ink/20">
+                  </TableRow>
+                </TableHead>
+                <TableBody className="divide-y border-ink/20">
                   {previewRows.map((record, idx) => (
-                    <tr key={idx} className="hover:bg-paper-raised/60">
-                      <td className="p-2 text-ink-faint border-r border-ink/20">{idx + 1}</td>
+                    <TableRow key={idx} className="hover:bg-paper-raised/60">
+                      <TableCell className="p-2 text-ink-faint border-r border-ink/20">
+                        {idx + 1}
+                      </TableCell>
                       {Object.entries(columnMapping)
                         .filter(([, target]) => Boolean(target))
                         .map(([csvHdr, target]) => (
-                          <td
+                          <TableCell
                             key={csvHdr}
                             className="p-2 text-ink border-r border-ink/20 truncate max-w-[180px]"
                           >
                             {String(record[target] ?? '') || (
                               <em className="text-ink-faint text-[10px]">empty</em>
                             )}
-                          </td>
+                          </TableCell>
                         ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="flex items-center justify-between pt-2">

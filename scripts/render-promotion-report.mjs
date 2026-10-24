@@ -3,11 +3,12 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
+import { parseTaskId, taskIdSource } from './roadmap/task-ids.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const beginMarker = '<!-- BEGIN MOONWITNESS PROMOTION REPORT -->';
 const endMarker = '<!-- END MOONWITNESS PROMOTION REPORT -->';
-const taskPattern = /\bM(?:0|[1-9][0-9]*)\.[0-9]{2}\b/gu;
+const taskPattern = new RegExp(`\\b${taskIdSource}\\b`, 'gu');
 const maximumTaskDetailRows = 30;
 
 function escapeTableCell(value) {
@@ -52,9 +53,16 @@ function truncate(value, maximumLength) {
 
 function extractTaskIds(text) {
   return [...new Set(text.match(taskPattern) ?? [])].sort((left, right) => {
-    const [, leftMilestone, leftTask] = /M(\d+)\.(\d+)/u.exec(left) ?? [];
-    const [, rightMilestone, rightTask] = /M(\d+)\.(\d+)/u.exec(right) ?? [];
-    return Number(leftMilestone) - Number(rightMilestone) || Number(leftTask) - Number(rightTask);
+    const leftParts = parseTaskId(left);
+    const rightParts = parseTaskId(right);
+    const series = (id) => (id.startsWith('M') ? 0 : 1);
+    return (
+      series(left) - series(right) ||
+      (leftParts?.milestone ?? '').localeCompare(rightParts?.milestone ?? '', undefined, {
+        numeric: true,
+      }) ||
+      (leftParts?.ordinal ?? 0) - (rightParts?.ordinal ?? 0)
+    );
   });
 }
 

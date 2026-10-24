@@ -10,7 +10,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        'flex h-full w-full flex-col overflow-hidden rounded-none border-2 border-ink bg-paper text-ink',
+        'flex h-full min-w-0 w-full flex-col overflow-hidden rounded-none border-2 border-ink bg-paper text-ink',
         className
       )}
       {...props}
@@ -125,7 +125,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "relative flex cursor-pointer items-center gap-2 rounded-none px-2.5 py-2 text-sm outline-hidden select-none transition-colors data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:border-2 data-[selected=true]:border-ink data-[selected=true]:bg-lime data-[selected=true]:text-on-accent data-[selected=true]:font-bold data-[selected=true]:shadow-[2px_2px_0_0_var(--ink)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer items-center gap-2 rounded-none px-2.5 py-2 text-sm outline-hidden select-none transition-colors data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:border-2 data-[selected=true]:border-ink data-[selected=true]:bg-lime data-[selected=true]:text-on-accent data-[selected=true]:font-bold data-[selected=true]:shadow-[2px_2px_0_0_var(--ink)] [&[data-selected=true]_.text-ink-faint]:text-on-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

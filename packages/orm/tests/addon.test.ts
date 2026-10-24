@@ -13,6 +13,14 @@ const Child = defineModel('test.child', {
   table: 'test_children',
   fields: { name: fields.string({ required: true }), parent: fields.belongsTo(Parent) },
 });
+const AccessGrant = defineModel('test.access_grant', {
+  table: 'test_access_grants',
+  unique: [['parent', 'model_name']],
+  fields: {
+    parent: fields.belongsTo(Parent, { required: true }),
+    model_name: fields.string({ required: true }),
+  },
+});
 function relatedChildModel(): typeof BaseModel {
   return RelatedChild;
 }
@@ -89,6 +97,45 @@ describe('programmatic addon installer', () => {
     expect(await connection('test_parents').first('name')).toMatchObject({ name: 'P' });
     expect(await connection('test_children').first('parent_id')).toMatchObject({ parent_id: 1 });
     expect(Registry.get('test.parent')).toBe(Parent);
+  });
+
+  it('adopts existing rows that match a composite unique seed identity', async () => {
+    const connection = database();
+    await installAddons(connection, [
+      defineAddon({ name: 'composite', version: '1.0.0', models: [Parent, AccessGrant] }),
+    ]);
+    const parent = await Parent.query(connection).insertAndFetch({ name: 'Existing group' });
+    const grant = await AccessGrant.query(connection).insertAndFetch({
+      parent_id: parent.id,
+      model_name: 'whatsapp.account',
+    });
+    await connection('_orm_data').insert({
+      id: 'legacy.grant',
+      model: AccessGrant.modelName,
+      record_id: grant.id,
+    });
+
+    const seededAddon = defineAddon({
+      name: 'composite',
+      version: '1.0.0',
+      models: [Parent, AccessGrant],
+      data: [
+        seed(Parent, 'composite.parent', { name: 'Existing group' }),
+        seed(AccessGrant, 'composite.grant', {
+          parent: { $ref: 'composite.parent' },
+          model_name: 'whatsapp.account',
+        }),
+      ],
+    });
+    await installAddons(connection, [seededAddon]);
+    await installAddons(connection, [seededAddon]);
+
+    expect(await connection('test_access_grants').count({ count: '*' }).first()).toMatchObject({
+      count: 1,
+    });
+    expect(
+      await connection('_orm_data').where({ model: AccessGrant.modelName }).select('id')
+    ).toEqual([{ id: 'legacy.grant' }]);
   });
 
   it('orders has-many models by their owning belongs-to foreign key without a cycle', async () => {

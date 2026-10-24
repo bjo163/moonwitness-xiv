@@ -29,7 +29,7 @@ test('falls back to the installed pnpm command when npm_execpath is absent', () 
     assert.equal(result?.command, execPath);
     assert.match(
       result?.prefixArgs[0] ?? '',
-      /node_modules[\\/]pnpm[\\/]bin[\\/]pnpm\.(?:mjs|cjs)$/u
+      /(?:node_modules[\\/]pnpm[\\/]bin[\\/]pnpm\.(?:mjs|cjs)|pnpm\.(?:mjs|cjs|js))$/u
     );
   } else {
     assert.deepEqual(result, { command: 'pnpm', prefixArgs: [], shell: false });

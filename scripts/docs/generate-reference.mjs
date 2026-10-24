@@ -115,6 +115,10 @@ function routeLiteral(node) {
   return undefined;
 }
 
+// Fastify plugins receive the instance as their first parameter; route files name it either
+// `fastify` or an alias, and an alias must not silently drop that file from the reference.
+const routeReceivers = new Set(['fastify', 'app', 'server']);
+
 export function extractRoutes(source, fileName = 'routes.ts') {
   const file = ts.createSourceFile(
     fileName,
@@ -133,7 +137,7 @@ export function extractRoutes(source, fileName = 'routes.ts') {
       const receiver = node.expression.expression;
       if (
         ts.isIdentifier(receiver) &&
-        receiver.text === 'fastify' &&
+        routeReceivers.has(receiver.text) &&
         ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].includes(method)
       ) {
         const route = routeLiteral(node.arguments[0]);
@@ -261,6 +265,7 @@ export async function collectReferenceMetadata() {
   const requestPath = path.join(root, 'packages/orm-request/dist/manifest.js');
   const organizationPath = path.join(root, 'packages/orm-organization/dist/manifest.js');
   const integrationPath = path.join(root, 'packages/orm-integration/dist/manifest.js');
+  const witnessPath = path.join(root, 'packages/orm-knowledge/dist/manifest.js');
   const [
     { manifest: base },
     { manifest: auth },
@@ -271,6 +276,7 @@ export async function collectReferenceMetadata() {
     { manifest: request },
     { manifest: organization },
     { manifest: integration },
+    { manifest: witness },
   ] = await Promise.all([
     import(pathToFileURL(basePath).href),
     import(pathToFileURL(authPath).href),
@@ -281,6 +287,7 @@ export async function collectReferenceMetadata() {
     import(pathToFileURL(requestPath).href),
     import(pathToFileURL(organizationPath).href),
     import(pathToFileURL(integrationPath).href),
+    import(pathToFileURL(witnessPath).href),
   ]);
   const addons = [
     base,
@@ -292,6 +299,7 @@ export async function collectReferenceMetadata() {
     request,
     organization,
     integration,
+    witness,
   ]
     .sort((left, right) => compare(left.name, right.name))
     .map((addon) => {
@@ -382,6 +390,7 @@ export async function collectReferenceMetadata() {
     ...(await filesUnder('packages/orm-request/src', '.ts')),
     ...(await filesUnder('packages/orm-organization/src', '.ts')),
     ...(await filesUnder('packages/orm-integration/src', '.ts')),
+    ...(await filesUnder('packages/orm-knowledge/src', '.ts')),
   ].sort(compare);
   const envSources = await Promise.all(
     envSourcePaths.map(async (file) => ({

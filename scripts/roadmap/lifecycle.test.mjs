@@ -42,6 +42,19 @@ test('planned and in-progress work remain open and are not mistaken for delivery
   );
 });
 
+test('accepts stable K-series task IDs in the shared lifecycle contract', () => {
+  const result = evaluateTaskLifecycle({
+    taskId: 'K0-003',
+    status: 'in_progress',
+    acceptanceVerified: false,
+    dependencyIds: ['K0-001'],
+    incompleteDependencyIds: ['K0-001'],
+  });
+  assert.equal(result.taskId, 'K0-003');
+  assert.equal(result.workStatus, 'blocked');
+  assert.deepEqual(result.blockers, ['Dependency K0-001 is not complete.']);
+});
+
 test('unfinished declared hard dependencies block work and are listed explicitly', () => {
   const result = evaluateTaskLifecycle({
     taskId: 'M11.07',

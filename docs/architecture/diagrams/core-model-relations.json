@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "addons": ["auth", "base", "jobs", "notification"],
   "generatedFrom": "core addon manifests and model field metadata; no seed values included",
-  "sourceSha256": "ea6dee018fe1f926fd43d8660ccead6b27619c7f55ad21473bfa3e151d2ebba0",
+  "sourceSha256": "5d6908379f7bfb52a6bd04741bb82034340a16ff87a2e7a4a928e61f0dd4c924",
   "models": [
     {
       "name": "auth.refresh_token",
@@ -119,6 +119,66 @@
     {
       "name": "integration.webhook_endpoint",
       "table": "integration_webhook_endpoints"
+    },
+    {
+      "name": "knowledge.concept_profile_version",
+      "table": "knowledge_concept_profile_versions"
+    },
+    {
+      "name": "knowledge.privacy_projection",
+      "table": "knowledge_privacy_projections"
+    },
+    {
+      "name": "knowledge.privacy_revocation",
+      "table": "knowledge_privacy_revocations"
+    },
+    {
+      "name": "knowledge.research_active_release",
+      "table": "knowledge_research_active_releases"
+    },
+    {
+      "name": "knowledge.research_actor_identity",
+      "table": "knowledge_research_actor_identities"
+    },
+    {
+      "name": "knowledge.research_graph_record",
+      "table": "knowledge_research_graph_records"
+    },
+    {
+      "name": "knowledge.research_graph_release",
+      "table": "knowledge_research_graph_releases"
+    },
+    {
+      "name": "knowledge.research_review_event",
+      "table": "knowledge_research_review_events"
+    },
+    {
+      "name": "knowledge.research_suggestion_version",
+      "table": "knowledge_research_suggestion_versions"
+    },
+    {
+      "name": "knowledge.story_page_version",
+      "table": "knowledge_story_page_versions"
+    },
+    {
+      "name": "knowledge.story_version",
+      "table": "knowledge_story_versions"
+    },
+    {
+      "name": "knowledge.textual_alignment_candidate_version",
+      "table": "knowledge_textual_alignment_candidate_versions"
+    },
+    {
+      "name": "knowledge.witness_correction",
+      "table": "knowledge_witness_corrections"
+    },
+    {
+      "name": "knowledge.witness_interpretation",
+      "table": "knowledge_witness_interpretations"
+    },
+    {
+      "name": "knowledge.witness_testimony",
+      "table": "knowledge_witness_testimonies"
     },
     {
       "name": "notification.notification",
@@ -440,6 +500,160 @@
       "from": "integration.webhook_endpoint",
       "field": "company",
       "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.concept_profile_version",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.concept_profile_version",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.privacy_projection",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.privacy_revocation",
+      "field": "actor",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.privacy_revocation",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_active_release",
+      "field": "release",
+      "to": "knowledge.research_graph_release",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_actor_identity",
+      "field": "provisioned_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_actor_identity",
+      "field": "user",
+      "to": "base.user",
+      "cardinality": "1:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_graph_record",
+      "field": "release",
+      "to": "knowledge.research_graph_release",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_suggestion_version",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.research_suggestion_version",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.story_page_version",
+      "field": "story_version",
+      "to": "knowledge.story_version",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.story_version",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.story_version",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.textual_alignment_candidate_version",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.textual_alignment_candidate_version",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_correction",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_correction",
+      "field": "testimony",
+      "to": "knowledge.witness_testimony",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_interpretation",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_interpretation",
+      "field": "testimony",
+      "to": "knowledge.witness_testimony",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_testimony",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.witness_testimony",
+      "field": "created_by",
+      "to": "base.user",
       "cardinality": "N:1",
       "kind": "belongsTo"
     },

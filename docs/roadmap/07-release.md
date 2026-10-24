@@ -84,9 +84,10 @@ Planner read-only tersedia melalui `pnpm release:plan`; output JSON menyertakan 
 
 ### Langkah pelaksanaan
 
-1. Buat preparation di temporary checkout tanpa branch remote baru.
-2. Perbarui versi/changelog/docs dalam satu atomic git commit setelah dry checks.
-3. Catat input head dan generated artifact plan; push normal hanya bila head belum berubah.
+1. Jalankan planner, preparation preview, dan dry-run read-only langsung di `dev`; jangan membuat branch/checkout sementara.
+2. Pastikan input head dan fingerprint sama pada kedua preview, lalu review daftar file, aset, gate, dan seluruh side-effect flag.
+3. Terapkan perubahan hanya melalui jalur release yang memang diotorisasi; jangan menganggap preview kandidat sebagai perubahan versi yang telah disetujui.
+4. Catat input head, fingerprint, hasil pemeriksaan, serta hosted acceptance yang masih terbuka. Commit/push batch roadmap atau implementasi lokal ke `dev` sesuai aturan kerja.
 
 ### Verifikasi dan syarat selesai
 

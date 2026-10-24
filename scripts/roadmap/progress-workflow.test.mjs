@@ -9,10 +9,10 @@ import { fileURLToPath, URL } from 'node:url';
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 
-const workflow = await readFile(
-  new URL('../../.github/workflows/roadmap-progress.yml', import.meta.url),
-  'utf8'
-);
+// The assertion anchors below are LF-only and a Windows checkout carries CRLF.
+const workflow = (
+  await readFile(new URL('../../.github/workflows/roadmap-progress.yml', import.meta.url), 'utf8')
+).replaceAll('\r\n', '\n');
 
 test('progress report workflow reads dev and publishes only short-lived Markdown and JSON artifacts', () => {
   assert.match(workflow, /branches: \[dev\]/u);
@@ -75,7 +75,10 @@ test('workflow CLI commands write valid source-bound Markdown and JSON reports',
     assert.match(markdown, /Source SHA: `[a-f0-9]{40}`/u);
     assert.equal(json.schemaVersion, 1);
     assert.match(json.sourceSha, /^[a-f0-9]{40}$/u);
-    assert.equal(json.totals.taskCount, 148);
+    const roadmap = JSON.parse(
+      await readFile(new URL('../../docs/roadmap/tasks.json', import.meta.url), 'utf8')
+    );
+    assert.equal(json.totals.taskCount, roadmap.tasks.length);
     assert.equal(typeof json.sourceDirty, 'boolean');
     assert.ok(
       markdown.includes(`Source tree: ${json.sourceDirty ? 'dirty' : 'clean'}`),

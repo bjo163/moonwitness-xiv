@@ -1,0 +1,28 @@
+# Ontology and corpus schema versioning
+
+Ontology contracts and corpus manifest contracts evolve independently from the application package version. The registry at [`ontology/versions/registry.json`](../../ontology/versions/registry.json) records the current semantic version and integer document `schema_version` for each schema set. A dataset release must pin both component versions it uses; changing either one does not implicitly change the other.
+
+## Initial baselines
+
+Version `1.0.0` is the first checked-in schema baseline for each component. The ontology set contains the knowledge-record and provenance-graph schemas; the corpus set contains the source-artifact-manifest schema. Their immutable copies live below `ontology/versions/<component>/<version>/`. The baseline is derived from the accepted K1-001/K1-003 schema files. No previous released ontology/corpus schema archive or historical record corpus was found in this XIV repository. A separate K0-006 scan found historical technical artifacts in public legacy repositories (including versioned schemas, snapshots, manifests, fixtures, and application/database migrations), but did not establish historical corpus records available for validation or record-ID mappings. `status: baseline` does not claim that production data was released under this version or that legacy records were validated.
+
+Each record or manifest's integer `schema_version` remains scoped to its component. It is validated against the integer declared in that component's semantic-version entry. The two integers can coincide without coupling their release histories. Never overwrite a version directory after it has been accepted; add a new semantic-version directory and registry entry.
+
+## Compatibility contract
+
+Compatibility is assessed per component and per named schema. A proposed upgrade is compatible only when every old-valid document remains valid under the new schema. The local verifier reports structured semantic changes for the supported JSON Schema subset. It handles types, required properties, properties and `additionalProperties`, enum/const, string/array bounds, numeric bounds, item schemas, and unchanged schema keywords. Changes to `$id` or `$schema` and any other keyword outside that subset—including keyword removal—are reported as unknown and block the automatic compatibility claim. This conservative check is not a general theorem prover for every Draft 2020-12 feature.
+
+Before using a registry as authoritative, run `validateSchemaVersionRegistry` with the complete set of schema paths available under the version archive. It checks that each component's `current` version exists exactly once, document-version and schema-name keys agree, every path is confined to its declared component/version directory, and every declared schema file exists in that archive set. The JSON Schema checks registry shape; this runtime integrity check enforces cross-entry invariants that ordinary JSON Schema cannot express portably.
+
+Adding an optional property or widening an accepted value set can be backward-compatible. Adding a required property, narrowing an enum/type/bound, removing an old property while rejecting additional properties, or changing an unsupported keyword is incompatible for old documents. Breaking changes are blocked unless the registry proposal supplies an explicit migration bound to the exact component, source version, and target version. A migration declaration must identify its implementation, be deterministic, and for downgrade also declare reversibility. A declaration records a reviewed migration contract; it does not execute data conversion.
+
+| Direction | Compatibility rule                                                | Required action                                                |
+| --------- | ----------------------------------------------------------------- | -------------------------------------------------------------- |
+| Upgrade   | Old schema's accepted documents remain accepted by the new schema | May proceed without migration                                  |
+| Upgrade   | Any breaking or unknown semantic change                           | Block, or provide an exact deterministic migration             |
+| Downgrade | New schema's accepted documents remain accepted by the old schema | May proceed without migration                                  |
+| Downgrade | Any breaking or unknown semantic change                           | Block; an exact deterministic reversible migration is required |
+
+Before changing a schema, validate each historical record admitted into this rebuild with its declared immutable schema. The owner-approved K0-006 disposition excludes legacy records and no prior XIV release exists, so the checked-in 1.0.0 baseline and synthetic fixtures establish only the local compatibility gate; they do not establish compatibility with historical records or upstream data. Do not invent prior releases or claim migration coverage. Ontology and corpus compatibility results must be reported separately. Any future scope that admits historical records reopens this gate before import.
+
+The runtime helpers exported by `@moonwitness/knowledge` validate a document against a declared schema version and compare schema transitions. The checker intentionally supports a bounded semantic subset and blocks unknown keyword changes, including removals. Baseline behavior is covered with synthetic fixtures; checking records from actual historical releases is outside the approved no-legacy-import scope. Historical technical artifacts in upstream repositories are not, by themselves, corpus records or migration evidence.

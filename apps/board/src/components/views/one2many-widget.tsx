@@ -1,6 +1,15 @@
+import {
+  Table,
+  TableHead,
+  TableRow,
+  TableHeader,
+  TableBody,
+  TableCell,
+} from '@moonwitness/ui/components/table';
 import { useMemo, useState } from 'react';
-import { ExternalLink, Loader2, Plus, Trash2 } from 'lucide-react';
-import { Link } from 'react-router';
+import { AddIcon, DeleteIcon, ExternalLinkIcon } from '@moonwitness/ui/icons';
+import { LoadingSpinner } from '@moonwitness/ui/components/effects';
+import Link from 'next/link';
 import type { Domain, FieldMeta } from '@moonwitness/client';
 import { useRecordMutations, useRecords, useViews } from '@/hooks/use-model';
 import { Button } from '@moonwitness/ui/components/button';
@@ -74,7 +83,7 @@ export function One2ManyWidget({ field, parentModel, parentId, isCreate }: One2M
   };
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 max-w-full space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-display text-sm uppercase tracking-wider text-ink">
@@ -91,13 +100,13 @@ export function One2ManyWidget({ field, parentModel, parentId, isCreate }: One2M
           size="xs"
           className="gap-1 font-mono text-xs hover:bg-lime hover:text-on-accent"
         >
-          <Link to={`/m/${targetModel}/new?${createParams.toString()}`}>
-            <Plus className="size-3.5" /> Add New
+          <Link href={`/board/m/${targetModel}/new?${createParams.toString()}`}>
+            <AddIcon className="size-3.5" /> Add New
           </Link>
         </Button>
       </div>
 
-      <div className="ink-panel overflow-hidden bg-card">
+      <div className="ink-panel max-w-full overflow-hidden bg-card">
         {viewsLoading || recordsLoading ? (
           <div className="p-4 space-y-2">
             <Skeleton className="h-6 w-full bg-ink/10" />
@@ -107,26 +116,26 @@ export function One2ManyWidget({ field, parentModel, parentId, isCreate }: One2M
           <div className="p-6 text-center text-xs font-mono text-ink-faint">No items found.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs font-sans">
-              <thead>
-                <tr className="border-b-2 border-ink bg-paper font-display uppercase tracking-wider text-ink">
+            <Table className="w-full border-collapse text-left text-xs font-sans">
+              <TableHead>
+                <TableRow className="border-b-2 border-ink bg-paper font-display uppercase tracking-wider text-ink">
                   {columns.map((col) => (
-                    <th key={col.name} className="px-3 py-2 text-ink">
+                    <TableHeader key={col.name} className="px-3 py-2 text-ink">
                       {col.label}
-                    </th>
+                    </TableHeader>
                   ))}
-                  <th className="px-3 py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y-2 divide-ink/10">
+                  <TableHeader className="px-3 py-2 text-right">Action</TableHeader>
+                </TableRow>
+              </TableHead>
+              <TableBody className="divide-y-2 divide-ink/10">
                 {recordsData.records.map((row) => (
-                  <tr key={row.id} className="transition-colors hover:bg-lime/20">
+                  <TableRow key={row.id} className="transition-colors hover:bg-lime/20">
                     {columns.map((col) => (
-                      <td key={col.name} className="px-3 py-2 text-ink">
+                      <TableCell key={col.name} className="px-3 py-2 text-ink">
                         <FieldCell field={col} row={row} />
-                      </td>
+                      </TableCell>
                     ))}
-                    <td className="px-3 py-2 text-right">
+                    <TableCell className="px-3 py-2 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <Button
                           asChild
@@ -135,8 +144,8 @@ export function One2ManyWidget({ field, parentModel, parentId, isCreate }: One2M
                           className="h-6 px-1.5 font-mono text-[11px] hover:bg-ink hover:text-paper"
                           title="Open record in full view"
                         >
-                          <Link to={`/m/${targetModel}/${row.id}`}>
-                            <ExternalLink className="size-3" />
+                          <Link href={`/board/m/${targetModel}/${row.id}`}>
+                            <ExternalLinkIcon className="size-3" />
                           </Link>
                         </Button>
                         <Button
@@ -148,17 +157,17 @@ export function One2ManyWidget({ field, parentModel, parentId, isCreate }: One2M
                           title="Archive item"
                         >
                           {deletingId === row.id ? (
-                            <Loader2 className="size-3 animate-spin" />
+                            <LoadingSpinner className="size-3" />
                           ) : (
-                            <Trash2 className="size-3" />
+                            <DeleteIcon className="size-3" />
                           )}
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>

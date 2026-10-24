@@ -11,7 +11,7 @@ const TAG_PATTERN =
   /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 
-function validateReleaseAssets({ tag, releaseId, isDraft, files, adapter }) {
+export function validateReleaseAssets({ tag, releaseId, isDraft, files, adapter }) {
   if (typeof tag !== 'string' || !TAG_PATTERN.test(tag)) throw new Error('Invalid release tag');
   if (!Number.isSafeInteger(releaseId) || releaseId < 1) throw new Error('Invalid release ID');
   if (typeof isDraft !== 'boolean') throw new Error('Invalid release draft state');
@@ -69,7 +69,17 @@ function matchesExpected(actual, expected) {
 }
 
 /** Reconcile immutable release assets, recovering ambiguous uploads by re-reading remote state. */
-export async function reconcileReleaseAssets({ tag, releaseId, isDraft, files, adapter }) {
+export async function reconcileReleaseAssets({
+  tag,
+  releaseId,
+  isDraft,
+  files,
+  adapter,
+  allowPublishedAdditions = false,
+}) {
+  if (typeof allowPublishedAdditions !== 'boolean') {
+    throw new Error('Invalid published release addition policy');
+  }
   validateReleaseAssets({ tag, releaseId, isDraft, files, adapter });
   const current = assetMap(await adapter.listAssets(releaseId));
 
@@ -79,7 +89,9 @@ export async function reconcileReleaseAssets({ tag, releaseId, isDraft, files, a
       throw new Error(`Existing release asset ${file.name} conflicts with the verified file`);
     }
     if (!existing && !isDraft) {
-      throw new Error(`Cannot add missing asset ${file.name} to a published release`);
+      if (!allowPublishedAdditions) {
+        throw new Error(`Cannot add missing asset ${file.name} to a published release`);
+      }
     }
   }
 

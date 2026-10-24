@@ -1,12 +1,15 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Knex } from 'knex';
+import { timingSafeEqual } from 'node:crypto';
 import { testConnection } from '../database/knex.js';
+import { readWhatsAppDatabaseMetrics, renderMetrics } from '../observability/metrics.js';
 
 export interface WorkerHealthOptions {
   db: Knex;
   host: string;
   name: string;
   port: number;
+  metricsToken?: string;
 }
 
 export interface WorkerHealthServer {
@@ -40,6 +43,24 @@ export async function startWorkerHealthServer(
       .header('Cache-Control', 'no-store')
       .status(healthy ? 200 : 503)
       .send({ status: healthy ? 'ready' : 'not-ready', worker: options.name });
+  });
+  app.get('/metrics', async (request, reply) => {
+    const token = options.metricsToken;
+    if (!token) return reply.code(404).send({ success: false, error: 'Not found' });
+    const authorization = request.headers.authorization ?? '';
+    const supplied = authorization.startsWith('Bearer ')
+      ? Buffer.from(authorization.slice(7))
+      : Buffer.alloc(0);
+    const expected = Buffer.from(token);
+    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
+      return reply.code(401).header('WWW-Authenticate', 'Bearer').send({
+        success: false,
+        error: 'Authentication required',
+      });
+    return reply
+      .header('Cache-Control', 'no-store')
+      .type('text/plain; version=0.0.4; charset=utf-8')
+      .send(renderMetrics(process.uptime(), await readWhatsAppDatabaseMetrics(options.db)));
   });
   try {
     await app.listen({ host: options.host, port: options.port });

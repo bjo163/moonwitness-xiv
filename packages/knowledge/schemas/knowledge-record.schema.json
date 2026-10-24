@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/knowledge-record.schema.json",
+  "title": "MoonWitness XIV core knowledge record envelope",
+  "description": "Structural contract only. Visibility uses the accepted K0-005 vocabulary; this schema does not authorize source bytes or publication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "schema_version",
+    "lifecycle",
+    "created_at",
+    "updated_at",
+    "origin_ref",
+    "visibility",
+    "content_revision"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "Entity",
+        "Agent",
+        "Work",
+        "Expression",
+        "Edition",
+        "Artifact",
+        "Passage",
+        "Content",
+        "Term",
+        "Concept",
+        "Assertion",
+        "Evidence",
+        "ProvenanceActivity",
+        "Relation",
+        "Assessment",
+        "ReviewDecision",
+        "DatasetRelease",
+        "ImportRun",
+        "ExternalAlias"
+      ]
+    },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["draft", "candidate", "active", "superseded", "withdrawn"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "origin_ref": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "visibility": {
+      "type": "string",
+      "enum": ["PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "CHILD_SENSITIVE"]
+    },
+    "content_revision": { "type": "integer", "minimum": 1 },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activity_id", "input_ids", "method_id", "method_version"],
+      "properties": {
+        "activity_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "input_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "method_id": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "method_version": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    }
+  }
+}

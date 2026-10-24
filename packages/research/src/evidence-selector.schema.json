@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/research-evidence-selector.schema.json",
+  "title": "MoonWitness exact research evidence selector",
+  "description": "An evidence link bound to a locally published source, edition, passage, content hash, and optional Unicode-scalar range. Direction explicitly distinguishes support from counterevidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "assertion_id", "direction", "selector"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "assertion_id": { "type": "string", "pattern": "^mw:assertion:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "direction": { "enum": ["supporting", "counterevidence"] },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_id", "edition_id", "locator", "content_sha256"],
+          "properties": {
+            "source_id": { "const": "mw:source:tanzil-quran-text" },
+            "edition_id": { "const": "mw:edition:tanzil-quran-text-v1.1-uthmani-txt2" },
+            "locator": { "const": "Q7:46" },
+            "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "range": { "$ref": "#/$defs/range" },
+            "quote": { "type": "string", "minLength": 1, "maxLength": 4000 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_id", "expression_id", "edition_id", "locator", "content_sha256"],
+          "properties": {
+            "source_id": { "const": "mw:source:ebible-webp-protestant" },
+            "expression_id": { "const": "mw:expression:webp-protestant" },
+            "edition_id": { "const": "mw:edition:webp-protestant-2020-stable" },
+            "locator": { "const": "Genesis 1:1" },
+            "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "range": { "$ref": "#/$defs/range" },
+            "quote": { "type": "string", "minLength": 1, "maxLength": 4000 }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "start", "end"],
+      "properties": {
+        "unit": { "const": "unicode_scalar" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -2,13 +2,17 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EnvConfig } from '@moonwitness/types';
+import { readLocalAiConfig } from '@moonwitness/local-ai';
 import { requireProductionDatabaseUrl } from './production.js';
 import { readDatabaseRuntimeLimits } from './database-runtime.js';
+import { validateWhatsAppProductionConfig } from '../whatsapp/config.js';
 
 const apiDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(apiDirectory, '../../../../');
 dotenv.config({ path: path.join(repositoryRoot, '.env') });
 requireProductionDatabaseUrl(process.env);
+validateWhatsAppProductionConfig(process.env);
+export const localAiConfig = readLocalAiConfig(process.env);
 
 const nodeEnvironment = process.env.NODE_ENV ?? 'development';
 
@@ -53,6 +57,48 @@ function readDatabaseUrl(value: string): string {
   return value;
 }
 
+const attachmentStorageDriver = process.env.ATTACHMENT_STORAGE_DRIVER ?? 'local';
+if (attachmentStorageDriver !== 'local' && attachmentStorageDriver !== 's3') {
+  throw new Error('ATTACHMENT_STORAGE_DRIVER must be local or s3');
+}
+
+function readS3StorageConfig(): EnvConfig['s3Storage'] {
+  if (attachmentStorageDriver !== 's3') return undefined;
+  const endpoint = process.env.ATTACHMENT_S3_ENDPOINT;
+  const bucket = process.env.ATTACHMENT_S3_BUCKET;
+  const accessKeyId = process.env.ATTACHMENT_S3_ACCESS_KEY;
+  const secretAccessKey = process.env.ATTACHMENT_S3_SECRET_KEY;
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+    throw new Error(
+      'ATTACHMENT_S3_ENDPOINT, ATTACHMENT_S3_BUCKET, ATTACHMENT_S3_ACCESS_KEY, and ATTACHMENT_S3_SECRET_KEY are required when ATTACHMENT_STORAGE_DRIVER=s3'
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error('ATTACHMENT_S3_ENDPOINT must be a valid http or https URL');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
+    throw new Error('ATTACHMENT_S3_ENDPOINT must be a valid http or https URL');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('ATTACHMENT_S3_ENDPOINT must not contain embedded credentials');
+  }
+  return {
+    endpoint: parsed.toString(),
+    region: process.env.ATTACHMENT_S3_REGION || 'us-east-1',
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    forcePathStyle: optionalBoolean(
+      process.env.ATTACHMENT_S3_FORCE_PATH_STYLE,
+      true,
+      'ATTACHMENT_S3_FORCE_PATH_STYLE'
+    ),
+  };
+}
+
 const databaseUrl = readDatabaseUrl(
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5432/moonwitness_db'
 );
@@ -65,6 +111,8 @@ export const config: EnvConfig = {
     repositoryRoot,
     process.env.ATTACHMENT_STORAGE_DIR || 'storage/attachments'
   ),
+  attachmentStorageDriver,
+  s3Storage: readS3StorageConfig(),
   env: nodeEnvironment,
   host: process.env.API_HOST ?? process.env.HOST ?? '0.0.0.0',
   port: readPort(process.env.API_PORT ?? process.env.PORT),

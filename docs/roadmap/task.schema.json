@@ -19,13 +19,19 @@
       "additionalProperties": false,
       "required": ["id", "title", "milestone", "dependsOn", "output", "detailFile"],
       "properties": {
-        "id": { "type": "string", "pattern": "^M(?:0|[1-9][0-9]*)\\.[0-9]{2}$" },
+        "id": {
+          "type": "string",
+          "pattern": "^(?:M(?:0|[1-9][0-9]*)\\.[0-9]{2}|K(?:0|[1-9][0-9]*)-[0-9]{3})$"
+        },
         "title": { "type": "string", "minLength": 1 },
-        "milestone": { "type": "string", "pattern": "^M(?:0|[1-9][0-9]*)$" },
+        "milestone": { "type": "string", "pattern": "^(?:M(?:0|[1-9][0-9]*)|K(?:0|[1-9][0-9]*))$" },
         "dependsOn": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^M(?:0|[1-9][0-9]*)\\.[0-9]{2}$" }
+          "items": {
+            "type": "string",
+            "pattern": "^(?:M(?:0|[1-9][0-9]*)\\.[0-9]{2}|K(?:0|[1-9][0-9]*)-[0-9]{3})$"
+          }
         },
         "output": { "type": "string", "minLength": 1 },
         "detailFile": {
@@ -42,7 +48,7 @@
         "status": { "enum": ["todo", "in_progress", "blocked", "complete"] },
         "evidence": {
           "type": "string",
-          "pattern": "^docs/roadmap/evidence/M(?:0|[1-9][0-9]*)\\.[0-9]{2}(?:-[0-9]{2})?\\.md$"
+          "pattern": "^docs/roadmap/evidence/(?:M(?:0|[1-9][0-9]*)\\.[0-9]{2}(?:-[0-9]{2})?|K(?:0|[1-9][0-9]*)-[0-9]{3}(?:-[0-9]{3})?)\\.md$"
         }
       }
     }

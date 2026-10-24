@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:tanzil-quran-text",
+  "edition_id": "mw:edition:tanzil-quran-text-v1.1-uthmani-txt2",
+  "locale": "ar",
+  "references": [
+    "https://tanzil.net/pub/download/index.php?quranType=uthmani&outType=txt-2&agree=true&marks=true&sajdah=true&rub=false&tatweel=true&stanween=false",
+    "https://tanzil.net/download/",
+    "https://tanzil.net/docs/download",
+    "https://tanzil.net/docs/Text_License",
+    "https://creativecommons.org/licenses/by/3.0/"
+  ],
+  "artifact": {
+    "representation": "source_bytes",
+    "media_type": "text/plain; charset=utf-8",
+    "sha256": "6ff83b01099fb7992b5f7fa101cfab3d6556607ca6b1fe69d53cb76f97027760",
+    "byte_length": 360,
+    "retrieved_at": "2026-10-15T17:31:40Z"
+  },
+  "rights": {
+    "state": "permitted",
+    "allowed_uses": ["read_analyze", "store", "quote_excerpt", "redistribute_full"],
+    "reviewer": "bjo163",
+    "decision_date": "2026-10-16",
+    "evidence_ref": "docs/roadmap/evidence/K2-005.md#source-specific-rights-decision",
+    "scope": "Only the exact Tanzil Quran Text v1.1 Uthmani Q7:46 source line is stored and redistributed in the MoonWitness XIV repository under the published CC BY 3.0 attribution terms. Preserve this line verbatim and include the notice below. No model training, no transformed source copy, no runtime fetch, and no permission is asserted for other verses, editions, translations, or derived uses."
+  },
+  "attribution": {
+    "text": "Tanzil Quran Text. Copyright (C) 2007-2021 Tanzil Project. License: Creative Commons Attribution 3.0 (CC BY 3.0). Source: https://tanzil.net/ . This Q7:46 line is reproduced verbatim without modification. See https://tanzil.net/docs/Text_License and https://creativecommons.org/licenses/by/3.0/ .",
+    "display_locations": [
+      "corpus/manifests/tanzil-quran-text-v1.1-uthmani-q7-46.json",
+      "corpus/reference/sha256/6f/6ff83b01099fb7992b5f7fa101cfab3d6556607ca6b1fe69d53cb76f97027760",
+      "MoonWitness corpus passage retrieval result"
+    ]
+  },
+  "complaint_process_owner": "bjo163",
+  "publication": {
+    "mode": "source_bytes",
+    "release_ref": "K2-005 source-specific owner approval 2026-10-16"
+  }
+}

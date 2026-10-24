@@ -336,7 +336,7 @@ export async function composeVersionedSite({
   releases,
   archiveDirectory,
   outputDirectory,
-  basePath = '/moonwitness-xi/',
+  basePath = '/moonwitness-xiv/',
   retentionLimit = 5,
 }) {
   if (currentKind !== 'stable' && currentKind !== 'next')
@@ -480,7 +480,7 @@ async function run(args) {
       releases: await readJsonFile(optionValue(args, '--releases')),
       archiveDirectory: optionValue(args, '--archives'),
       outputDirectory: optionValue(args, '--output'),
-      basePath: optionValue(args, '--base-path') ?? '/moonwitness-xi/',
+      basePath: optionValue(args, '--base-path') ?? '/moonwitness-xiv/',
       retentionLimit: retention === undefined ? 5 : Number(retention),
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

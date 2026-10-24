@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/narrative-persona.schema.json",
+  "title": "MoonWitness narrative persona",
+  "description": "A source-backed narrative persona record. It is distinct from a historical or theological entity; aliases are observations and never establish identity equivalence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "aliases", "roles", "source_refs"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:persona:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "kind": { "const": "NarrativePersona" },
+    "aliases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/alias" }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/role" }
+    },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "historical_identity_association": { "$ref": "#/$defs/association" }
+  },
+  "$defs": {
+    "alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "language", "script", "source_ref"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "language": { "type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$" },
+        "script": { "type": "string", "pattern": "^[A-Z][a-z]{3}$" },
+        "source_ref": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "source_ref"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "source_ref": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "association": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_id", "decision_id"],
+      "properties": {
+        "identity_id": {
+          "type": "string",
+          "pattern": "^mw:(?:entity|agent):[a-z0-9][a-z0-9._-]{0,179}$"
+        },
+        "decision_id": {
+          "type": "string",
+          "pattern": "^mw:identity-decision:[a-z0-9][a-z0-9._-]{0,179}$"
+        }
+      }
+    }
+  }
+}

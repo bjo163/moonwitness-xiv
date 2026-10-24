@@ -1,3 +1,4 @@
+import { Checkbox } from '@moonwitness/ui/components/checkbox';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@moonwitness/ui/components/skeleton';
 import { useAuth } from '@/hooks/use-auth-context';
@@ -70,8 +71,7 @@ export function NotificationPreferences() {
               key={channel}
               className="flex cursor-pointer items-start gap-3 border-2 border-ink/20 p-3 transition-colors hover:border-ink"
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={enabled(channel)}
                 disabled={update.isPending}
                 onChange={(event) =>

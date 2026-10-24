@@ -10,7 +10,13 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.next*
+next-env.d.ts
 *.local
+*.tsbuildinfo
+public/brand/
+public/illustrations/
+public/sounds/
 
 # Editor directories and files
 .vscode/*

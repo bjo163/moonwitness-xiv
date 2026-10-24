@@ -12,6 +12,7 @@ export {
 export type {
   StartWorkflowInput,
   TransitionWorkflowInput,
+  WorkflowEventPayload,
   WorkflowDefinitionConfig,
   WorkflowRole,
   WorkflowTransitionDefinition,

@@ -6,7 +6,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { renderUnitRunnerFailureReport } from './unit-runner-report.mjs';
 import { resolvePackageManager } from './package-manager.mjs';
-import { getUnitRunnerCheckPlan } from './unit-runner-policy.mjs';
+import { unitRunnerChecks } from './unit-runner-policy.mjs';
 import {
   findFailedWorkspacePackage,
   renderWorkspaceBuildFailure,
@@ -88,17 +88,10 @@ function run(args, label) {
 
 run(['run', 'test:unit-runner-policy'], 'Unit runner CI ownership policy');
 run(['build'], 'Build');
+run(['--filter', '@moonwitness/whatsapp', 'test'], 'WhatsApp worker');
 run(['exec', 'node', '--test', 'scripts/roadmap/addon-conformance.test.mjs'], 'Addon conformance');
-for (const check of getUnitRunnerCheckPlan({
-  githubActions: process.env.GITHUB_ACTIONS === 'true',
-})) {
-  if (check.runInUnitRunner) {
-    run(check.args, check.name);
-  } else {
-    process.stdout.write(
-      `Skipping ${check.name}; its dedicated ${check.ciOwner} CI job owns this check.\n`
-    );
-  }
+for (const check of unitRunnerChecks) {
+  run(check.args, check.name);
 }
 
 const suites = [
@@ -156,12 +149,36 @@ const suites = [
     typecheck: true,
     coverage: ['src/validation.ts'],
   },
+  {
+    name: 'orm-knowledge',
+    packageName: '@moonwitness/orm-knowledge',
+    typecheck: true,
+  },
+  {
+    name: 'knowledge',
+    packageName: '@moonwitness/knowledge',
+    typecheck: true,
+    typecheckConfig: 'tsconfig.test.json',
+  },
+  {
+    name: 'corpus',
+    packageName: '@moonwitness/corpus',
+    typecheck: true,
+    typecheckConfig: 'tsconfig.test.json',
+  },
 ];
 
 for (const suite of suites) {
   if (suite.typecheck) {
     run(
-      ['--filter', suite.packageName, 'exec', 'tsc', '-p', 'tsconfig.check.json'],
+      [
+        '--filter',
+        suite.packageName,
+        'exec',
+        'tsc',
+        '-p',
+        suite.typecheckConfig ?? 'tsconfig.check.json',
+      ],
       `${suite.name} typecheck`
     );
   }
@@ -193,5 +210,6 @@ for (const suite of suites) {
   run(args, `${suite.name} tests`);
 }
 
+run(['run', 'test:knowledge-cli:built'], 'Knowledge offline validator CLI');
 run(['exec', 'node', 'scripts/check-coverage.mjs'], 'Critical branch coverage');
 process.stdout.write(`JUnit reports written to ${path.relative(root, reportDirectory)}\n`);

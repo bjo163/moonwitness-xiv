@@ -15,5 +15,8 @@ roadmap-issue-plan.json
 .roadmap-issue-audit.json
 test-results/
 coverage/
+.codex-worktrees/
+apps/board/next-env.d.ts
 playwright-report/
+.qoder-tmp/
 .DS_Store

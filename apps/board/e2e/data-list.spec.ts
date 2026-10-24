@@ -17,10 +17,10 @@ test('list search, filters, sorting, pagination, counts, and user relations work
   const prefix = `List E2E ${suffix}`;
 
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
 
   const session = await page.evaluate(
     () => JSON.parse(localStorage.getItem('mw-board-session') ?? 'null') as BoardSession | null
@@ -65,7 +65,7 @@ test('list search, filters, sorting, pagination, counts, and user relations work
   });
   expect(users.data[0]).toHaveProperty('language');
 
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   await expect(page.getByRole('heading', { name: 'Partners' })).toBeVisible();
   const search = page.getByRole('textbox', { name: 'Search partners...' });
   await search.fill(prefix);

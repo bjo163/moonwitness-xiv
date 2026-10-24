@@ -4,6 +4,7 @@ const sourceLinePattern =
   /^\s*[-*]\s*(?:Source(?: code)? SHA|Source and final test SHA|Source commit pushed|Implementation commit|Local source SHA for test changes|Current source head(?: at evidence capture)?)\s*:\s*[^\r\n]*?\b([a-f0-9]{40})\b[^\r\n]*$/gimu;
 const versionPattern =
   /^v?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$/u;
+import { taskIdSource } from './task-ids.mjs';
 
 /**
  * Flatten the `--paginate --slurp` response shape returned by `gh api`.
@@ -127,7 +128,7 @@ export function parseEvidenceSourceSha(markdown) {
 export function parseRoadmapTaskStates(markdown, tasks) {
   const states = new Map();
   for (const [index, line] of markdown.split(/\r?\n/u).entries()) {
-    const match = /^\s*-\s*\[([ xX])\]\s+(M(?:0|[1-9][0-9]*)\.[0-9]{2})\b/u.exec(line);
+    const match = new RegExp(`^\\s*-\\s*\\[([ xX])\\]\\s+(${taskIdSource})\\b`, 'u').exec(line);
     if (!match) continue;
     const [, checkedMarker, taskId] = match;
     const found = states.get(taskId) ?? [];

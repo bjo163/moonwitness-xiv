@@ -6,6 +6,7 @@ const preflightStages = new Set([
   'build-api',
   'build-ui',
   'reset-superadmin-password',
+  'seed-knowledge-search-fixture',
   'start-playwright',
   'pnpm-invocation',
 ]);

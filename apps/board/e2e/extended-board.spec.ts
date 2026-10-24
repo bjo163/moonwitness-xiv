@@ -12,10 +12,10 @@ interface CreatedRecord {
 
 async function loginSuperadmin(page: Page): Promise<string> {
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
   const session = await page.evaluate(
     () => JSON.parse(localStorage.getItem('mw-board-session') ?? 'null') as BoardSession | null
   );
@@ -47,7 +47,7 @@ test('CSV import rejects invalid rows, reports partial failures, and exports onl
   });
   expect(formulaPartner.status()).toBe(201);
 
-  await page.goto('/m/base.partner');
+  await page.goto('/board/m/base.partner');
   await page.getByRole('button', { name: 'Import CSV' }).click();
   const upload = page.locator('input[type="file"]');
   await upload.setInputFiles({
@@ -140,7 +140,7 @@ test('user password write-only field is absent from list and CSV export', async 
   expect(metadata.fields.find((field) => field.name === 'password')?.writeOnly).toBe(true);
   expect(metadata.list.columns).not.toContain('password');
 
-  await page.goto('/m/base.user');
+  await page.goto('/board/m/base.user');
   await expect(page.getByRole('table')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Password' })).toHaveCount(0);
   await page
@@ -170,7 +170,7 @@ test('record chatter persists activity and attachment metadata with owner and pe
   expect(partnerResponse.status()).toBe(201);
   const partner = (await partnerResponse.json()) as { data: CreatedRecord };
 
-  await page.goto(`/m/base.partner/${partner.data.id}`);
+  await page.goto(`/board/m/base.partner/${partner.data.id}`);
   await expect(page.getByText('Record Chatter')).toBeVisible();
   const activitySummary = `Follow up ${suffix}`;
   await page.getByRole('button', { name: 'Schedule Activity' }).click();

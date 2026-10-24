@@ -1,0 +1,161 @@
+{
+  "fixtureSet": "K0-005-synthetic-privacy-policy-v1",
+  "syntheticOnly": true,
+  "purpose": "Review accepted deny-by-default privacy and safeguarding decisions; cases are not runtime enforcement or consent for real records.",
+  "cases": [
+    {
+      "id": "PP-001-missing-classification",
+      "facts": { "classification": null, "requestedUse": "import" },
+      "expectedDecision": "deny_import",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-002-absent-consent",
+      "facts": { "classification": "CONFIDENTIAL", "consent": null, "requestedUse": "import" },
+      "expectedDecision": "deny_import",
+      "policyClause": "Consent, minimization, and correction"
+    },
+    {
+      "id": "PP-003-withdrawn-consent",
+      "facts": { "consent": "withdrawn", "requestedUse": "derive_or_publish" },
+      "expectedDecision": "deny_use_and_open_documented_deletion_review",
+      "policyClause": "Consent, minimization, and correction"
+    },
+    {
+      "id": "PP-004-inherited-restricted",
+      "facts": { "parentClassification": "RESTRICTED", "childClassification": "INTERNAL" },
+      "expectedDecision": "retain_restricted_no_downgrade",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-005-child-sensitive-general-search",
+      "facts": { "classification": "CHILD_SENSITIVE", "requestedUse": "general_search_or_ai" },
+      "expectedDecision": "deny_general_purpose_search_and_ai",
+      "policyClause": "Classification and child-safety boundary"
+    },
+    {
+      "id": "PP-006-cross-tenant-read",
+      "facts": { "actorTenant": "synthetic-tenant-a", "recordTenant": "synthetic-tenant-b" },
+      "expectedDecision": "deny_without_disclosure",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-007-guessed-attachment-id",
+      "facts": { "actor": "unauthorized-synthetic-user", "attachmentId": "synthetic-guessed-id" },
+      "expectedDecision": "deny_without_disclosure",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-008-name-removal-only-publication",
+      "facts": {
+        "sourceClassification": "CONFIDENTIAL",
+        "reviewerDecision": null,
+        "redaction": "name-only"
+      },
+      "expectedDecision": "deny_public_projection",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-009-untrusted-reviewer-identity",
+      "facts": { "reviewerIdentitySource": "untrusted_request_body", "approval": true },
+      "expectedDecision": "reject_unverified_reviewer_identity",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-010-undefined-retention",
+      "facts": { "retentionPeriod": null, "requestedUse": "activate_import_workflow" },
+      "expectedDecision": "deny_workflow_activation",
+      "policyClause": "Consent, minimization, and correction"
+    },
+    {
+      "id": "PP-011-scoped-consent",
+      "facts": { "consentScope": "private_analysis", "requestedUse": "public_or_model_sharing" },
+      "expectedDecision": "deny_unapproved_use",
+      "policyClause": "Consent, minimization, and correction"
+    },
+    {
+      "id": "PP-012-inherited-child-sensitive",
+      "facts": {
+        "parentClassification": "CHILD_SENSITIVE",
+        "derivedClassification": "PUBLIC_APPROVED"
+      },
+      "expectedDecision": "retain_child_sensitive_deny_public_and_general_search",
+      "policyClause": "Classification and default access; child-safety boundary"
+    },
+    {
+      "id": "PP-013-unresolved-identity-or-access",
+      "facts": { "identityResolution": "unresolved", "accessDecision": null },
+      "expectedDecision": "deny_access",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-014-unreviewed-public-projection",
+      "facts": {
+        "reviewerDecision": null,
+        "minimizedProjection": false,
+        "visibility": "PUBLIC_APPROVED"
+      },
+      "expectedDecision": "deny_public_projection",
+      "policyClause": "Classification and default access"
+    },
+    {
+      "id": "PP-015-sensitive-child-public-form",
+      "facts": {
+        "classification": "CHILD_SENSITIVE",
+        "form": "general_public",
+        "safeguardingWorkflow": "not_authorized"
+      },
+      "expectedDecision": "deny_collection",
+      "policyClause": "Child-safety boundary"
+    },
+    {
+      "id": "PP-016-private-data-leak-canaries",
+      "facts": {
+        "syntheticCanary": "MW-SYNTHETIC-PRIVATE-DO-NOT-EXPOSE",
+        "surfaces": [
+          "public_api",
+          "public_pages",
+          "search",
+          "autocomplete",
+          "preview",
+          "export",
+          "application_logs",
+          "traces",
+          "support_bundles",
+          "prompts",
+          "retrieved_context",
+          "embeddings",
+          "vector_stores",
+          "analytics",
+          "notifications",
+          "ci_artifacts",
+          "model_training",
+          "hosted_inference_service"
+        ]
+      },
+      "expectedDecision": "no_exposure_on_any_surface",
+      "policyClause": "Prohibited exposure paths"
+    },
+    {
+      "id": "PP-017-revocation-derived-data",
+      "facts": {
+        "consent": "withdrawn",
+        "reviewTargets": ["synthetic-original-testimony"],
+        "derivedArtifacts": [
+          "synthetic-index",
+          "synthetic-embedding",
+          "synthetic-attachment",
+          "synthetic-replica",
+          "synthetic-operational-view",
+          "synthetic-cache",
+          "synthetic-preview",
+          "synthetic-export",
+          "synthetic-public-release",
+          "synthetic-publication-projection"
+        ]
+      },
+      "expectedDecision": "review_and_invalidate_eligible_derivatives_per_approved_policy",
+      "policyClause": "Revocation and incident response"
+    }
+  ]
+}

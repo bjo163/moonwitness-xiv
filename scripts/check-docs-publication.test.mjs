@@ -84,6 +84,26 @@ test('rejects credential-like values in BOM-marked UTF-16 public files', () => {
   }
 });
 
+test('rejects credential-like values in BOM-marked UTF-32 public files', () => {
+  const secret = 'password="synthetic-super-secret-value"';
+  const codePoints = Array.from(secret, (character) => character.codePointAt(0));
+  for (const littleEndian of [true, false]) {
+    withSite((directory) => {
+      const contents = Buffer.alloc(4 + codePoints.length * 4);
+      if (littleEndian) contents.set([0xff, 0xfe, 0x00, 0x00]);
+      else contents.set([0x00, 0x00, 0xfe, 0xff]);
+      codePoints.forEach((codePoint, index) => {
+        if (littleEndian) contents.writeUInt32LE(codePoint, 4 + index * 4);
+        else contents.writeUInt32BE(codePoint, 4 + index * 4);
+      });
+      fs.writeFileSync(path.join(directory, 'encoded.txt'), contents);
+      const result = scan(directory);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Potential secret detected/);
+    });
+  }
+});
+
 test('rejects env/auth artifacts and source maps', () => {
   withSite((directory) => {
     fs.writeFileSync(path.join(directory, '.env.production'), 'SECRET=fixture');

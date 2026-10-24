@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:synthetic-nohash",
+  "edition_id": "mw:edition:synthetic-nohash-v1",
+  "locale": "en",
+  "artifact": { "representation": "source_bytes", "byte_length": 42 },
+  "rights": {
+    "state": "permitted",
+    "allowed_uses": ["redistribute_full"],
+    "reviewer": "synthetic-reviewer",
+    "decision_date": "2026-10-15",
+    "evidence_ref": "synthetic:rights-decision:2",
+    "scope": "synthetic release"
+  },
+  "publication": { "mode": "source_bytes" },
+  "attribution": { "text": "Synthetic", "display_locations": ["catalog"] },
+  "complaint_process_owner": "synthetic-steward"
+}

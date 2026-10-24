@@ -49,13 +49,18 @@ async function actors(database: Knex) {
 
 function rejectAfterCommit(database: Knex, afterCommit?: () => Promise<void>): void {
   const transaction = database.transaction.bind(database);
+  let rejectNextAcknowledgement = true;
   Object.defineProperty(database, 'transaction', {
     configurable: true,
     value: async (handler: unknown) => {
       const callback = handler as (trx: Knex.Transaction) => Promise<unknown>;
-      await transaction(callback);
-      await afterCommit?.();
-      throw new Error('Simulated acknowledgement loss after commit');
+      const result = await transaction(callback);
+      if (rejectNextAcknowledgement) {
+        rejectNextAcknowledgement = false;
+        await afterCommit?.();
+        throw new Error('Simulated acknowledgement loss after commit');
+      }
+      return result;
     },
   });
 }
@@ -76,7 +81,7 @@ describe('workflow addon', () => {
         .first()
     ).toMatchObject({ count: 1 });
     expect(
-      await database('_orm_addons').where({ name: 'workflow', version: '1.0.0' }).first()
+      await database('_orm_addons').where({ name: 'workflow', version: '1.2.0' }).first()
     ).toBeDefined();
     await installAddons(database, [baseManifest, jobsManifest, notificationManifest, manifest]);
     expect(await database('workflow_definitions').count({ count: '*' }).first()).toMatchObject({
@@ -228,6 +233,7 @@ describe('workflow addon', () => {
       resourceId,
       idempotencyKey: 'lost-action-start-01',
     });
+    let replayChecks = 0;
     rejectAfterCommit(database);
 
     const result = await transitionWorkflow(database, {
@@ -238,10 +244,336 @@ describe('workflow addon', () => {
       action: 'submit',
       expectedRevision: 0,
       idempotencyKey: 'lost-action-ack-0001',
+      payload: { request: 'stable' },
+      preparePayload: async () => ({ committed: true }),
+      verifyPreparedPayloadReplay: async ({ trx, instance, event }) => {
+        replayChecks += 1;
+        expect(instance.id).toBe(started.id);
+        expect(event.action).toBe('submit');
+        expect(await trx('workflow_events').where({ id: event.id }).first()).toBeDefined();
+      },
     });
 
     expect(result).toMatchObject({ currentState: 'submitted', revision: 1, status: 'active' });
     expect(await database('workflow_events').where({ instance_id: started.id })).toHaveLength(2);
+    expect(replayChecks).toBe(1);
+  });
+
+  it('stores canonical transition payloads and checks them on idempotent replay', async () => {
+    const database = await setup();
+    const { systemId, adminId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'payload-start-key-01',
+    });
+    const input = {
+      instanceId: started.id,
+      companyId,
+      actorId: adminId,
+      role: 'superadmin' as const,
+      action: 'submit',
+      expectedRevision: 0,
+      idempotencyKey: 'payload-action-key-01',
+      payload: { z: [1, true], a: { second: 'two', first: 'one' } },
+    };
+
+    await transitionWorkflow(database, input);
+    const stored = await database('workflow_events')
+      .where({ idempotency_key: input.idempotencyKey })
+      .first('payload');
+    expect(stored?.payload).toBe('{"a":{"first":"one","second":"two"},"z":[1,true]}');
+    expect(new WorkflowEvent().$formatJson({ payload: stored?.payload, action: 'submit' })).toEqual(
+      {
+        action: 'submit',
+      }
+    );
+    await expect(
+      transitionWorkflow(database, {
+        ...input,
+        payload: { a: { first: 'one', second: 'two' }, z: [1, true] },
+      })
+    ).resolves.toMatchObject({ currentState: 'submitted', revision: 1 });
+    await expect(
+      transitionWorkflow(database, { ...input, payload: { changed: true } })
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await expect(
+      transitionWorkflow(database, { ...input, payload: { invalid: undefined } as never })
+    ).rejects.toMatchObject({ code: 'INVALID_EVENT_PAYLOAD' });
+    let tooDeep: unknown = 'leaf';
+    for (let index = 0; index < 34; index += 1) tooDeep = [tooDeep];
+    await expect(
+      transitionWorkflow(database, { ...input, payload: tooDeep as never })
+    ).rejects.toMatchObject({ code: 'INVALID_EVENT_PAYLOAD' });
+    await expect(
+      transitionWorkflow(database, { ...input, payload: 'x'.repeat(65_537) as never })
+    ).rejects.toMatchObject({ code: 'INVALID_EVENT_PAYLOAD' });
+  });
+
+  it('prepares event payloads from the locked transition and replays by stable request payload', async () => {
+    const database = await setup();
+    const { systemId, adminId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'prepared-start-key-01',
+      now: new Date('2026-10-16T00:00:00.000Z'),
+    });
+    let prepareCalls = 0;
+    let replayChecks = 0;
+    const input = {
+      instanceId: started.id,
+      companyId,
+      actorId: adminId,
+      role: 'superadmin' as const,
+      action: 'submit',
+      expectedRevision: 0,
+      idempotencyKey: 'prepared-action-key-01',
+      payload: { subject: 'synthetic-subject', revision: 3 },
+      now: new Date('2026-10-16T00:01:00.000Z'),
+      preparePayload: async (context: {
+        trx: Knex.Transaction;
+        instance: { id: number; started_by_id: number; revision: number; current_state: string };
+        action: string;
+        fromState: string;
+        toState: string;
+        sequence: number;
+        revision: number;
+        actorId: number;
+        role: string;
+        idempotencyKey: string;
+        eventTime: string;
+      }) => {
+        prepareCalls += 1;
+        expect(Object.isFrozen(context.instance)).toBe(true);
+        expect(context).toMatchObject({
+          instance: {
+            id: started.id,
+            started_by_id: systemId,
+            revision: 0,
+            current_state: 'draft',
+          },
+          action: 'submit',
+          fromState: 'draft',
+          toState: 'submitted',
+          sequence: 1,
+          revision: 1,
+          actorId: adminId,
+          role: 'superadmin',
+          idempotencyKey: input.idempotencyKey,
+          eventTime: '2026-10-16T00:01:00.000Z',
+        });
+        await expect(
+          context.trx('workflow_instances').where({ id: started.id }).first('revision')
+        ).resolves.toMatchObject({ revision: 0 });
+        return { requesterId: context.instance.started_by_id, subject: 'synthetic-subject' };
+      },
+      verifyPreparedPayloadReplay: async ({
+        instance,
+        event,
+      }: {
+        instance: { id: number };
+        event: Record<string, unknown>;
+      }) => {
+        replayChecks += 1;
+        expect(instance.id).toBe(started.id);
+        expect(event.action).toBe('submit');
+      },
+    };
+
+    await transitionWorkflow(database, input);
+    const stored = await database('workflow_events')
+      .where({ idempotency_key: input.idempotencyKey })
+      .first('payload');
+    expect(JSON.parse(String(stored?.payload))).toEqual({
+      event: { requesterId: systemId, subject: 'synthetic-subject' },
+      request: { revision: 3, subject: 'synthetic-subject' },
+      workflowPreparedPayload: 1,
+    });
+    await expect(transitionWorkflow(database, input)).resolves.toMatchObject({
+      revision: 1,
+      currentState: 'submitted',
+    });
+    expect(prepareCalls).toBe(1);
+    expect(replayChecks).toBe(1);
+
+    const verifierError = new Error('injected read-only verifier failure');
+    await expect(
+      transitionWorkflow(database, {
+        ...input,
+        verifyPreparedPayloadReplay: () => {
+          throw verifierError;
+        },
+      })
+    ).rejects.toBe(verifierError);
+
+    await expect(
+      transitionWorkflow(database, {
+        ...input,
+        payload: { subject: 'different-subject', revision: 3 },
+      })
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await expect(
+      transitionWorkflow(database, {
+        ...input,
+        preparePayload: undefined,
+      })
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expect(prepareCalls).toBe(1);
+  });
+
+  it('rolls back state and event writes when the payload preparer fails', async () => {
+    const database = await setup();
+    const { systemId, adminId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'prepared-failure-start-01',
+    });
+    await expect(
+      transitionWorkflow(database, {
+        instanceId: started.id,
+        companyId,
+        actorId: adminId,
+        role: 'superadmin',
+        action: 'submit',
+        expectedRevision: 0,
+        idempotencyKey: 'prepared-failure-action-01',
+        payload: { subject: 'synthetic-subject' },
+        preparePayload: async (context) => {
+          expect(context.instance.started_by_id).toBe(systemId);
+          throw new Error('injected payload preparation failure');
+        },
+      })
+    ).rejects.toThrow('injected payload preparation failure');
+
+    await expect(
+      database('workflow_instances').where({ id: started.id }).first('current_state', 'revision')
+    ).resolves.toMatchObject({ current_state: 'draft', revision: 0 });
+    await expect(
+      database('workflow_events').where({ idempotency_key: 'prepared-failure-action-01' })
+    ).resolves.toHaveLength(0);
+  });
+
+  it('rejects workflow event updates and deletes through ORM and raw SQL', async () => {
+    const database = await setup();
+    const { systemId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'immutable-start-0001',
+    });
+    const event = await database('workflow_events').where({ instance_id: started.id }).first('id');
+    if (!event) throw new Error('Workflow start event is missing');
+
+    await expect(
+      database('workflow_events').where({ id: event.id }).update({ action: 'rewritten' })
+    ).rejects.toThrow('Workflow events are append-only');
+    await expect(database('workflow_events').where({ id: event.id }).delete()).rejects.toThrow(
+      'Workflow events are append-only'
+    );
+    await expect(
+      WorkflowEvent.query(database).findById(event.id).patch({ action: 'rewritten' })
+    ).rejects.toThrow('Workflow events are append-only');
+    await expect(WorkflowEvent.query(database).deleteById(event.id)).rejects.toThrow(
+      'Workflow events are append-only'
+    );
+    await expect(
+      database('workflow_events').where({ id: event.id }).first('action')
+    ).resolves.toMatchObject({ action: 'start' });
+  });
+
+  it('rolls back the workflow transition when its event payload cannot be persisted', async () => {
+    const database = await setup();
+    const { systemId, adminId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'atomic-start-key-0001',
+    });
+    await database.raw(`
+      CREATE TRIGGER fail_submit_event
+      BEFORE INSERT ON workflow_events
+      WHEN NEW.action = 'submit'
+      BEGIN SELECT RAISE(ABORT, 'injected event failure'); END
+    `);
+
+    await expect(
+      transitionWorkflow(database, {
+        instanceId: started.id,
+        companyId,
+        actorId: adminId,
+        role: 'superadmin',
+        action: 'submit',
+        expectedRevision: 0,
+        idempotencyKey: 'atomic-action-key-0001',
+        payload: { reason: 'synthetic test' },
+      })
+    ).rejects.toThrow('injected event failure');
+
+    await expect(
+      database('workflow_instances').where({ id: started.id }).first('current_state', 'revision')
+    ).resolves.toMatchObject({ current_state: 'draft', revision: 0 });
+    await expect(
+      database('workflow_events').where({ idempotency_key: 'atomic-action-key-0001' })
+    ).resolves.toHaveLength(0);
+  });
+
+  it('adds the nullable event payload column while upgrading legacy workflow rows', async () => {
+    const database = await setup();
+    const { systemId, adminId, companyId, resourceId } = await actors(database);
+    const started = await startWorkflow(database, {
+      code: 'sample.request_approval',
+      companyId,
+      actorId: systemId,
+      role: 'system',
+      resourceModel: 'base.partner',
+      resourceId,
+      idempotencyKey: 'legacy-start-key-01',
+    });
+    await transitionWorkflow(database, {
+      instanceId: started.id,
+      companyId,
+      actorId: adminId,
+      role: 'superadmin',
+      action: 'submit',
+      expectedRevision: 0,
+      idempotencyKey: 'legacy-action-key-01',
+    });
+    await database('_orm_addons').where({ name: 'workflow' }).update({ version: '1.0.0' });
+    await database.schema.alterTable('workflow_events', (table) => table.dropColumn('payload'));
+
+    await installAddons(database, [baseManifest, jobsManifest, notificationManifest, manifest]);
+
+    const legacy = await database('workflow_events')
+      .where({ idempotency_key: 'legacy-action-key-01' })
+      .first('payload');
+    expect(legacy?.payload).toBeNull();
+    expect(
+      await database('_orm_addons').where({ name: 'workflow' }).first('version')
+    ).toMatchObject({
+      version: '1.2.0',
+    });
   });
 
   it('propagates start failures when no committed idempotency event exists', async () => {

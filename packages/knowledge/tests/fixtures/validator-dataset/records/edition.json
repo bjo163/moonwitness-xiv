@@ -1,0 +1,11 @@
+{
+  "id": "mw:edition:synthetic-edition",
+  "kind": "Edition",
+  "schema_version": 1,
+  "lifecycle": "candidate",
+  "created_at": "2026-10-15T00:00:00Z",
+  "updated_at": "2026-10-15T00:00:00Z",
+  "origin_ref": "synthetic:fixture:edition",
+  "visibility": "INTERNAL",
+  "content_revision": 1
+}

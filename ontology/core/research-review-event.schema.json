@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/research-review-event.schema.json",
+  "title": "MoonWitness research review event",
+  "description": "Append-only human review decision linked to a revision-pinned ORM workflow event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "schema_version",
+    "subject_id",
+    "subject_revision",
+    "research_release_digest",
+    "workflow_instance_id",
+    "workflow_event_sequence",
+    "workflow_revision",
+    "outcome",
+    "reviewer_id",
+    "requester_id",
+    "reviewer_role",
+    "evidence_ids",
+    "visibility",
+    "idempotency_key",
+    "decided_at"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:review-event:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "kind": { "const": "ResearchReviewEvent" },
+    "schema_version": { "const": 1 },
+    "subject_id": {
+      "type": "string",
+      "pattern": "^mw:(?:assertion|relation):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "subject_revision": { "type": "integer", "minimum": 1 },
+    "research_release_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "workflow_instance_id": { "type": "integer", "minimum": 1 },
+    "workflow_event_sequence": { "type": "integer", "minimum": 1 },
+    "workflow_revision": { "type": "integer", "minimum": 1 },
+    "outcome": { "enum": ["accepted", "rejected"] },
+    "reviewer_id": {
+      "type": "string",
+      "pattern": "^mw:(?:user|agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "requester_id": {
+      "type": "string",
+      "pattern": "^mw:(?:user|agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "reviewer_role": { "enum": ["user", "superadmin"] },
+    "evidence_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" }
+    },
+    "visibility": {
+      "enum": ["PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "CHILD_SENSITIVE"]
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "decided_at": { "type": "string", "format": "date-time" }
+  }
+}

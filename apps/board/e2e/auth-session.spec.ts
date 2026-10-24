@@ -1,6 +1,11 @@
 import { createHmac } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { createE2eSuffix, E2E_JWT_SECRET, E2E_SUPERADMIN_PASSWORD } from './constants.js';
+import {
+  createE2eSuffix,
+  E2E_JWT_SECRET,
+  E2E_SUPERADMIN_PASSWORD,
+  loginPageUrl,
+} from './constants.js';
 
 interface E2EUser {
   id: number;
@@ -34,11 +39,11 @@ function expiredAccessToken(user: E2EUser): string {
 
 async function loginSuperadmin(page: Page) {
   await page.goto('/login');
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
-  await expect(page.getByText('Welcome, superadmin!', { exact: false })).toBeVisible();
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+  await expect(page.getByRole('heading', { name: 'Command center', exact: false })).toBeVisible();
 }
 
 test('reload restores session, concurrent requests share expired-token refresh, and logout revokes it', async ({
@@ -51,8 +56,8 @@ test('reload restores session, concurrent requests share expired-token refresh, 
   expect(original).not.toBeNull();
 
   await page.reload();
-  await expect(page).toHaveURL(/\/$/u);
-  await expect(page.getByText('Welcome, superadmin!', { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(/\/board$/u);
+  await expect(page.getByRole('heading', { name: 'Command center', exact: false })).toBeVisible();
 
   const expired = expiredAccessToken(original!.user);
   await page.evaluate((token) => {
@@ -69,8 +74,8 @@ test('reload restores session, concurrent requests share expired-token refresh, 
     if (new URL(request.url()).pathname === '/auth/refresh') refreshRequests += 1;
   });
   await page.reload();
-  await expect(page).toHaveURL(/\/$/u);
-  await expect(page.getByText('Welcome, superadmin!', { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(/\/board$/u);
+  await expect(page.getByRole('heading', { name: 'Command center', exact: false })).toBeVisible();
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -89,17 +94,17 @@ test('reload restores session, concurrent requests share expired-token refresh, 
   expect(rotated?.refresh_token).not.toBe(original?.refresh_token);
   await page.getByRole('button', { name: 'superadmin' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page).toHaveURL(loginPageUrl);
+  await expect(page.getByRole('heading', { name: 'Enter the Shadow' })).toBeVisible();
   await expect(page.evaluate(() => localStorage.getItem('mw-board-session'))).resolves.toBeNull();
 
   const replay = await page.request.post('/auth/refresh', {
     data: { refresh_token: rotated!.refresh_token },
   });
   expect(replay.status()).toBe(401);
-  await page.goto('/profile');
-  await expect(page).toHaveURL(/\/login$/u);
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await page.goto('/board/profile');
+  await expect(page).toHaveURL(loginPageUrl);
+  await expect(page.getByRole('heading', { name: 'Enter the Shadow' })).toBeVisible();
 });
 
 test('disabled accounts cannot establish an authentication session', async ({ page }) => {
@@ -143,18 +148,18 @@ test('disabled accounts cannot establish an authentication session', async ({ pa
 test('login returns to an internal page and rejects an external return target', async ({
   page,
 }) => {
-  await page.goto('/m/base.partner?source=session-test');
+  await page.goto('/board/m/base.partner?source=session-test');
   const applicationOrigin = new URL(page.url()).origin;
-  await expect(page).toHaveURL(/\/login$/u);
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
+  await expect(page).toHaveURL(loginPageUrl);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page).toHaveURL(/\/m\/base\.partner\?source=session-test$/u);
   await expect(page.getByRole('heading', { name: 'Partners' })).toBeVisible();
 
   await page.getByRole('button', { name: 'superadmin' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page).toHaveURL(/\/login$/u);
+  await expect(page).toHaveURL(loginPageUrl);
   await page.evaluate(() => {
     const current = window.history.state as { key?: string; idx?: number } | null;
     window.history.replaceState(
@@ -168,10 +173,20 @@ test('login returns to an internal page and rejects an external return target', 
     );
   });
   await page.reload();
-  await page.getByLabel('Login').fill('superadmin');
-  await page.getByLabel('Password').fill(E2E_SUPERADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Enter the board' }).click();
-  await expect(page).toHaveURL(/\/$/u);
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/m\/base\.partner\?source=session-test$/u);
   expect(new URL(page.url()).origin).toBe(applicationOrigin);
-  await expect(page.getByText('Welcome, superadmin!', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Partners' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'superadmin' }).click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await page.goto('/login?returnTo=https%3A%2F%2Fattacker.example%2Fsteal-session');
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+  expect(new URL(page.url()).origin).toBe(applicationOrigin);
+  await expect(page.getByRole('heading', { name: 'Command center' })).toBeVisible();
 });

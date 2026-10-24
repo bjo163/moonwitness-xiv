@@ -4,13 +4,19 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import { createGitHubIssuesClient } from './sync-issues.mjs';
+import { parseRoadmapTaskStates } from './collect-lifecycle-snapshot.mjs';
+import { taskIdCaptureSource } from './task-ids.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const markerPattern =
-  /^<!-- moonwitness-task: ([1-9][0-9]*):(M(?:0|[1-9][0-9]*)\.[0-9]{2}) -->$/gmu;
+const markerPattern = new RegExp(
+  `^<!-- moonwitness-task: ([1-9][0-9]*):${taskIdCaptureSource} -->$`,
+  'gmu'
+);
 const managedStart = '<!-- BEGIN MOONWITNESS MANAGED -->';
 const managedEnd = '<!-- END MOONWITNESS MANAGED -->';
 const fullShaPattern = /^[a-f0-9]{40}$/u;
+// Mirrors the delivery stages that make a projection closeable in lifecycle.mjs.
+const deliveredStages = new Set(['verified-dev', 'in-main', 'released']);
 
 function collectManagedIssues(issues, repositoryId) {
   const matches = new Map();
@@ -91,9 +97,37 @@ function generatedLinkProblems(issue, task, repositoryUrl) {
   return problems;
 }
 
-/** Read-only source-to-issue drift audit. It never performs network or filesystem writes. */
+/**
+ * Compare the projection the sync wrote into the managed block against the live
+ * issue state and the source status of the task. Delivery evidence only exists
+ * inside that block, so a stale block can never invent a closure claim here.
+ */
+function lifecycleStateDrift(block, state, sourceStatus) {
+  if (!sourceStatus) return null;
+  const workStatus = /^Work status: (\S+)$/mu.exec(block)?.[1];
+  const deliveryStage = /^Delivery stage: (\S+)$/mu.exec(block)?.[1] ?? null;
+  const blockers = /^Lifecycle blockers: (.*)$/mu.exec(block)?.[1];
+  if (state === 'closed' && sourceStatus !== 'complete')
+    return { kind: 'closed-while-incomplete', sourceStatus, deliveryStage };
+  if (
+    state === 'open' &&
+    sourceStatus === 'complete' &&
+    workStatus === 'complete' &&
+    deliveredStages.has(deliveryStage ?? '') &&
+    blockers === undefined
+  )
+    return { kind: 'open-while-deliverable', sourceStatus, deliveryStage };
+  return null;
+}
+
+/**
+ * Read-only source-to-issue drift audit. It never performs network or filesystem
+ * writes. Lifecycle state drift is judged only when `taskStates` carries the
+ * source status parsed from the master roadmap; without it no claim is made.
+ */
 export function auditRoadmapIssues({
   tasks,
+  taskStates,
   issues,
   milestones,
   labels,
@@ -128,6 +162,7 @@ export function auditRoadmapIssues({
   const missingIssueLabels = [];
   const unexpectedManagedIssueLabels = [];
   const linkProblems = [];
+  const stateDrift = [];
   for (const [taskId, rows] of matches) {
     const task = tasksById.get(taskId);
     if (!task) continue;
@@ -162,6 +197,8 @@ export function auditRoadmapIssues({
         });
       const problems = generatedLinkProblems(issue, task, repositoryUrl);
       if (problems.length) linkProblems.push({ taskId, issueNumber: issue.number, problems });
+      const stateFinding = lifecycleStateDrift(block, issue.state, taskStates?.get(taskId)?.status);
+      if (stateFinding) stateDrift.push({ taskId, issueNumber: issue.number, ...stateFinding });
     }
   }
   const requiredMilestones = new Set(tasks.map(({ milestone }) => milestone));
@@ -198,6 +235,7 @@ export function auditRoadmapIssues({
       staleMilestoneIssueCount: staleMilestoneIssues.length,
       brokenGeneratedLinkCount: linkProblems.length,
       conflictCount: malformed.length,
+      lifecycleStateDriftCount: stateDrift.length,
       metadataDriftCount:
         missingMilestones.length +
         orphanMilestones.length +
@@ -213,6 +251,7 @@ export function auditRoadmapIssues({
     staleSource,
     staleMilestoneIssues,
     linkProblems,
+    stateDrift,
     metadata: {
       missingMilestones,
       orphanMilestones,
@@ -229,7 +268,7 @@ export function renderIssueAuditSummary(report) {
   return [
     `Roadmap issue audit source SHA: ${report.sourceSha}`,
     `Tasks=${summary.taskCount}, managedIssues=${summary.managedIssueCount}, missing=${summary.missingCount}, duplicates=${summary.duplicateCount}, orphanIssues=${summary.orphanIssueCount}.`,
-    `StaleSource=${summary.staleSourceCount}, staleMilestoneIssues=${summary.staleMilestoneIssueCount}, brokenGeneratedLinks=${summary.brokenGeneratedLinkCount}, conflicts=${summary.conflictCount}, metadataDrift=${summary.metadataDriftCount}.`,
+    `StaleSource=${summary.staleSourceCount}, staleMilestoneIssues=${summary.staleMilestoneIssueCount}, brokenGeneratedLinks=${summary.brokenGeneratedLinkCount}, conflicts=${summary.conflictCount}, metadataDrift=${summary.metadataDriftCount}, lifecycleStateDrift=${summary.lifecycleStateDriftCount}.`,
   ].join('\n');
 }
 
@@ -267,6 +306,10 @@ async function main() {
   const index = JSON.parse(
     await readFile(path.join(repositoryRoot, 'docs/roadmap/tasks.json'), 'utf8')
   );
+  const taskStates = parseRoadmapTaskStates(
+    await readFile(path.join(repositoryRoot, 'ROADMAP.md'), 'utf8'),
+    index.tasks
+  );
   const repositoryParts = repository.split('/');
   if (repositoryParts.length !== 2 || repositoryParts.some((part) => !part))
     throw new Error('GITHUB_REPOSITORY must be owner/repository.');
@@ -275,6 +318,7 @@ async function main() {
   const [issues, metadata] = await Promise.all([client.listAll(), client.listMetadata()]);
   const report = auditRoadmapIssues({
     tasks: index.tasks,
+    taskStates,
     issues,
     milestones: metadata.milestones,
     labels: metadata.labels,

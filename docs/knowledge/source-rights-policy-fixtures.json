@@ -1,0 +1,63 @@
+{
+  "fixtureSet": "K0-004-synthetic-rights-policy-v1",
+  "syntheticOnly": true,
+  "purpose": "Review the accepted fail-closed rights policy; these cases are not source clearances or runtime enforcement.",
+  "cases": [
+    {
+      "id": "RR-001-unknown-rights",
+      "facts": { "rightsState": "unknown", "requestedUse": "public_bytes" },
+      "expectedDecision": "deny_public_bytes_metadata_only_fallback",
+      "policyClause": "Default decision; fail-closed publication gate"
+    },
+    {
+      "id": "RR-002-restricted-rights",
+      "facts": { "rightsState": "restricted", "requestedUse": "release_bundle" },
+      "expectedDecision": "deny_bytes_and_publication",
+      "policyClause": "Default decision"
+    },
+    {
+      "id": "RR-003-disputed-or-withdrawn",
+      "facts": { "rightsState": "disputed", "complaint": "synthetic-complaint-1" },
+      "expectedDecision": "suspend_affected_publication_and_route_private_review",
+      "policyClause": "Complaint and takedown handling"
+    },
+    {
+      "id": "RR-004-missing-integrity-or-edition",
+      "facts": { "edition": null, "sha256": null, "requestedUse": "public_bytes" },
+      "expectedDecision": "deny_publication",
+      "policyClause": "Fail-closed publication gate: source identity, edition, and byte-integrity evidence"
+    },
+    {
+      "id": "RR-005-missing-attribution",
+      "facts": { "rightsState": "permitted", "attribution": null, "requestedUse": "public_bytes" },
+      "expectedDecision": "deny_publication",
+      "policyClause": "Fail-closed publication gate: required attribution"
+    },
+    {
+      "id": "RR-006-analysis-only-scope",
+      "facts": { "allowedUse": "analysis", "requestedUse": "redistribute_full" },
+      "expectedDecision": "deny_requested_use",
+      "policyClause": "Rights decision must distinguish analysis, storage, transformation, excerpts, redistribution, and model training"
+    },
+    {
+      "id": "RR-007-exact-scoped-clearance",
+      "facts": {
+        "rightsState": "permitted",
+        "edition": "synthetic-edition-1",
+        "scope": "metadata_only"
+      },
+      "expectedDecision": "permit_metadata_only_within_recorded_scope",
+      "policyClause": "Source-specific recorded review decision"
+    },
+    {
+      "id": "RR-008-missing-complaint-owner",
+      "facts": {
+        "rightsState": "permitted",
+        "complaintOwner": null,
+        "requestedUse": "public_bytes"
+      },
+      "expectedDecision": "deny_publication",
+      "policyClause": "Fail-closed publication gate: assigned complaint and takedown process"
+    }
+  ]
+}

@@ -32,6 +32,19 @@ test('returns an empty selection for a fully synchronized plan', () => {
   );
 });
 
+test('selects K-series issue writes within the same bounded batch contract', () => {
+  assert.deepEqual(
+    selectIssueSyncBatch({
+      operations: [
+        { taskId: 'K0-001', operation: 'create' },
+        { taskId: 'K0-002', operation: 'update' },
+        { taskId: 'K1-001', operation: 'noop' },
+      ],
+    }),
+    ['K0-001', 'K0-002']
+  );
+});
+
 test('fails closed for malformed plans, duplicate IDs, and unsafe batch limits', () => {
   assert.throws(() => selectIssueSyncBatch(undefined), /operations array/u);
   assert.throws(

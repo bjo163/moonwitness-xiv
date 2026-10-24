@@ -9,7 +9,13 @@ export { toast };
 export type ToastHostProps = ComponentProps<typeof SonnerToaster>;
 
 /** Mount once near the application root so package toast calls are visible. */
-export function ToastHost({ position = 'bottom-right', ...props }: ToastHostProps) {
+export function ToastHost({
+  position = 'bottom-right',
+  closeButton = true,
+  richColors = true,
+  className,
+  ...props
+}: ToastHostProps) {
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -17,5 +23,15 @@ export function ToastHost({ position = 'bottom-right', ...props }: ToastHostProp
   }, []);
 
   if (!portalTarget) return null;
-  return createPortal(<SonnerToaster position={position} {...props} />, portalTarget);
+  const hostClassName = ['mw-ui-toast-host', className].filter(Boolean).join(' ');
+  return createPortal(
+    <SonnerToaster
+      position={position}
+      closeButton={closeButton}
+      richColors={richColors}
+      {...props}
+      className={hostClassName}
+    />,
+    portalTarget
+  );
 }

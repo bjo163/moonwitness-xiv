@@ -35,9 +35,39 @@ const requestApprovalExample = {
 
 export const manifest = defineAddon({
   name: 'workflow',
-  version: '1.0.0',
+  version: '1.2.0',
   depends: ['base', 'jobs', 'notification'],
   models: [WorkflowDefinition, WorkflowInstance, WorkflowEvent, WorkflowApproval],
+  setup: async (trx) => {
+    const client = String(trx.client.config.client);
+    if (client === 'pg') {
+      await trx.raw(`
+        CREATE OR REPLACE FUNCTION moonwitness_reject_workflow_event_mutation()
+        RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION 'Workflow events are append-only';
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      await trx.raw(`DROP TRIGGER IF EXISTS workflow_events_append_only ON workflow_events`);
+      await trx.raw(`
+        CREATE TRIGGER workflow_events_append_only
+        BEFORE UPDATE OR DELETE ON workflow_events
+        FOR EACH ROW EXECUTE FUNCTION moonwitness_reject_workflow_event_mutation()
+      `);
+    } else if (client === 'better-sqlite3' || client === 'sqlite3') {
+      await trx.raw(`
+        CREATE TRIGGER IF NOT EXISTS workflow_events_reject_update
+        BEFORE UPDATE ON workflow_events
+        BEGIN SELECT RAISE(ABORT, 'Workflow events are append-only'); END
+      `);
+      await trx.raw(`
+        CREATE TRIGGER IF NOT EXISTS workflow_events_reject_delete
+        BEFORE DELETE ON workflow_events
+        BEGIN SELECT RAISE(ABORT, 'Workflow events are append-only'); END
+      `);
+    }
+  },
   data: [
     seed(WorkflowDefinition, 'workflow.definition_sample_request_v1', {
       code: 'sample.request_approval',

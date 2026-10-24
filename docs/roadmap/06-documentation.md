@@ -101,7 +101,7 @@ Catat command/test case, actual result, SHA sumber dan lokasi bukti dalam `docs/
 ### Langkah pelaksanaan
 
 1. Pilih static documentation stack yang cocok reuse React UI dan catat tradeoff.
-2. Implementasikan search, sidebar, 404, responsive layout dan base /moonwitness-xi/.
+2. Implementasikan search, sidebar, 404, responsive layout dan base /moonwitness-xiv/.
 3. Pisahkan docs branding dari Board business code.
 
 ### Verifikasi dan syarat selesai
@@ -113,7 +113,7 @@ Catat command/test case, actual result, SHA sumber dan lokasi bukti dalam `docs/
 ### Catatan implementasi
 
 Portal saat ini berada di `apps/docs`, memakai guide bundle deterministik, React Router basename
-`/moonwitness-xi/`, Markdown renderer tanpa raw HTML, pencarian keyboard, dan fallback `404.html`.
+`/moonwitness-xiv/`, Markdown renderer tanpa raw HTML, pencarian keyboard, dan fallback `404.html`.
 CI wajib menjalankan `pnpm test:docs-portal`. Publikasi Pages dan build source ref stable tetap
 menjadi acceptance terpisah M6.07/M6.08.
 

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.invalid/schemas/private-archive-import-manifest.schema.json",
+  "title": "MoonWitness local private archive import manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "manifestId", "recordedAt", "source", "consent"],
+  "properties": {
+    "format": { "const": "moonwitness-private-archive-import/v1" },
+    "manifestId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "exportedAt", "sha256", "byteLength"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/sourceKind" },
+        "path": { "type": "string", "minLength": 1 },
+        "exportedAt": { "type": "string", "format": "date-time" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteLength": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "sourceKind",
+        "sourcePath",
+        "sourceSha256",
+        "subjectRef",
+        "authorizedByRef",
+        "authorizedAt",
+        "dataCategories",
+        "purposes",
+        "authorizedReviewers",
+        "intendedDerivedUses",
+        "publicationScope",
+        "withdrawalPath",
+        "correctionPath",
+        "decisionRef"
+      ],
+      "properties": {
+        "state": { "enum": ["granted", "denied", "withdrawn"] },
+        "sourceKind": { "$ref": "#/$defs/sourceKind" },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "subjectRef": { "type": "string", "minLength": 1 },
+        "authorizedByRef": { "type": "string", "minLength": 1 },
+        "authorizedAt": { "type": "string", "format": "date-time" },
+        "dataCategories": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "purposes": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "authorizedReviewers": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "intendedDerivedUses": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "publicationScope": { "enum": ["none", "internal_only", "reviewed_projection"] },
+        "withdrawalPath": { "type": "string", "minLength": 1 },
+        "correctionPath": { "type": "string", "minLength": 1 },
+        "decisionRef": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "sourceKind": { "enum": ["account_export", "user_archive", "witness_archive"] },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

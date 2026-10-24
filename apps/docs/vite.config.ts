@@ -11,7 +11,7 @@ const repositoryVersion = JSON.parse(
 
 export default defineConfig({
   root: appDirectory,
-  base: process.env.MW_DOCS_BASE_PATH ?? '/moonwitness-xi/',
+  base: process.env.MW_DOCS_BASE_PATH ?? '/moonwitness-xiv/',
   envPrefix: ['VITE_', 'MW_DOCS_'],
   define: {
     'import.meta.env.MW_DOCS_APPLICATION_VERSION': JSON.stringify(repositoryVersion),

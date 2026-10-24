@@ -1,0 +1,435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.invalid/schemas/legacy-source-inventory.schema.json",
+  "title": "MoonWitness legacy source inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "inventoryVersion",
+    "status",
+    "reviewedAt",
+    "reviewScope",
+    "rightsPathSearch",
+    "historicalMetadataFindings",
+    "decisionPolicy",
+    "candidates",
+    "completionGates",
+    "nonClaims"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "inventoryVersion": {
+      "const": 1
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewedAt": {
+      "type": "string",
+      "format": "date"
+    },
+    "reviewScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "trackedFilesSearched",
+        "legacyCheckoutsPresent",
+        "publicRemoteRefsAudited",
+        "privateRemoteContentsAccessed",
+        "ontologyMappingsDirectoryPresent",
+        "sourceBytesCopied",
+        "targetWorkspaceSourceFilesWritten"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trackedFilesSearched": {
+          "type": "boolean"
+        },
+        "legacyCheckoutsPresent": {
+          "type": "boolean"
+        },
+        "publicRemoteRefsAudited": {
+          "type": "boolean"
+        },
+        "privateRemoteContentsAccessed": {
+          "type": "boolean"
+        },
+        "ontologyMappingsDirectoryPresent": {
+          "type": "boolean"
+        },
+        "sourceBytesCopied": {
+          "type": "boolean"
+        },
+        "targetWorkspaceSourceFilesWritten": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rightsPathSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "caseInsensitivePathSubstrings",
+        "privateRepositoriesOpened",
+        "thirdPartyContentCopied"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "caseInsensitivePathSubstrings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "privateRepositoriesOpened": {
+          "type": "boolean"
+        },
+        "thirdPartyContentCopied": {
+          "type": "boolean"
+        }
+      }
+    },
+    "historicalMetadataFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "repositoryHead",
+          "artifactPath",
+          "artifactClass",
+          "observations",
+          "limitations"
+        ],
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "repositoryHead": { "$ref": "#/$defs/gitSha" },
+          "artifactPath": { "type": "string", "minLength": 1 },
+          "artifactClass": {
+            "enum": [
+              "versioned_schema_history",
+              "snapshot_manifest_metadata",
+              "deterministic_test_fixture",
+              "database_and_test_fixture_history",
+              "application_identity_migration_history",
+              "snapshot_history"
+            ]
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["commit", "gitBlobSha"],
+              "properties": {
+                "commit": {
+                  "oneOf": [{ "$ref": "#/$defs/gitSha" }, { "type": "null" }]
+                },
+                "gitBlobSha": { "$ref": "#/$defs/gitSha" }
+              }
+            }
+          },
+          "limitations": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "decisionPolicy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "remoteObservations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "visibility",
+          "branch",
+          "head",
+          "readme",
+          "rootLicensePath",
+          "rootLicenseFound",
+          "treeScanComplete",
+          "matchingRightsFiles",
+          "nonLicenseNameMatches",
+          "tags"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+          },
+          "visibility": {
+            "enum": ["public", "private"]
+          },
+          "branch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "head": {
+            "$ref": "#/$defs/gitSha"
+          },
+          "readme": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "gitBlobSha", "bytes"],
+            "properties": {
+              "path": {
+                "const": "README.md"
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "gitBlobSha": {
+                "$ref": "#/$defs/gitSha"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "rootLicensePath": {
+            "const": "LICENSE"
+          },
+          "rootLicenseFound": {
+            "type": "boolean"
+          },
+          "treeScanComplete": {
+            "type": "boolean"
+          },
+          "matchingRightsFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "gitBlobSha", "sha256", "bytes", "classification", "scope"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "gitBlobSha": {
+                  "$ref": "#/$defs/gitSha"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "classification": {
+                  "enum": [
+                    "repository_rights_policy",
+                    "scoped_license_notice",
+                    "source_specific_rights_audit"
+                  ]
+                },
+                "scope": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "nonLicenseNameMatches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "gitBlobSha", "classification"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "gitBlobSha": {
+                  "$ref": "#/$defs/gitSha"
+                },
+                "classification": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "tagObjectSha", "commitSha"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tagObjectSha": {
+                  "$ref": "#/$defs/gitSha"
+                },
+                "commitSha": {
+                  "$ref": "#/$defs/gitSha"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidateId",
+          "repository",
+          "repositoryUrl",
+          "file",
+          "commit",
+          "sha256",
+          "license",
+          "oldIds",
+          "oldIdsStatus",
+          "dataKind",
+          "targetOwner",
+          "transform",
+          "dataQuality",
+          "manualReviewRequired",
+          "tests",
+          "decision",
+          "decisionStatus"
+        ],
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "repository": {
+            "type": ["string", "null"]
+          },
+          "repositoryUrl": {
+            "type": ["string", "null"]
+          },
+          "repositoryCandidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "file": {
+            "type": ["string", "null"]
+          },
+          "commit": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/gitSha"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/sha256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1
+          },
+          "oldIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "oldIdsStatus": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataKind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetOwner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "transform": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataQuality": {
+            "type": "string",
+            "minLength": 1
+          },
+          "manualReviewRequired": {
+            "type": "boolean"
+          },
+          "tests": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "enum": ["port", "reimplement", "reference_only", "reject", "defer"]
+          },
+          "decisionStatus": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "completionGates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "nonClaims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

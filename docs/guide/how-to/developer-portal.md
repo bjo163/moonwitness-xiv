@@ -9,7 +9,7 @@ pnpm docs:build
 pnpm --filter @moonwitness/docs preview
 ```
 
-Buka base path lokal yang ditampilkan oleh Vite, biasanya `http://localhost:4173/moonwitness-xi/`.
+Buka base path lokal yang ditampilkan oleh Vite, biasanya `http://localhost:4173/moonwitness-xiv/`.
 Untuk development mode jalankan `pnpm --filter @moonwitness/docs dev`; bundle panduan harus dibuat
 dengan `pnpm docs:build` terlebih dahulu.
 
@@ -20,7 +20,7 @@ dibuat oleh `pnpm docs:build`. Tekan `/` untuk fokus ke search, lalu gunakan has
 keyboard-accessible. Menu sidebar dapat dibuka pada viewport sempit. Konten menggunakan parser
 Markdown aman dengan tabel/task-list GitHub; raw HTML tidak dieksekusi.
 
-Build menggunakan base path `/moonwitness-xi/`. File `404.html` adalah fallback client router untuk
+Build menggunakan base path `/moonwitness-xiv/`. File `404.html` adalah fallback client router untuk
 reload deep link GitHub Pages. `pnpm test:docs-portal` memeriksa nested reload, search, keyboard,
 sidebar responsif, 404 dan tidak adanya overflow horizontal pada layar kecil.
 

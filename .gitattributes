@@ -1,0 +1,4 @@
+apps/whatsapp/vendor/** whitespace=-blank-at-eol,-blank-at-eof
+*.go text eol=lf
+apps/ui-catalog/tests/catalog.spec.ts-snapshots/*.txt text eol=lf
+corpus/reference/sha256/** -text

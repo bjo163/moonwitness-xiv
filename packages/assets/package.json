@@ -4,19 +4,35 @@
   "description": "Framework-independent MoonWitness brand and visual assets",
   "type": "module",
   "license": "ISC",
+  "scripts": {
+    "brand:prepare": "node scripts/prepare-brand-master.mjs",
+    "fonts:prepare": "node scripts/prepare-fonts.mjs",
+    "artwork:prepare": "node scripts/prepare-artwork.mjs"
+  },
   "files": [
     "brand",
+    "fonts",
+    "fonts.css",
     "icons",
     "illustrations",
+    "sounds",
     "manifest.json",
     "licenses.json",
     "README.md"
   ],
   "exports": {
     "./brand/*": "./brand/*",
+    "./fonts/*": "./fonts/*",
+    "./fonts.css": "./fonts.css",
     "./icons/*": "./icons/*",
     "./illustrations/*": "./illustrations/*",
+    "./sounds/*": "./sounds/*",
     "./manifest.json": "./manifest.json",
     "./licenses.json": "./licenses.json"
+  },
+  "devDependencies": {
+    "opentype.js": "^2.0.0",
+    "sharp": "0.35.5",
+    "subset-font": "^2.9.0"
   }
 }

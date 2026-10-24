@@ -169,14 +169,14 @@ test('a failing full-suite E2E gate stops the candidate before container smoke c
           if (executable === 'pnpm' && args.includes('--lockfile-only')) {
             writeFileSync(join(cwd, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n");
           }
-          if (executable === 'pnpm' && args.includes('test:e2e')) {
+          if (executable === 'pnpm' && args.includes('test:e2e:built')) {
             throw new Error('simulated E2E regression');
           }
         },
       }),
       /simulated E2E regression/
     );
-    assert.ok(executed.some((entry) => entry.endsWith(' test:e2e')));
+    assert.ok(executed.some((entry) => entry.endsWith(' test:e2e:built')));
     assert.equal(
       executed.some((entry) => entry.includes('smoke-containers.mjs')),
       false

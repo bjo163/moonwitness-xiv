@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Calendar,
-  CalendarClock,
-  Check,
-  CheckSquare,
-  ExternalLink,
-  Mail,
-  Phone,
-} from 'lucide-react';
+  CalendarClockIcon,
+  CalendarIcon,
+  CheckIcon,
+  CheckSquareIcon,
+  ExternalLinkIcon,
+  MailIcon,
+  PhoneIcon,
+} from '@moonwitness/ui/icons';
 import { client } from '@/lib/client';
 import { scopedQueryKey } from '@/lib/query-scope';
 import { useAuth } from '@/hooks/use-auth-context';
@@ -31,7 +31,7 @@ export interface ActivityRecord {
 
 export function ActivityBell() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'overdue' | 'today' | 'upcoming'>('all');
@@ -88,19 +88,19 @@ export function ActivityBell() {
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'call':
-        return <Phone className="size-3.5 text-lime" />;
+        return <PhoneIcon className="size-3.5 text-lime" />;
       case 'meeting':
-        return <Calendar className="size-3.5 text-pink" />;
+        return <CalendarIcon className="size-3.5 text-pink" />;
       case 'email':
-        return <Mail className="size-3.5 text-lime" />;
+        return <MailIcon className="size-3.5 text-lime" />;
       default:
-        return <CheckSquare className="size-3.5 text-ink-faint" />;
+        return <CheckSquareIcon className="size-3.5 text-ink-faint" />;
     }
   };
 
   const handleOpenRecord = (resourceModel: string, resourceId: number) => {
     setOpen(false);
-    navigate(`/m/${resourceModel}/${resourceId}`);
+    router.push(`/board/m/${resourceModel}/${resourceId}`);
   };
 
   return (
@@ -114,7 +114,7 @@ export function ActivityBell() {
           aria-label="Pending activities"
           title="Pending activities"
         >
-          <CalendarClock className="size-4" />
+          <CalendarClockIcon className="size-4" />
           {overdue.length > 0 ? (
             <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center border-2 border-ink bg-pink text-[10px] font-bold text-on-pink shadow-[1px_1px_0_0_var(--ink)] animate-pulse">
               {overdue.length}
@@ -143,7 +143,7 @@ export function ActivityBell() {
 
         {/* Filter Tabs */}
         <div className="flex border-b-2 border-ink bg-paper text-[11px] font-mono">
-          <button
+          <Button
             type="button"
             onClick={() => setActiveTab('all')}
             className={cn(
@@ -152,8 +152,8 @@ export function ActivityBell() {
             )}
           >
             All ({activities.length})
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setActiveTab('overdue')}
             className={cn(
@@ -164,8 +164,8 @@ export function ActivityBell() {
             )}
           >
             Overdue ({overdue.length})
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setActiveTab('today')}
             className={cn(
@@ -176,8 +176,8 @@ export function ActivityBell() {
             )}
           >
             Today ({dueToday.length})
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setActiveTab('upcoming')}
             className={cn(
@@ -188,7 +188,7 @@ export function ActivityBell() {
             )}
           >
             Later ({upcoming.length})
-          </button>
+          </Button>
         </div>
 
         {/* Activity Items List */}
@@ -252,7 +252,7 @@ export function ActivityBell() {
                       onClick={() => markDoneMutation.mutate(act.id)}
                       className="size-6 hover:border-lime hover:bg-lime hover:text-on-accent"
                     >
-                      <Check className="size-3" />
+                      <CheckIcon className="size-3" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -261,7 +261,7 @@ export function ActivityBell() {
                       onClick={() => handleOpenRecord(act.resource_model, act.resource_id)}
                       className="size-6 text-ink-faint hover:text-ink"
                     >
-                      <ExternalLink className="size-3" />
+                      <ExternalLinkIcon className="size-3" />
                     </Button>
                   </div>
                 </div>
@@ -277,7 +277,7 @@ export function ActivityBell() {
             size="xs"
             onClick={() => {
               setOpen(false);
-              navigate('/m/base.activity');
+              router.push('/board/m/base.activity');
             }}
             className="w-full font-mono text-xs text-ink-soft hover:bg-lime hover:text-on-accent"
           >

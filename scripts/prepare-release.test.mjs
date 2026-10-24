@@ -27,7 +27,7 @@ const section = (sourcePlan = plan, date = '2026-10-06') =>
   renderChangelogSection({
     plan: sourcePlan,
     commits,
-    repositoryUrl: 'https://github.com/bjo163/moonwitness-xi',
+    repositoryUrl: 'https://github.com/bjo163/moonwitness-xiv',
     date,
   });
 const manifests = [
@@ -123,7 +123,7 @@ test('updates only the managed notes and preserves human text around them', () =
       ...commits,
       { sha: 'e'.repeat(40), subject: 'fix(board): fix the directory filter', body: '' },
     ],
-    repositoryUrl: 'https://github.com/bjo163/moonwitness-xi',
+    repositoryUrl: 'https://github.com/bjo163/moonwitness-xiv',
     date: '2026-10-07',
   });
   const result = prepareReleaseFiles({

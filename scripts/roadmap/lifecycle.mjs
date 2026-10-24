@@ -1,3 +1,5 @@
+import { taskIdPattern } from './task-ids.mjs';
+
 const taskStatuses = new Set(['todo', 'in_progress', 'blocked', 'complete']);
 const checkConclusions = new Set([
   'action_required',
@@ -23,7 +25,7 @@ function isFullSha(value) {
  * @param {{ taskId: string, status: 'todo'|'in_progress'|'blocked'|'complete', dependencyIds?: string[], incompleteDependencyIds?: string[], acceptanceVerified: boolean, evidenceSha?: string, sourceSha?: string, devHeadSha?: string, sourceInDev?: boolean, requiredChecks?: Array<{name: string, headSha: string, status: 'queued'|'in_progress'|'completed', conclusion: string|null}>, mainHeadSha?: string, sourceInMain?: boolean, releaseManifest?: {version: string, sourceSha: string, releaseSha: string}|null, releaseContainsSource?: boolean, issueState?: 'open'|'closed' }} input
  */
 export function evaluateTaskLifecycle(input) {
-  if (!/^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u.test(input.taskId))
+  if (!taskIdPattern.test(input.taskId))
     throw new Error('taskId must be a stable roadmap task ID.');
   if (!taskStatuses.has(input.status)) throw new Error(`Unsupported task status: ${input.status}.`);
   if (typeof input.acceptanceVerified !== 'boolean')

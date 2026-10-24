@@ -6,13 +6,26 @@ import {
   PermissionDeniedError,
   ValidationError,
 } from './errors.js';
-import { ModelRepository, type HttpClient, type RequestOptions } from './repository.js';
+import {
+  ModelRepository,
+  type HttpClient,
+  type RequestOptions,
+  type DownloadProgressOptions,
+  type UploadProgressOptions,
+  type UploadProgress,
+} from './repository.js';
 import type {
   AuthTokens,
+  CorpusPassage,
   LoginParams,
   ModelInfo,
   MoonWitnessClientOptions,
   RegisterParams,
+  ResearchGraphSearchResult,
+  ResearchRelationExplanation,
+  SourceCitation,
+  StoredStoryVersion,
+  StoryVersionDocument,
   TokenStorage,
   UserProfile,
 } from './types.js';
@@ -46,8 +59,12 @@ interface InternalRequestOptions extends RequestOptions {
   isRetry?: boolean;
 }
 
-function isBinaryBody(value: unknown): value is Blob | string {
-  return typeof value === 'string' || (typeof Blob !== 'undefined' && value instanceof Blob);
+function isBinaryBody(value: unknown): value is Blob | FormData | string {
+  return (
+    typeof value === 'string' ||
+    (typeof Blob !== 'undefined' && value instanceof Blob) ||
+    (typeof FormData !== 'undefined' && value instanceof FormData)
+  );
 }
 
 interface ErrorBody {
@@ -264,6 +281,120 @@ export class MoonWitnessClient implements HttpClient {
     return res.data;
   }
 
+  /** Look up citation metadata for a locally published, rights-cleared source. */
+  async getSourceCitation(sourceId: string): Promise<SourceCitation> {
+    const res = await this.request<{ success: true; data: SourceCitation }>(
+      `/api/corpus/sources/${encodeURIComponent(sourceId)}`
+    );
+    return res.data;
+  }
+
+  /** Read one exact locally published passage; the API does not fetch external sources. */
+  async getCorpusPassage(editionId: string, locator: string): Promise<CorpusPassage> {
+    const res = await this.request<{ success: true; data: CorpusPassage }>(
+      `/api/corpus/passages/${encodeURIComponent(editionId)}/${encodeURIComponent(locator)}`
+    );
+    return res.data;
+  }
+
+  /** Read the latest or one exact INTERNAL story version in the selected company. */
+  async getStoryVersion(storyId: string, version?: number): Promise<StoredStoryVersion> {
+    const suffix = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`;
+    const res = await this.request<{ success: true; data: StoredStoryVersion }>(
+      `/api/research/stories/${encodeURIComponent(storyId)}${suffix}`
+    );
+    return res.data;
+  }
+
+  /** Append a new immutable INTERNAL story version in the selected company. */
+  async storeStoryVersion(story: StoryVersionDocument): Promise<StoredStoryVersion> {
+    const res = await this.request<{ success: true; data: StoredStoryVersion }>(
+      `/api/research/stories/${encodeURIComponent(story.story_id)}`,
+      { method: 'POST', body: story }
+    );
+    return res.data;
+  }
+
+  /** Explain one relation from the verified active research release. */
+  async getResearchRelationExplanation(relationId: string): Promise<{
+    releaseDigest: string;
+    explanation: ResearchRelationExplanation;
+  }> {
+    const res = await this.request<{
+      success: true;
+      data: { release_digest: string; explanation: ResearchRelationExplanation };
+    }>(`/api/research/relations/${encodeURIComponent(relationId)}/explanation`);
+    return { releaseDigest: res.data.release_digest, explanation: res.data.explanation };
+  }
+
+  /** Search only readable assertion, evidence, and relation summaries in the active release. */
+  async searchResearchGraph(
+    query: string,
+    limit = 20
+  ): Promise<{
+    releaseDigest: string;
+    results: ResearchGraphSearchResult[];
+    truncated: boolean;
+  }> {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    const res = await this.request<{
+      success: true;
+      data: {
+        release_digest: string;
+        truncated: boolean;
+        results: Array<
+          | { id: string; kind: 'assertion'; title: string; summary: string }
+          | { id: string; kind: 'relation'; title: string; summary: string }
+          | ({
+              id: string;
+              kind: 'evidence';
+              title: string;
+              summary: string;
+              assertion_id: string;
+            } & (
+              | {
+                  source_id: 'mw:source:tanzil-quran-text';
+                  edition_id: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2';
+                  locator: 'Q7:46';
+                }
+              | {
+                  source_id: 'mw:source:ebible-webp-protestant';
+                  edition_id: 'mw:edition:webp-protestant-2020-stable';
+                  locator: 'Genesis 1:1';
+                }
+            ))
+        >;
+      };
+    }>(`/api/research/graph/search?${params.toString()}`);
+    return {
+      releaseDigest: res.data.release_digest,
+      truncated: res.data.truncated,
+      results: res.data.results.map((result): ResearchGraphSearchResult => {
+        if (result.kind === 'assertion' || result.kind === 'relation') return result;
+        const common = {
+          id: result.id,
+          kind: result.kind,
+          title: result.title,
+          summary: result.summary,
+          assertionId: result.assertion_id,
+        } as const;
+        return result.source_id === 'mw:source:tanzil-quran-text'
+          ? {
+              ...common,
+              sourceId: result.source_id,
+              editionId: result.edition_id,
+              locator: result.locator,
+            }
+          : {
+              ...common,
+              sourceId: result.source_id,
+              editionId: result.edition_id,
+              locator: result.locator,
+            };
+      }),
+    };
+  }
+
   /** Odoo-style JSON-RPC call; exposes search_read, search, create, write and unlink. */
   async executeKw<T = unknown>(
     model: string,
@@ -299,7 +430,7 @@ export class MoonWitnessClient implements HttpClient {
     }
 
     const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-    let requestBody: Blob | string | undefined;
+    let requestBody: Blob | FormData | string | undefined;
     if (options.body !== undefined) {
       if (isBinaryBody(options.body)) requestBody = options.body;
       else {
@@ -358,6 +489,319 @@ export class MoonWitnessClient implements HttpClient {
           throw new ConflictError(message, body.data);
         default:
           throw new ApiError(message, res.status, body.type, body.data);
+      }
+    }
+    return json as T;
+  }
+
+  /** Authenticated multipart upload with browser progress and cancellation support. */
+  async requestWithUploadProgress<T>(path: string, options: UploadProgressOptions): Promise<T> {
+    await this.hydrated;
+    return this.uploadWithProgress<T>(path, options, false);
+  }
+
+  /** Sends a browser FormData POST directly to a short-lived storage policy without API credentials. */
+  async uploadPresignedPost(
+    target: string,
+    fields: Readonly<Record<string, string>>,
+    file: File,
+    options: { signal?: AbortSignal; onUploadProgress: (progress: UploadProgress) => void }
+  ): Promise<void> {
+    if (typeof XMLHttpRequest === 'undefined' || typeof FormData === 'undefined') {
+      throw new ApiError('Direct upload is unavailable in this environment', 0, 'UploadError');
+    }
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' });
+    }
+    let url: URL;
+    try {
+      url = new URL(target);
+    } catch {
+      throw new ApiError('Storage upload URL is invalid', 0, 'UploadError');
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new ApiError('Storage upload URL is invalid', 0, 'UploadError');
+    }
+    const body = new FormData();
+    for (const [name, value] of Object.entries(fields)) body.append(name, value);
+    body.append('file', file, file.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url.toString());
+    xhr.upload.addEventListener('progress', (event) => {
+      options.onUploadProgress({
+        loadedBytes: event.loaded,
+        totalBytes: event.lengthComputable ? event.total : null,
+        percent: event.lengthComputable
+          ? Math.min(100, Math.round((event.loaded / Math.max(event.total, 1)) * 100))
+          : null,
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+      const onAbort = () => xhr.abort();
+      xhr.onload = () => {
+        cleanup();
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new ApiError('Storage rejected the media upload', xhr.status, 'UploadError'));
+      };
+      xhr.onerror = () => {
+        cleanup();
+        reject(new ApiError('Storage upload failed. Check the storage CORS settings.', 0, 'NetworkError'));
+      };
+      xhr.onabort = () => {
+        cleanup();
+        reject(Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' }));
+      };
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        xhr.send(body);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
+  }
+
+  /** Authenticated blob download with browser progress and cancellation support. */
+  async requestBlobWithDownloadProgress(
+    path: string,
+    options: DownloadProgressOptions
+  ): Promise<Blob> {
+    await this.hydrated;
+    return this.downloadWithProgress(path, options, false);
+  }
+
+  private async downloadWithProgress(
+    path: string,
+    options: DownloadProgressOptions,
+    isRetry: boolean
+  ): Promise<Blob> {
+    if (typeof XMLHttpRequest === 'undefined') {
+      throw new ApiError(
+        'Download progress is unavailable in this environment',
+        0,
+        'DownloadError'
+      );
+    }
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Download was cancelled'), { name: 'AbortError' });
+    }
+
+    const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined) url.searchParams.append(key, String(value));
+    }
+    const headers: Record<string, string> = { Accept: '*/*', ...options.headers };
+    const sentToken = this.tokens?.access_token;
+    if (sentToken) headers.Authorization = `Bearer ${sentToken}`;
+    const effectiveCompanyId = this.getCompanyId();
+    if (effectiveCompanyId) headers['X-Company-Id'] = String(effectiveCompanyId);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(options.method?.toUpperCase() ?? 'GET', url.toString());
+    xhr.responseType = 'blob';
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.addEventListener('progress', (event) => {
+      options.onDownloadProgress({
+        loadedBytes: event.loaded,
+        totalBytes: event.lengthComputable ? event.total : null,
+        percent: event.lengthComputable
+          ? Math.min(100, Math.round((event.loaded / Math.max(event.total, 1)) * 100))
+          : null,
+      });
+    });
+
+    const response = await new Promise<{ status: number; statusText: string; blob: Blob | null }>(
+      (resolve, reject) => {
+        const onAbort = () => xhr.abort();
+        const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+        xhr.onload = () => {
+          cleanup();
+          const headers: Record<string, string> = {};
+          const rawHeaders = xhr.getAllResponseHeaders?.() ?? '';
+          for (const line of rawHeaders.trim().split(/[\r\n]+/u)) {
+            const separator = line.indexOf(':');
+            if (separator > 0)
+              headers[line.slice(0, separator).trim().toLowerCase()] = line
+                .slice(separator + 1)
+                .trim();
+          }
+          options.onDownloadResponse?.(headers);
+          resolve({ status: xhr.status, statusText: xhr.statusText, blob: xhr.response });
+        };
+        xhr.onerror = () => {
+          cleanup();
+          reject(new ApiError('Network request failed', 0, 'NetworkError'));
+        };
+        xhr.onabort = () => {
+          cleanup();
+          reject(Object.assign(new Error('Download was cancelled'), { name: 'AbortError' }));
+        };
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+        if (options.signal?.aborted) {
+          onAbort();
+          return;
+        }
+        try {
+          xhr.send();
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      }
+    );
+
+    if (response.status === 401 && !isRetry && this.tokens?.refresh_token) {
+      if (this.tokens.access_token === sentToken) {
+        try {
+          await this.refreshAfterUnauthorized(sentToken);
+        } catch {
+          throw new AuthenticationError('Session expired');
+        }
+      }
+      return this.downloadWithProgress(path, options, true);
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      let json: unknown = null;
+      const text = response.blob ? await response.blob.text() : '';
+      if (text) {
+        try {
+          json = JSON.parse(text);
+        } catch {
+          json = { error: text };
+        }
+      }
+      const body = (json ?? {}) as ErrorBody;
+      const message =
+        body.error ?? body.message ?? `HTTP ${response.status} ${response.statusText}`;
+      switch (response.status) {
+        case 400:
+          throw new ValidationError(message, body.data);
+        case 401:
+          throw new AuthenticationError(message, body.data);
+        case 403:
+          throw new PermissionDeniedError(message, body.data);
+        case 404:
+          throw new NotFoundError(message, body.data);
+        case 409:
+          throw new ConflictError(message, body.data);
+        default:
+          throw new ApiError(message, response.status, body.type, body.data);
+      }
+    }
+    return response.blob ?? new Blob();
+  }
+
+  private async uploadWithProgress<T>(
+    path: string,
+    options: UploadProgressOptions,
+    isRetry: boolean
+  ): Promise<T> {
+    if (typeof XMLHttpRequest === 'undefined') {
+      throw new ApiError('Upload progress is unavailable in this environment', 0, 'UploadError');
+    }
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' });
+    }
+
+    const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined) url.searchParams.append(key, String(value));
+    }
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+      // The browser must generate the multipart boundary for FormData.
+      if (name.toLowerCase() !== 'content-type') headers[name] = value;
+    }
+    const sentToken = this.tokens?.access_token;
+    if (sentToken) headers.Authorization = `Bearer ${sentToken}`;
+    const effectiveCompanyId = this.getCompanyId();
+    if (effectiveCompanyId) headers['X-Company-Id'] = String(effectiveCompanyId);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(options.method?.toUpperCase() ?? 'POST', url.toString());
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.upload.addEventListener('progress', (event) => {
+      options.onUploadProgress({
+        loadedBytes: event.loaded,
+        totalBytes: event.lengthComputable ? event.total : null,
+        percent: event.lengthComputable
+          ? Math.min(100, Math.round((event.loaded / Math.max(event.total, 1)) * 100))
+          : null,
+      });
+    });
+
+    const response = await new Promise<{ status: number; statusText: string; text: string }>(
+      (resolve, reject) => {
+        const onAbort = () => xhr.abort();
+        const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+        xhr.onload = () => {
+          cleanup();
+          resolve({ status: xhr.status, statusText: xhr.statusText, text: xhr.responseText });
+        };
+        xhr.onerror = () => {
+          cleanup();
+          reject(new ApiError('Network request failed', 0, 'NetworkError'));
+        };
+        xhr.onabort = () => {
+          cleanup();
+          reject(Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' }));
+        };
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+        if (options.signal?.aborted) {
+          onAbort();
+          return;
+        }
+        try {
+          xhr.send(options.body);
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      }
+    );
+
+    if (response.status === 401 && !isRetry && this.tokens?.refresh_token) {
+      if (this.tokens.access_token === sentToken) {
+        try {
+          await this.refreshAfterUnauthorized(sentToken);
+        } catch {
+          throw new AuthenticationError('Session expired');
+        }
+      }
+      return this.uploadWithProgress<T>(path, options, true);
+    }
+
+    let json: unknown = null;
+    if (response.text) {
+      try {
+        json = JSON.parse(response.text);
+      } catch {
+        json = { error: response.text };
+      }
+    }
+    if (response.status < 200 || response.status >= 300) {
+      const body = (json ?? {}) as ErrorBody;
+      const message =
+        body.error ?? body.message ?? `HTTP ${response.status} ${response.statusText}`;
+      switch (response.status) {
+        case 400:
+          throw new ValidationError(message, body.data);
+        case 401:
+          throw new AuthenticationError(message, body.data);
+        case 403:
+          throw new PermissionDeniedError(message, body.data);
+        case 404:
+          throw new NotFoundError(message, body.data);
+        case 409:
+          throw new ConflictError(message, body.data);
+        default:
+          throw new ApiError(message, response.status, body.type, body.data);
       }
     }
     return json as T;

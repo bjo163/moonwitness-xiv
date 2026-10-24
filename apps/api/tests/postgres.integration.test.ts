@@ -64,9 +64,15 @@ import {
   transitionWorkflow,
 } from '@moonwitness/orm-workflow';
 import { buildApp } from '../src/app.js';
+import { resolveCorpusDataRoot } from '../src/routes/corpus.routes.js';
 import { verifyDefaultBaseAccounts } from '../src/startup-checks.js';
 import { createPostgresKnexConfig } from '../src/config/knexfile.js';
 import { LocalFileAttachmentStorage, type AttachmentStorage } from '@moonwitness/orm-storage';
+import { readQuranPassage } from '@moonwitness/corpus';
+import {
+  activateResearchGraphRelease,
+  createResearchGraphRelease,
+} from '@moonwitness/orm-knowledge';
 
 const POSTGRES_TEST_REFRESH_SECRET = 'postgres-integration-refresh-secret-32chars';
 
@@ -888,6 +894,21 @@ postgresDescribe('PostgreSQL addon upgrade integration', () => {
           idempotency_key: `start:${startPayload.idempotency_key}`,
         })
       ).resolves.toHaveLength(1);
+      const startEvent = await workflowDb('workflow_events')
+        .where({ idempotency_key: `start:${startPayload.idempotency_key}` })
+        .first('id', 'action', 'payload', 'revision');
+      if (!startEvent) throw new Error('PostgreSQL workflow start event is missing');
+      await expect(
+        workflowDb('workflow_events').where({ id: startEvent.id }).update({ action: 'tampered' })
+      ).rejects.toThrow();
+      await expect(
+        workflowDb('workflow_events').where({ id: startEvent.id }).delete()
+      ).rejects.toThrow();
+      await expect(
+        workflowDb('workflow_events')
+          .where({ id: startEvent.id })
+          .first('id', 'action', 'payload', 'revision')
+      ).resolves.toEqual(startEvent);
 
       const submitted = await workflowApp.inject({
         method: 'POST',
@@ -1137,6 +1158,265 @@ postgresDescribe('PostgreSQL addon upgrade integration', () => {
     expect(firstLogin.statusCode).toBe(200);
     const accessToken = firstLogin.json<{ data: { access_token: string } }>().data.access_token;
     const authorization = { authorization: `Bearer ${accessToken}` };
+
+    const researchPassage = await readQuranPassage({
+      rootDirectory: resolveCorpusDataRoot(),
+      editionId: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2',
+      locator: 'Q7:46',
+      use: 'read_analyze',
+    });
+    const researchRelationId = 'mw:relation:postgres-api-explanation';
+    const researchEvidenceId = 'mw:evidence:postgres-api-explanation';
+    const researchAssertionId = 'mw:assertion:postgres-api-explanation';
+    const duplicateAssertionId = 'mw:assertion:postgres-api-duplicate';
+    const restrictedAssertionId = 'mw:assertion:postgres-api-restricted-duplicate';
+    const researchScopeId = 'mw:concept:postgres-api-explanation-scope';
+    const researchLeftId = 'mw:entity:postgres-api-explanation-left';
+    const researchRightId = 'mw:entity:postgres-api-explanation-right';
+    const researchSourceId = 'mw:source:tanzil-quran-text';
+    const researchEditionId = 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2';
+    const researchRelease = await apiDb.transaction((trx) =>
+      createResearchGraphRelease(trx, {
+        corpusKey: 'research',
+        schemaVersion: 'research-graph/v1',
+        records: [
+          {
+            key: researchSourceId,
+            kind: 'source',
+            visibility: 'PUBLIC',
+            content: { id: researchSourceId, kind: 'Artifact', visibility: 'PUBLIC_APPROVED' },
+          },
+          {
+            key: researchEditionId,
+            kind: 'expression',
+            visibility: 'PUBLIC',
+            content: { id: researchEditionId, kind: 'Edition', visibility: 'PUBLIC_APPROVED' },
+          },
+          {
+            key: researchScopeId,
+            kind: 'node',
+            visibility: 'INTERNAL',
+            content: {
+              id: researchScopeId,
+              kind: 'Concept',
+              identity_class: 'ConceptIdentity',
+              visibility: 'INTERNAL',
+            },
+          },
+          {
+            key: researchLeftId,
+            kind: 'node',
+            visibility: 'INTERNAL',
+            content: { id: researchLeftId, kind: 'Entity', visibility: 'INTERNAL' },
+          },
+          {
+            key: researchRightId,
+            kind: 'node',
+            visibility: 'INTERNAL',
+            content: { id: researchRightId, kind: 'Entity', visibility: 'INTERNAL' },
+          },
+          {
+            key: researchAssertionId,
+            kind: 'assertion',
+            visibility: 'PUBLIC',
+            content: {
+              id: researchAssertionId,
+              kind: 'Assertion',
+              schema_version: 1,
+              lifecycle: 'candidate',
+              created_at: '2026-10-16T00:00:00.000Z',
+              updated_at: '2026-10-16T00:00:00.000Z',
+              origin_ref: 'fixture://research/postgres-api/001',
+              visibility: 'PUBLIC_APPROVED',
+              content_revision: 1,
+              claim: 'Synthetic PostgreSQL API explanation fixture.',
+              polarity: 'positive',
+              scope: { kind: 'research_context', reference_id: researchScopeId },
+              context: { mode: 'analysis', reference_id: researchScopeId },
+              epistemic_status: 'hypothesized',
+              review_status: 'pending',
+            },
+          },
+          {
+            key: duplicateAssertionId,
+            kind: 'assertion',
+            visibility: 'INTERNAL',
+            content: {
+              id: duplicateAssertionId,
+              kind: 'Assertion',
+              schema_version: 1,
+              lifecycle: 'candidate',
+              created_at: '2026-10-16T00:00:00.000Z',
+              updated_at: '2026-10-16T00:00:00.000Z',
+              origin_ref: 'fixture://research/postgres-api/duplicate-001',
+              visibility: 'INTERNAL',
+              content_revision: 1,
+              claim: 'Synthetic PostgreSQL API explanation fixture.',
+              polarity: 'positive',
+              scope: { kind: 'research_context', reference_id: researchScopeId },
+              context: { mode: 'analysis', reference_id: researchScopeId },
+              epistemic_status: 'hypothesized',
+              review_status: 'pending',
+            },
+          },
+          {
+            key: restrictedAssertionId,
+            kind: 'assertion',
+            visibility: 'RESTRICTED',
+            content: {
+              id: restrictedAssertionId,
+              kind: 'Assertion',
+              schema_version: 1,
+              lifecycle: 'candidate',
+              created_at: '2026-10-16T00:00:00.000Z',
+              updated_at: '2026-10-16T00:00:00.000Z',
+              origin_ref: 'fixture://research/postgres-api/restricted-001',
+              visibility: 'RESTRICTED',
+              content_revision: 1,
+              claim: 'Synthetic PostgreSQL API explanation fixture.',
+              polarity: 'positive',
+              scope: { kind: 'research_context', reference_id: researchScopeId },
+              context: { mode: 'analysis', reference_id: researchScopeId },
+              epistemic_status: 'hypothesized',
+              review_status: 'pending',
+            },
+          },
+          {
+            key: researchEvidenceId,
+            kind: 'evidence',
+            visibility: 'INTERNAL',
+            content: {
+              id: researchEvidenceId,
+              kind: 'Evidence',
+              visibility: 'INTERNAL',
+              assertion_id: researchAssertionId,
+              direction: 'supporting',
+              selector: {
+                source_id: researchSourceId,
+                edition_id: researchEditionId,
+                locator: 'Q7:46',
+                content_sha256: researchPassage.sha256,
+              },
+            },
+          },
+          {
+            key: researchRelationId,
+            kind: 'relation',
+            visibility: 'INTERNAL',
+            content: {
+              id: researchRelationId,
+              kind: 'ResearchRelation',
+              schema_version: 1,
+              lifecycle: 'candidate',
+              created_at: '2026-10-16T00:00:00.000Z',
+              updated_at: '2026-10-16T00:00:00.000Z',
+              origin_ref: 'fixture://research/postgres-api/relation-001',
+              content_revision: 1,
+              visibility: 'INTERNAL',
+              predicate: 'related_to',
+              subject_id: researchLeftId,
+              object_id: researchRightId,
+              scope: { kind: 'research_context', reference_id: researchScopeId },
+              supporting_evidence_ids: [researchEvidenceId],
+              counterevidence_ids: [],
+              alternative_relation_ids: [],
+              epistemic_status: 'unreviewed',
+              review_status: 'pending',
+            },
+          },
+        ],
+      })
+    );
+    await apiDb.transaction((trx) =>
+      activateResearchGraphRelease(trx, {
+        corpusKey: 'research',
+        releaseDigest: researchRelease.releaseDigest,
+        expectedCurrentReleaseDigest: null,
+        activatedAt: new Date().toISOString(),
+      })
+    );
+    const anonymousExplanation = await app.inject({
+      method: 'GET',
+      url: `/api/research/relations/${researchRelationId}/explanation`,
+    });
+    expect(anonymousExplanation.statusCode).toBe(401);
+    const postgresExplanation = await app.inject({
+      method: 'GET',
+      url: `/api/research/relations/${researchRelationId}/explanation`,
+      headers: authorization,
+    });
+    expect(postgresExplanation.statusCode, postgresExplanation.payload).toBe(200);
+    expect(postgresExplanation.headers['cache-control']).toBe('private, no-store');
+    expect(postgresExplanation.json()).toMatchObject({
+      success: true,
+      data: {
+        release_digest: researchRelease.releaseDigest,
+        explanation: {
+          id: researchRelationId,
+          supporting_evidence: [{ evidence: { id: researchEvidenceId }, locator: 'Q7:46' }],
+          counterevidence: [],
+          alternatives: [],
+          interpretation_boundary: 'linked_evidence_only',
+        },
+      },
+    });
+
+    const anonymousGraphSearch = await app.inject({
+      method: 'GET',
+      url: `/api/research/graph/search?q=${encodeURIComponent(researchAssertionId)}`,
+    });
+    expect(anonymousGraphSearch.statusCode).toBe(401);
+    const postgresGraphSearch = await app.inject({
+      method: 'GET',
+      url: `/api/research/graph/search?q=${encodeURIComponent(researchAssertionId)}`,
+      headers: authorization,
+    });
+    expect(postgresGraphSearch.statusCode, postgresGraphSearch.payload).toBe(200);
+    expect(postgresGraphSearch.headers['cache-control']).toBe('private, no-store');
+    expect(postgresGraphSearch.json()).toMatchObject({
+      success: true,
+      data: {
+        release_digest: researchRelease.releaseDigest,
+        truncated: false,
+        results: [
+          { id: researchAssertionId, kind: 'assertion' },
+          { id: researchEvidenceId, kind: 'evidence', assertion_id: researchAssertionId },
+        ],
+      },
+    });
+    expect(postgresGraphSearch.payload).not.toContain(restrictedAssertionId);
+
+    const anonymousCandidates = await app.inject({
+      method: 'GET',
+      url: '/api/research/duplicate-candidates',
+    });
+    expect(anonymousCandidates.statusCode).toBe(401);
+    const postgresCandidates = await app.inject({
+      method: 'GET',
+      url: '/api/research/duplicate-candidates',
+      headers: authorization,
+    });
+    expect(postgresCandidates.statusCode, postgresCandidates.payload).toBe(200);
+    expect(postgresCandidates.headers['cache-control']).toBe('private, no-store');
+    expect(postgresCandidates.json()).toMatchObject({
+      success: true,
+      data: {
+        release_digest: researchRelease.releaseDigest,
+        candidates: [
+          {
+            left_id: duplicateAssertionId,
+            right_id: researchAssertionId,
+            status: 'unresolved',
+            kind: 'duplicate',
+          },
+        ],
+        truncated: false,
+      },
+    });
+    expect(postgresCandidates.payload).not.toContain(restrictedAssertionId);
+    expect(postgresCandidates.payload).not.toContain(
+      'Synthetic PostgreSQL API explanation fixture.'
+    );
 
     const users = await app.inject({
       method: 'GET',

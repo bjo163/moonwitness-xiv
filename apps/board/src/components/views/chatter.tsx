@@ -1,3 +1,5 @@
+import { Button } from '@moonwitness/ui/components/button';
+import { Input } from '@moonwitness/ui/components/input';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@moonwitness/ui/components/toast';
@@ -26,11 +28,9 @@ import { client } from '@/lib/client';
 import { formatDateTime } from '@/lib/date-format';
 import { scopedQueryKey } from '@/lib/query-scope';
 import { useAuth } from '@/hooks/use-auth-context';
-import { Button } from '@moonwitness/ui/components/button';
-import { Input } from '@moonwitness/ui/components/input';
 import { Textarea } from '@moonwitness/ui/components/textarea';
 import { Label } from '@moonwitness/ui/components/label';
-import { Doodle } from '@/components/manga/effects';
+import { Doodle } from '@moonwitness/ui/components/effects';
 import { cn } from '@/lib/utils';
 
 interface ChatterProps {
@@ -281,7 +281,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
   return (
     <div className="ink-panel border-4 border-ink bg-paper p-6 shadow-ink-lg space-y-6">
       {/* Hidden file input */}
-      <input
+      <Input
         ref={fileInputRef}
         type="file"
         multiple
@@ -304,7 +304,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
 
         {/* Tab Switcher: Activities | Attachments | Audit Pulse */}
         <div className="flex items-center border-2 border-ink bg-card p-1">
-          <button
+          <Button
             type="button"
             onClick={() => setActiveTab('activities')}
             className={cn(
@@ -321,8 +321,8 @@ export function Chatter({ model, recordId }: ChatterProps) {
                 {plannedCount}
               </span>
             )}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setActiveTab('attachments')}
             className={cn(
@@ -339,8 +339,8 @@ export function Chatter({ model, recordId }: ChatterProps) {
                 {attachments.length}
               </span>
             )}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setActiveTab('audit')}
             className={cn(
@@ -352,7 +352,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
           >
             <History className="size-3.5" />
             Audit Pulse
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -406,7 +406,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
                     {(['todo', 'call', 'meeting', 'email'] as const).map((t) => {
                       const Icon = TYPE_ICONS[t];
                       return (
-                        <button
+                        <Button
                           key={t}
                           type="button"
                           onClick={() => setNewType(t)}
@@ -419,7 +419,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
                         >
                           <Icon className="size-3.5" />
                           {t}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -505,7 +505,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleToggleState(act)}
                         className={cn(
@@ -515,7 +515,7 @@ export function Chatter({ model, recordId }: ChatterProps) {
                         title={isDone ? 'Mark as planned' : 'Mark as done'}
                       >
                         {isDone && <CheckCircle2 className="size-3.5" />}
-                      </button>
+                      </Button>
 
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">

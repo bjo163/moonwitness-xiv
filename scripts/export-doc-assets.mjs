@@ -12,9 +12,21 @@ const outputDirectoryRelative = 'docs/assets/moonwitness';
 const assetManifestRelative = 'manifest.json';
 const tokenSourceRelative = 'packages/ui/src/styles/tokens.css';
 const generatedManifestName = 'asset-map.json';
+// A Windows checkout with core.autocrlf turns these text assets into CRLF while
+// every other runner reads the LF blobs, so hashing raw bytes recorded a
+// fingerprint that was only reproducible on the machine that generated it.
+const portableTextPattern = /\.(?:svg|css|json|js|mjs|ts|html|txt|xml|csv|md)$/iu;
 
 function sha256(contents) {
   return createHash('sha256').update(contents).digest('hex');
+}
+
+function isPortableText(filePath) {
+  return portableTextPattern.test(filePath);
+}
+
+function toPortableText(contents) {
+  return Buffer.from(asBuffer(contents).toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
 }
 
 function safeRelativePath(value) {
@@ -66,10 +78,14 @@ export function createDocAssetArtifacts({
       throw new Error(`Duplicate asset manifest path '${sourcePath}'`);
     }
     seenSources.add(sourcePath);
+    // Source masters stay in the workspace/package for regeneration; docs only
+    // receives the optimized public derivatives described by the same manifest.
+    if (asset.kind === 'source') continue;
     const contents = assetSources.get(sourcePath);
     if (!contents) throw new Error(`Asset source '${sourcePath}' was not loaded`);
     const outputPath = safeRelativePath(sourcePath);
-    artifactContents.set(outputPath, asBuffer(contents));
+    const portable = isPortableText(outputPath) ? toPortableText(contents) : asBuffer(contents);
+    artifactContents.set(outputPath, portable);
     assetRecords.push({
       source: `packages/assets/${sourcePath}`,
       output: `${outputDirectoryRelative}/${outputPath}`,
@@ -77,7 +93,7 @@ export function createDocAssetArtifacts({
       format: asset.format,
       width: asset.width,
       height: asset.height,
-      sha256: sha256(asBuffer(contents)),
+      sha256: sha256(portable),
     });
   }
 
@@ -85,7 +101,7 @@ export function createDocAssetArtifacts({
   if (artifactContents.has(tokenPath)) {
     throw new Error(`Brand asset path conflicts with exported design tokens '${tokenPath}'`);
   }
-  const tokenBuffer = asBuffer(tokenContents);
+  const tokenBuffer = toPortableText(tokenContents);
   artifactContents.set(tokenPath, tokenBuffer);
   const staticManifest = {
     schemaVersion: 1,
@@ -93,7 +109,7 @@ export function createDocAssetArtifacts({
     generatedFrom: 'packages/assets/manifest.json and packages/ui/src/styles/tokens.css',
     sources: {
       assetManifest: assetManifestRelative,
-      assetManifestSha256: sha256(asBuffer(assetManifestContents)),
+      assetManifestSha256: sha256(toPortableText(assetManifestContents)),
       tokens: tokenSourceRelative,
       tokensSha256: sha256(tokenBuffer),
     },
@@ -184,7 +200,9 @@ export async function exportDocAssets({ check = false } = {}) {
   const expected = new Set(artifacts.keys());
   const currentFiles = await collectOutputFiles(outputDirectory);
   const ownedFiles = await readOwnedOutputs();
-  const untrackedFiles = [...currentFiles].filter((file) => !ownedFiles.has(file));
+  const untrackedFiles = [...currentFiles].filter(
+    (file) => !ownedFiles.has(file) && !expected.has(file)
+  );
   if (untrackedFiles.length) {
     throw new Error(
       `Untracked files in generated docs assets: ${untrackedFiles.join(', ')}. Keep hand-authored files outside '${outputDirectoryRelative}'.`
@@ -201,7 +219,8 @@ export async function exportDocAssets({ check = false } = {}) {
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
-    if (current?.equals(contents)) continue;
+    const comparable = current && isPortableText(relativePath) ? toPortableText(current) : current;
+    if (comparable?.equals(contents)) continue;
     differences.push(relativePath);
     if (!check) {
       await mkdir(path.dirname(target), { recursive: true });

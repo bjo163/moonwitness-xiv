@@ -16,6 +16,24 @@ export interface RequestOptions {
   body?: unknown;
 }
 
+export interface UploadProgress {
+  loadedBytes: number;
+  totalBytes: number | null;
+  percent: number | null;
+}
+
+export interface UploadProgressOptions extends RequestOptions {
+  body: FormData;
+  signal?: AbortSignal;
+  onUploadProgress: (progress: UploadProgress) => void;
+}
+
+export interface DownloadProgressOptions extends Omit<RequestOptions, 'body' | 'responseType'> {
+  signal?: AbortSignal;
+  onDownloadProgress: (progress: UploadProgress) => void;
+  onDownloadResponse?: (headers: Readonly<Record<string, string>>) => void;
+}
+
 export interface HttpClient {
   request<T>(path: string, options?: RequestOptions): Promise<T>;
 }

@@ -1,0 +1,581 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "inventoryVersion": 1,
+  "status": "local_rebuild_no_legacy_import",
+  "reviewedAt": "2026-10-15",
+  "reviewScope": {
+    "repository": "moonwitness-xiv",
+    "trackedFilesSearched": true,
+    "legacyCheckoutsPresent": false,
+    "publicRemoteRefsAudited": true,
+    "privateRemoteContentsAccessed": false,
+    "ontologyMappingsDirectoryPresent": false,
+    "sourceBytesCopied": false,
+    "targetWorkspaceSourceFilesWritten": false
+  },
+  "rightsPathSearch": {
+    "scope": "complete tracked Git tree at each recorded commit",
+    "caseInsensitivePathSubstrings": [
+      "LICENSE",
+      "LICENCE",
+      "COPYING",
+      "COPYRIGHT",
+      "NOTICE",
+      "RIGHTS",
+      "GRANT"
+    ],
+    "privateRepositoriesOpened": false,
+    "thirdPartyContentCopied": false
+  },
+  "historicalMetadataFindings": [
+    {
+      "repository": "bjo163/rocksoul-rgbl",
+      "repositoryHead": "df00706c98e21fb3fb0146b8389b0f2978f3d833",
+      "artifactPath": "spec/v0.1/schemas/core/entity.schema.json",
+      "artifactClass": "versioned_schema_history",
+      "observations": [
+        {
+          "commit": "cf9372baa839d48f278e1a92bb916c6107dcd9b8",
+          "gitBlobSha": "1a1f2e96fe9011647bde62fd41fdc08367398321"
+        },
+        {
+          "commit": "c4072ae8f18c15de36382d2abd3b4ec530779ec9",
+          "gitBlobSha": "82d435076cddea725b876175219f4f05abd7e6ae"
+        },
+        {
+          "commit": "4df536b531444a03504636bc436f934241522aff",
+          "gitBlobSha": "7d0b5f59ff9d2516bd75a69e418a089aa0db3219"
+        },
+        {
+          "commit": "df00706c98e21fb3fb0146b8389b0f2978f3d833",
+          "gitBlobSha": "d63d220d4ef496d24e456cc9ba7cd868088f817d"
+        }
+      ],
+      "limitations": "Schema history is technical metadata; source records were not validated against it and no old-to-canonical record-ID mapping was established."
+    },
+    {
+      "repository": "bjo163/rocksoul-rgbl",
+      "repositoryHead": "df00706c98e21fb3fb0146b8389b0f2978f3d833",
+      "artifactPath": "datasets/research-graph-baseline/snapshot-manifest.json",
+      "artifactClass": "snapshot_manifest_metadata",
+      "observations": [
+        {
+          "commit": "23460f33d630d0e2c436bdfcb8ffd6e192951fa4",
+          "gitBlobSha": "7045dfae0adbd29bc015a75d822795b55c335dc4"
+        }
+      ],
+      "limitations": "Manifest records counts/checksums and an edge-type alias; it is not a record-ID mapping or a rights grant."
+    },
+    {
+      "repository": "bjo163/rocksoul-rgbl",
+      "repositoryHead": "df00706c98e21fb3fb0146b8389b0f2978f3d833",
+      "artifactPath": "fixtures/deterministic-ids/v1.json",
+      "artifactClass": "deterministic_test_fixture",
+      "observations": [
+        {
+          "commit": "f19281c83984081631dd91f9e21986e9c8877ec0",
+          "gitBlobSha": "feb26d4f671c1c15e6f3cbd299c054b41ea67ff0"
+        }
+      ],
+      "limitations": "Fixture is not a complete historical ID map; tag v0.1.0 at commit cd23dcbfa9410383256ea95d0813da56569a3b5c is pinned separately and was not treated as proof that records migrate."
+    },
+    {
+      "repository": "bjo163/rocksoul-correlation",
+      "repositoryHead": "380ac810747a79b7efa22affb934b302ac224524",
+      "artifactPath": "schemas/correlation-edge.schema.json",
+      "artifactClass": "versioned_schema_history",
+      "observations": [
+        {
+          "commit": "34f7820963efd795646d61c66a22843086a152a7",
+          "gitBlobSha": "63da81ee85bf7ed0a5f557badce6fae5053f58e9"
+        },
+        {
+          "commit": "14f0db4b629e08b738c9b398d3787ba70e52d56a",
+          "gitBlobSha": "51fa686cdab239774bbe7cdd02af08bdf896c3bf"
+        },
+        {
+          "commit": "54ea0c72916d096894915437911370af14390f38",
+          "gitBlobSha": "cdc6fc22adc2befe63eefc07b6446c2035fd393a"
+        }
+      ],
+      "limitations": "Schema and provenance snapshot history exist, but no corpus-record validation or old-ID mapping was confirmed."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "mizan-engine.fixtures.v1.json",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "1834556771c6001ee360c997f0a85e076aba7101",
+          "gitBlobSha": "514875a00533847eaa673679556dedb02a57b8d4"
+        }
+      ],
+      "limitations": "Versioned database/test fixture, not ontology/corpus release records or a record-ID crosswalk."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "mizan-engine.fixtures.v1.1.json",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "a4a4492bb7355804636675c0c1c70f42aec4c630",
+          "gitBlobSha": "df18039a195f05af873fbeebfb51723952f582cd"
+        }
+      ],
+      "limitations": "Versioned database/test fixture, not ontology/corpus release records or a record-ID crosswalk."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "mizan-analytical.fixtures.v1.2.json",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "99486e242020dfc189168f9538554f73de4246ca",
+          "gitBlobSha": "0595c25333420ef56b99b8d281973dc617668622"
+        }
+      ],
+      "limitations": "Analytical test fixture, not ontology/corpus release records or a record-ID crosswalk."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "crates/mizan-api/migrations/0001_mizan_ledger.sql",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "a0ac3456241d7efaa0029f4e3650e8eab4d912bc",
+          "gitBlobSha": "aa4399e6b3296ca5871bd0ea674d528d306cb7d9"
+        }
+      ],
+      "limitations": "Application database migration history, not ontology/corpus record migration."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "crates/mizan-api/migrations/0002_append_only_ledger.sql",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "189bcc43f778c0cb0f8801e9070da690b761f8af",
+          "gitBlobSha": "4960c058af18b21a0c1cc0a85a467a347677aa2d"
+        }
+      ],
+      "limitations": "Application database migration history, not ontology/corpus record migration."
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "repositoryHead": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "artifactPath": "crates/mizan-api/migrations/0003_analytical_factors.sql",
+      "artifactClass": "database_and_test_fixture_history",
+      "observations": [
+        {
+          "commit": "b3413216b5a230247858e6579109df63f29322d8",
+          "gitBlobSha": "1a86d99c648348719a5b044f52aa05aaace56a10"
+        }
+      ],
+      "limitations": "Application database migration history, not ontology/corpus record migration."
+    },
+    {
+      "repository": "bjo163/rocksoul-aws",
+      "repositoryHead": "719413cc3d6c5c8349a87a1863e84c0e0f97e1c9",
+      "artifactPath": "docs/AWS-IDENTITY-MIGRATION.md",
+      "artifactClass": "application_identity_migration_history",
+      "observations": [
+        {
+          "commit": "a00841d967f9180df36bf546b365242c0d9bd895",
+          "gitBlobSha": "8e4caf9b67f98a4588001fbdd9dbf7b585100ce9"
+        }
+      ],
+      "limitations": "Observed migrations concern repository/package/runtime identity (including retired moonwitness-os and deprecated app.cosmic names), not corpus record identity."
+    },
+    {
+      "repository": "bjo163/rocksoul-superhero",
+      "repositoryHead": "89963d5f5801aec3d44d2d55538e2a882e37f86b",
+      "artifactPath": "public/data/superhero.snapshot.json",
+      "artifactClass": "snapshot_history",
+      "observations": [
+        {
+          "commit": "d8c7c8f247beb9c3a36b70e37d002b00f1a2e9c8",
+          "gitBlobSha": "49a8a18f22584a6d85ff013d42294a26ba236bda"
+        },
+        {
+          "commit": "de37d78540cd11acc84320fbf76d15f10e97a2b2",
+          "gitBlobSha": "c3ed424287241a1b51671e6253fc345601a0291f"
+        },
+        {
+          "commit": "3b307e8efdf1cdd43b22fa6570d07904cc1904a5",
+          "gitBlobSha": "19d8996cfce48f5184f8bb44174fa30989363cca"
+        },
+        {
+          "commit": "55297d129466091a2e62cdfff26003cad42845cd",
+          "gitBlobSha": "5ee90032ef5532e630c446bb88f4205b81ca2313"
+        },
+        {
+          "commit": "adc2d4175ac2796e4f013f3429ebb52138a3f426",
+          "gitBlobSha": "a7304c31efd84e2b6c729eb9ff8d7e645280bd23"
+        }
+      ],
+      "limitations": "Historical snapshot blobs exist; no schema compatibility validation or old-to-canonical record-ID mapping was established."
+    }
+  ],
+  "remoteObservations": [
+    {
+      "repository": "bjo163/rocksoul-rgbl",
+      "visibility": "public",
+      "branch": "main",
+      "head": "df00706c98e21fb3fb0146b8389b0f2978f3d833",
+      "readme": {
+        "path": "README.md",
+        "sha256": "110df77d135b86bdbc6f537c03e1a18501b5e1f696779bc2cf5f2d9bc3b4b8a4",
+        "gitBlobSha": "f87752a650d40c7db8252407b07a302021faa43e",
+        "bytes": 9164
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [
+        {
+          "path": "LICENSES/README.md",
+          "gitBlobSha": "401aa644382d773ec35145491d9107bccb7603f4",
+          "sha256": "2b7a6872a94aecf9de6c33dbd46f1fd5fd894617664110a975dc22efe8133261",
+          "bytes": 557,
+          "classification": "repository_rights_policy",
+          "scope": "No repository-wide license; embedded text, translation, scan, audio, dataset, code, schema, and metadata can have different terms. Public visibility does not grant reuse rights."
+        },
+        {
+          "path": "datasets/dhammapada-sujato/LICENSES/SUTTACENTRAL-CC0.md",
+          "gitBlobSha": "af76fc4c7cfaf70719d07fdfa798111b5721805e",
+          "sha256": "5fef93a3f1220c71662986df8015bc087753cdb3f6398e8480a6b14b4e019faf",
+          "bytes": 1194,
+          "classification": "scoped_license_notice",
+          "scope": "CC0-1.0 covers only the pinned Bhikkhu Sujato English translation, not the Pali root or other translations."
+        },
+        {
+          "path": "datasets/dhammapada-sujato-1-20/LICENSES/SUTTACENTRAL-CC0.md",
+          "gitBlobSha": "2513cddfc4e41c6a5b4cfcf99a4ea78690d09a43",
+          "sha256": "e53e276250f92c86484dd8b726740fbb9d89ed2660ac08e58f0936fe5c09d571",
+          "bytes": 578,
+          "classification": "scoped_license_notice",
+          "scope": "CC0-1.0 covers the selected Sujato translation metadata only; other material requires separate review."
+        },
+        {
+          "path": "datasets/quran-tanzil-uthmani/LICENSES/TANZIL.md",
+          "gitBlobSha": "9a9a91583ca6bf7c7c0acb92a5435f6473b4f97f",
+          "sha256": "cbaaf32a7b1df803186a6ac44c2df20699ea452f376b5a3fc2b09516bbb197fa",
+          "bytes": 944,
+          "classification": "scoped_license_notice",
+          "scope": "Tanzil Quran Text v1.1 is CC-BY-3.0 with attribution and unchanged-text conditions; this does not cover translations, scans, fonts, audio, commentary, or unrelated metadata."
+        },
+        {
+          "path": "docs/P12-004-PALI-RIGHTS-AUDIT.md",
+          "gitBlobSha": "6334b7c1a1b50e4bd548761fc5e3239d0bc7a08a",
+          "sha256": "4b381a189638bb18021b2944b78f4967eca24bb912bc777918de8d796d0dd06c",
+          "bytes": 1861,
+          "classification": "source_specific_rights_audit",
+          "scope": "Pinned Bilara CC0 does not expressly clear the separate Pali root; the recorded disposition is metadata-only and alignment deferred pending root rights."
+        },
+        {
+          "path": "ingestion/recipes/dhammapada-sujato/pali-root-rights-audit.json",
+          "gitBlobSha": "c74ae8078bfada8b8e529149414725a635c3c5ca",
+          "sha256": "c3270210772ff825a5af8fec8e922d423207f3b57c00225b2181323cf9dcf8cb",
+          "bytes": 790,
+          "classification": "source_specific_rights_audit",
+          "scope": "Structured decision says metadata-only; the translation grant does not establish rights to the Pali root."
+        }
+      ],
+      "nonLicenseNameMatches": [],
+      "tags": [
+        {
+          "name": "browser-db-c654dcb2f346b44c0610532240bc3b8deee0bc25abadc5251ab820f9db97c869",
+          "tagObjectSha": "43aff5faa0f425a1dbdb1c5bba203512ffdbf42c",
+          "commitSha": "43aff5faa0f425a1dbdb1c5bba203512ffdbf42c"
+        },
+        {
+          "name": "browser-db-v3-c654dcb2f346b44c0610532240bc3b8deee0bc25abadc5251ab820f9db97c869",
+          "tagObjectSha": "03ca4666cb1761f498139114150d0acad79de47a",
+          "commitSha": "03ca4666cb1761f498139114150d0acad79de47a"
+        },
+        {
+          "name": "v0.1.0",
+          "tagObjectSha": "521964f533756a03d93f8761afb55872e8b0a8ce",
+          "commitSha": "cd23dcbfa9410383256ea95d0813da56569a3b5c"
+        }
+      ]
+    },
+    {
+      "repository": "bjo163/rocksoul-correlation",
+      "visibility": "public",
+      "branch": "main",
+      "head": "380ac810747a79b7efa22affb934b302ac224524",
+      "readme": {
+        "path": "README.md",
+        "sha256": "5399e2ba1c7b761f73b025138f8d52200552d84f9cc7e8644d4d1aba50dac916",
+        "gitBlobSha": "86f88d6938251d3f7e264aaf3acf4a32f48c7b3e",
+        "bytes": 9333
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    },
+    {
+      "repository": "bjo163/dev-mw-blueprint",
+      "visibility": "public",
+      "branch": "main",
+      "head": "cc53d63da1f34f69e20516a0b1c13514fa898725",
+      "readme": {
+        "path": "README.md",
+        "sha256": "7b5f1c79b36c3a86197b5588c3e882051834b528ffff4f89073edabd8ed7f06f",
+        "gitBlobSha": "906192648ed3980bc7fa84a6b412ad3f04df99b6",
+        "bytes": 8241
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    },
+    {
+      "repository": "bjo163/rocksoul-mftl",
+      "visibility": "public",
+      "branch": "main",
+      "head": "1519de291267eaa90960bcb04f7ac94e325d9d35",
+      "readme": {
+        "path": "README.md",
+        "sha256": "cd9aa8046e3f8aee695a59931ec420003f515d12e04da82942964808996b048a",
+        "gitBlobSha": "a70c4e39c835e1f9cd3941356e71d4232c164590",
+        "bytes": 16447
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    },
+    {
+      "repository": "bjo163/rocksoul-legend",
+      "visibility": "public",
+      "branch": "main",
+      "head": "1c1e851189530185cacf695a3c25adedce94fbb4",
+      "readme": {
+        "path": "README.md",
+        "sha256": "de8c551a8cc98a3d556b855e350579df495ab49bfb56edd66b9b4c4588a87cc3",
+        "gitBlobSha": "6e731b8106566ae44fd1cac7010a35fcfa59bf68",
+        "bytes": 10443
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    },
+    {
+      "repository": "bjo163/rocksoul-superhero",
+      "visibility": "public",
+      "branch": "main",
+      "head": "89963d5f5801aec3d44d2d55538e2a882e37f86b",
+      "readme": {
+        "path": "README.md",
+        "sha256": "5db58b83b9450b77379e7887946652208a80be28ffafc17507c9bedeee652be5",
+        "gitBlobSha": "e326b87fe31a8796d4f08bee57b4302fc4f1f999",
+        "bytes": 10414
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    },
+    {
+      "repository": "bjo163/rocksoul-aws",
+      "visibility": "public",
+      "branch": "main",
+      "head": "719413cc3d6c5c8349a87a1863e84c0e0f97e1c9",
+      "readme": {
+        "path": "README.md",
+        "sha256": "99e39f3184bdca28807375b5036856e5b74b77d7ff9f6a98bf0b5be3ad346925",
+        "gitBlobSha": "f4248d1f1dc2a823346039eb8fa819bf4cda1a52",
+        "bytes": 11826
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [
+        {
+          "path": "packages/orchestrator/src/aws/untc-legal-notices.ts",
+          "gitBlobSha": "1d02771087b9b939ac9734231cb0c1f132b4fcd3",
+          "classification": "treaty_notice_parser"
+        },
+        {
+          "path": "tests/fixtures/aws/untc-genocide-notices.html",
+          "gitBlobSha": "ba568ee95414381f862b96ae062b59edb9683611",
+          "classification": "treaty_notice_fixture"
+        },
+        {
+          "path": "src/engines/rights.ts",
+          "gitBlobSha": "d1691a93b021874df8f309a450cf8baa7e2f8955",
+          "classification": "application_rights_profile"
+        }
+      ],
+      "tags": [
+        {
+          "name": "v4.32.0",
+          "tagObjectSha": "537969bf3b7c740625d92326ce4357e3f1f889d0",
+          "commitSha": "bb9198ac24a4fa05195ae7eb0adf31bc28e50889"
+        },
+        {
+          "name": "v4.33.0",
+          "tagObjectSha": "ad01116b7c82a84ff165aef44693334ae2583a2f",
+          "commitSha": "ad01116b7c82a84ff165aef44693334ae2583a2f"
+        }
+      ]
+    },
+    {
+      "repository": "bjo163/rocksoul-jizz",
+      "visibility": "public",
+      "branch": "main",
+      "head": "c7ebf234432cc57534fda815c3eb7faacae62be9",
+      "readme": {
+        "path": "README.md",
+        "sha256": "5dd7a029a5edf6e190701973b1667813c1e2a7decc3d01a4c28158db0e0dedfc",
+        "gitBlobSha": "5471233c8f0810d812f51b141fb47f8acfd988c8",
+        "bytes": 6166
+      },
+      "rootLicensePath": "LICENSE",
+      "rootLicenseFound": false,
+      "treeScanComplete": true,
+      "matchingRightsFiles": [],
+      "nonLicenseNameMatches": [],
+      "tags": []
+    }
+  ],
+  "decisionPolicy": "Architecture decision approved by the project owner on 2026-10-15: rebuild selected functionality inside moonwitness-xiv; do not connect to legacy repositories at runtime, through APIs, submodules, or fetches, and do not migrate legacy source records or copy legacy code/content in this rebuild. Legacy repository references below are historical metadata for traceability only. Reimplement desired behavior from approved requirements and newly authored material. This does not grant rights to copy legacy bytes or clear any external content for future import.",
+  "candidates": [
+    {
+      "candidateId": "legacy-rgbl",
+      "repository": "rocksoul-rgbl",
+      "repositoryUrl": "https://github.com/bjo163/rocksoul-rgbl",
+      "file": null,
+      "commit": null,
+      "sha256": null,
+      "license": "unknown",
+      "oldIds": [],
+      "oldIdsStatus": "missing_source_and_mapping",
+      "dataKind": "exact_text_provenance_candidate",
+      "targetOwner": "knowledge source artifact and provenance records, if accepted after review",
+      "transform": "none approved",
+      "dataQuality": "not assessed; source unavailable",
+      "manualReviewRequired": true,
+      "tests": "none; source unavailable",
+      "decision": "defer",
+      "decisionStatus": "owner_approved_no_legacy_import_2026-10-15"
+    },
+    {
+      "candidateId": "legacy-correlation",
+      "repository": "rocksoul-correlation",
+      "repositoryUrl": "https://github.com/bjo163/rocksoul-correlation",
+      "file": null,
+      "commit": null,
+      "sha256": null,
+      "license": "unknown",
+      "oldIds": [],
+      "oldIdsStatus": "missing_source_and_mapping",
+      "dataKind": "reviewed_edges_candidate",
+      "targetOwner": "knowledge relation records, if accepted after review",
+      "transform": "none approved",
+      "dataQuality": "not assessed; source unavailable",
+      "manualReviewRequired": true,
+      "tests": "none; source unavailable",
+      "decision": "defer",
+      "decisionStatus": "owner_approved_no_legacy_import_2026-10-15"
+    },
+    {
+      "candidateId": "legacy-mizan-blueprint",
+      "repository": "dev-mw-blueprint",
+      "repositoryUrl": "https://github.com/bjo163/dev-mw-blueprint",
+      "file": null,
+      "commit": null,
+      "sha256": null,
+      "license": "unknown",
+      "oldIds": [],
+      "oldIdsStatus": "missing_source_and_mapping",
+      "dataKind": "non_normative_responsibility_impact_algorithm_candidate",
+      "targetOwner": "research/design reference only pending semantic and calibration review",
+      "transform": "none approved; do not infer legal judgment, salvation, moral worth, or divine authority",
+      "dataQuality": "not assessed; source unavailable",
+      "manualReviewRequired": true,
+      "tests": "none; source unavailable",
+      "decision": "defer",
+      "decisionStatus": "owner_approved_no_legacy_import_2026-10-15"
+    },
+    {
+      "candidateId": "legacy-design-families",
+      "repository": null,
+      "repositoryUrl": null,
+      "repositoryCandidates": [
+        "rocksoul-mftl",
+        "rocksoul-legend",
+        "rocksoul-superhero",
+        "rocksoul-aws",
+        "rocksoul-jizz",
+        "rocksoul-crayon"
+      ],
+      "file": null,
+      "commit": null,
+      "sha256": null,
+      "license": "unknown",
+      "oldIds": [],
+      "oldIdsStatus": "missing_source_and_mapping",
+      "dataKind": "MFTL_LEGEND_SUPERHERO_AWS_JIZZ_CRAYON_design_candidates",
+      "targetOwner": "separate research/design reference records, if individually accepted after review",
+      "transform": "none approved",
+      "dataQuality": "not assessed; source checkouts unavailable",
+      "manualReviewRequired": true,
+      "tests": "none; source unavailable",
+      "decision": "defer",
+      "decisionStatus": "owner_approved_no_legacy_import_2026-10-15"
+    },
+    {
+      "candidateId": "legacy-moonwitness-and-bug-registry",
+      "repository": "prior MOONWITNESS materials; exact repository unavailable",
+      "repositoryUrl": null,
+      "file": null,
+      "commit": null,
+      "sha256": null,
+      "license": "unknown",
+      "oldIds": [],
+      "oldIdsStatus": "partial_ids_may_exist_but_unavailable_for_verification",
+      "dataKind": "historical_design_and_planned_bug_registry",
+      "targetOwner": "unreconciled research records only after source and ID review",
+      "transform": "none approved; preserve conflicts and missing IDs as unresolved",
+      "dataQuality": "not assessed; plan states 33 Real-World BUG is planned, not 33 verified fixes",
+      "manualReviewRequired": true,
+      "tests": "none; source unavailable",
+      "decision": "defer",
+      "decisionStatus": "owner_approved_no_legacy_import_2026-10-15"
+    }
+  ],
+  "completionGates": [
+    "Rebuild selected functionality from approved requirements and newly authored material within moonwitness-xiv; do not add runtime links, API dependencies, submodules, fetches, legacy code, or legacy source-record imports.",
+    "Keep the pinned repository and artifact observations as historical metadata only; do not treat them as inputs to this rebuild.",
+    "If a future task proposes importing any external content, reopen this ledger and require exact-file rights and privacy review before import.",
+    "Historical record migration is out of scope for this rebuild; no old-ID reconciliation or alias resolution is claimed."
+  ],
+  "nonClaims": [
+    "No source-specific rights clearance is established; this decision authorizes no copying or importing.",
+    "Eight public repository references and root README files were observed read-only; no repository checkout or corpus source file was copied into XIV.",
+    "Private design-family contents and old identifiers were not inspected or verified.",
+    "No historical metrics or fixes are verified by this inventory.",
+    "No old identifiers or alias conflicts were reconciled; legacy records are not migrated by this rebuild."
+  ]
+}

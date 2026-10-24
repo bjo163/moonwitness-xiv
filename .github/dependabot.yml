@@ -1,0 +1,47 @@
+# Dependency and action refresh proposals. Reviews are still human: nothing here
+# auto-merges, and the read-only plan lane (`dependency-update-plan.yml`, which
+# emits major candidates without writing) keeps working alongside it.
+#
+# Blocked on an owner setting, measured on this repository: the `Two branches only:
+# main and dev` ruleset (24436078) blocks creation of other refs with no bypass
+# actors, and the alert pages already report `Failed publishing content to GitHub:
+# Cannot create ref due to creations being restricted.` Dependabot therefore keeps
+# scanning and filing alerts, but no proposal branch can appear until that ruleset
+# exempts the Dependabot actor. This file is the code-side half of that pair.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:23'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    commit-message:
+      prefix: chore(deps)
+    allow:
+      - dependency-type: direct
+      - dependency-type: indirect
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:31'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore(ci)

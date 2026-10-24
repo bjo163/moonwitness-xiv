@@ -101,6 +101,97 @@ describe('Row-Level Security & Multi-Tenancy Record Rules', () => {
     ]);
   });
 
+  it('keeps WhatsApp scoped for superadmin through dedicated, generic REST and JSON-RPC APIs', async () => {
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { login: 'superadmin', password: ADMIN_PASSWORD },
+    });
+    const headers = { authorization: `Bearer ${login.json().data.access_token}` };
+    const company = await Company.query().findOne({ name: 'MoonWitness' }).throwIfNotFound();
+    const foreign = await Company.query().insert({ name: 'WhatsApp foreign tenant' });
+    const [ownAccount] = await app
+      .db('whatsapp_accounts')
+      .insert({
+        company_id: company.id,
+        status: 'connected',
+        qr_code: 'private-session-fixture',
+      })
+      .returning('id');
+    const [foreignAccount] = await app
+      .db('whatsapp_accounts')
+      .insert({
+        company_id: foreign.id,
+        status: 'connected',
+        qr_code: 'foreign-session-fixture',
+      })
+      .returning('id');
+    const list = await app.inject({ method: 'GET', url: '/api/whatsapp.account', headers });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().data.map((row: { id: number }) => row.id)).toEqual([ownAccount.id]);
+    expect(JSON.stringify(list.json())).not.toContain('private-session-fixture');
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/whatsapp.account/${foreignAccount.id}`,
+          headers,
+        })
+      ).statusCode
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/whatsapp/account',
+          headers: { ...headers, 'x-company-id': String(foreign.id) },
+        })
+      ).statusCode
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/whatsapp.account',
+          headers,
+          payload: { company_id: foreign.id },
+        })
+      ).statusCode
+    ).toBe(403);
+    const rpc = await app.inject({
+      method: 'POST',
+      url: '/jsonrpc',
+      headers,
+      payload: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'call',
+        params: {
+          service: 'object',
+          method: 'execute_kw',
+          args: ['whatsapp.account', 'search_read', [[]]],
+        },
+      },
+    });
+    expect(rpc.json().result.map((row: { id: number }) => row.id)).toEqual([ownAccount.id]);
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/jsonrpc',
+      headers,
+      payload: {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'call',
+        params: {
+          service: 'object',
+          method: 'execute_kw',
+          args: ['whatsapp.account', 'write', [[ownAccount.id], { company_id: foreign.id }]],
+        },
+      },
+    });
+    expect(denied.json().error).toBeDefined();
+  });
+
   it('multi-tenant requests resolve company from X-Company-Id header', async () => {
     const loginRes = await app.inject({
       method: 'POST',
@@ -143,6 +234,28 @@ describe('central access policy', () => {
     };
     expect(canAccess('user', 'auth.refresh_token', 'read')).toBe(false);
     expect(canAccess('user', 'base.user', 'read')).toBe(false);
+    for (const model of [
+      'knowledge.witness_testimony',
+      'knowledge.witness_correction',
+      'knowledge.witness_interpretation',
+      'knowledge.story_version',
+      'knowledge.story_page_version',
+      'knowledge.research_suggestion_version',
+    ]) {
+      const fullWitnessGrant = {
+        model_name: model,
+        read: true,
+        create: true,
+        write: true,
+        unlink: true,
+      };
+      for (const operation of ['read', 'create', 'write', 'unlink', 'action'] as const) {
+        expect(canAccess('user', model, operation)).toBe(false);
+        expect(canAccess('user', model, operation, [fullWitnessGrant])).toBe(false);
+        expect(canAccess('superadmin', model, operation)).toBe(false);
+        expect(canAccess('system', model, operation)).toBe(false);
+      }
+    }
     expect(canAccess('user', 'base.partner', 'read')).toBe(true);
     expect(canAccess('user', 'base.partner', 'action', [grant])).toBe(false);
     expect(canAccess('user', 'base.partner', 'create', [grant])).toBe(true);
@@ -150,6 +263,34 @@ describe('central access policy', () => {
     expect(canAccess('system', 'auth.refresh_token', 'read')).toBe(false);
     expect(canAccess('system', 'base.partner', 'unlink')).toBe(true);
     expect(canAccess('superadmin', 'base.audit_log', 'write')).toBe(false);
+  });
+
+  it('keeps privacy and witness records out of generic access for every role and operation', () => {
+    const roles = ['user', 'superadmin', 'system'];
+    const operations = ['read', 'create', 'write', 'unlink', 'action'] as const;
+    const grants = [
+      {
+        model_name: 'knowledge.privacy_projection',
+        read: true,
+        create: true,
+        write: true,
+        unlink: true,
+      },
+    ];
+
+    for (const model of [
+      'knowledge.privacy_revocation',
+      'knowledge.privacy_projection',
+      'knowledge.witness_testimony',
+      'knowledge.witness_correction',
+      'knowledge.witness_interpretation',
+    ]) {
+      for (const role of roles) {
+        for (const operation of operations) {
+          expect(canAccess(role, model, operation, grants)).toBe(false);
+        }
+      }
+    }
   });
 
   it('protects system users and maps HTTP and RPC operations with default deny', () => {

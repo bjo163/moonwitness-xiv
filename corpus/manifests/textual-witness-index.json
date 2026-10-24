@@ -1,0 +1,14 @@
+{
+  "format": "moonwitness-textual-witness-index/v1",
+  "entries": [
+    {
+      "expression_id": "mw:expression:webp-protestant",
+      "edition_id": "mw:edition:webp-protestant-2020-stable",
+      "locator": "Genesis 1:1",
+      "source_artifact_id": "mw:artifact:webp-protestant-genesis-1-1",
+      "source_manifest_path": "corpus/manifests/webp-protestant-genesis-1-1.json",
+      "artifact_path": "corpus/reference/sha256/ae/ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1",
+      "sha256": "ae5c2799fad97b0e65334aa39be6193d487419f0d31713caaac58a47f6b4d8b1"
+    }
+  ]
+}

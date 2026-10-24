@@ -5,7 +5,7 @@ The monthly audit is a read-only inventory. It records Actions artifacts and 90-
 Run locally with the GitHub CLI when it has repository-read access:
 
 ```powershell
-pnpm platform:audit -- --repo bjo163/moonwitness-xi --output platform-audit-baseline.json
+pnpm platform:audit -- --repo bjo163/moonwitness-xiv --output platform-audit-baseline.json
 ```
 
 Use `--previous <report.json>` to calculate deltas from an earlier report. Never commit a report containing private repository metadata; the scheduled workflow stores its report as a 90-day Actions artifact and writes a concise summary. Monthly scheduling runs from the default branch; `workflow_dispatch` is available for a manual read-only snapshot.

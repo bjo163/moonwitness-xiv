@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 
-export type TableProps = ComponentProps<'table'>;
+export type TableProps = ComponentProps<'table'> & { scrollLabel?: string };
 export type TableCaptionProps = ComponentProps<'caption'>;
 export type TableHeadProps = ComponentProps<'thead'>;
 export type TableBodyProps = ComponentProps<'tbody'>;
@@ -8,9 +8,38 @@ export type TableRowProps = ComponentProps<'tr'>;
 export type TableHeaderProps = ComponentProps<'th'>;
 export type TableCellProps = ComponentProps<'td'>;
 
-export function Table({ className, ...props }: TableProps) {
+export function Table({ className, scrollLabel, ...props }: TableProps) {
   return (
-    <div className="mw-ui-table-wrap" data-slot="table-wrap">
+    <div
+      className="mw-ui-table-wrap"
+      data-slot="table-wrap"
+      role={scrollLabel ? 'region' : undefined}
+      aria-label={scrollLabel}
+      tabIndex={scrollLabel ? 0 : undefined}
+      onKeyDown={
+        scrollLabel
+          ? (event) => {
+              if (event.target !== event.currentTarget) return;
+
+              const { currentTarget, key } = event;
+              if (key === 'ArrowLeft' || key === 'ArrowRight') {
+                event.preventDefault();
+                currentTarget.scrollBy({
+                  left:
+                    (key === 'ArrowLeft' ? -1 : 1) * Math.max(48, currentTarget.clientWidth * 0.8),
+                  behavior: 'auto',
+                });
+              } else if (key === 'Home' || key === 'End') {
+                event.preventDefault();
+                currentTarget.scrollTo({
+                  left: key === 'Home' ? 0 : currentTarget.scrollWidth,
+                  behavior: 'auto',
+                });
+              }
+            }
+          : undefined
+      }
+    >
       <table className={['mw-ui-table', className].filter(Boolean).join(' ')} {...props} />
     </div>
   );

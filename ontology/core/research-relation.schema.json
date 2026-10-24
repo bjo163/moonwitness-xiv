@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/research-relation.schema.json",
+  "title": "MoonWitness reviewed research relation",
+  "description": "Versioned, scoped, evidence-linked graph relation. Identity equivalence is never inferred and requires an accepted K3-003 human decision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "schema_version",
+    "lifecycle",
+    "created_at",
+    "updated_at",
+    "origin_ref",
+    "content_revision",
+    "visibility",
+    "predicate",
+    "subject_id",
+    "object_id",
+    "scope",
+    "supporting_evidence_ids",
+    "counterevidence_ids",
+    "alternative_relation_ids",
+    "epistemic_status",
+    "review_status"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mw:relation:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "kind": { "const": "ResearchRelation" },
+    "schema_version": { "const": 1 },
+    "lifecycle": { "enum": ["candidate", "active", "superseded", "withdrawn"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "origin_ref": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "content_revision": { "type": "integer", "minimum": 1 },
+    "visibility": {
+      "enum": ["PUBLIC_APPROVED", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "CHILD_SENSITIVE"]
+    },
+    "predicate": {
+      "enum": [
+        "edition_of",
+        "witness_of",
+        "member_of_canon",
+        "derived_from",
+        "related_to",
+        "textually_parallels",
+        "possibly_corresponds_to",
+        "explicit_identity_equivalence"
+      ]
+    },
+    "subject_id": { "$ref": "#/$defs/canonical_id" },
+    "object_id": { "$ref": "#/$defs/canonical_id" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference_id"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "passage",
+            "speaker",
+            "document",
+            "work",
+            "community",
+            "time",
+            "research_context"
+          ]
+        },
+        "reference_id": { "$ref": "#/$defs/canonical_id" }
+      }
+    },
+    "supporting_evidence_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" }
+    },
+    "counterevidence_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" }
+    },
+    "alternative_relation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^mw:relation:[a-z0-9][a-z0-9._-]{0,179}$" }
+    },
+    "epistemic_status": {
+      "enum": [
+        "unreviewed",
+        "supported",
+        "partially_supported",
+        "disputed",
+        "insufficient_evidence",
+        "withdrawn"
+      ]
+    },
+    "review_status": {
+      "enum": ["unreviewed", "pending", "accepted", "rejected", "disputed", "withdrawn"]
+    },
+    "review_decision_id": {
+      "type": "string",
+      "pattern": "^mw:(?:review-decision|identity-decision):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "reviewer_id": {
+      "type": "string",
+      "pattern": "^mw:(?:agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "reviewed_at": { "type": "string", "format": "date-time" },
+    "reviewed_revision": { "type": "integer", "minimum": 1 },
+    "identity_decision_id": {
+      "type": "string",
+      "pattern": "^mw:identity-decision:[a-z0-9][a-z0-9._-]{0,179}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "review_status": { "const": "accepted" } },
+        "required": ["review_status"]
+      },
+      "then": {
+        "required": ["review_decision_id", "reviewer_id", "reviewed_at", "reviewed_revision"],
+        "properties": {
+          "lifecycle": { "const": "active" },
+          "supporting_evidence_ids": { "type": "array", "minItems": 1 },
+          "review_decision_id": { "$ref": "#/$defs/review_decision_id" },
+          "reviewer_id": { "$ref": "#/$defs/reviewer_id" },
+          "reviewed_at": { "type": "string", "format": "date-time" },
+          "reviewed_revision": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "predicate": { "const": "explicit_identity_equivalence" } },
+        "required": ["predicate"]
+      },
+      "then": {
+        "required": ["identity_decision_id"],
+        "properties": {
+          "identity_decision_id": { "$ref": "#/$defs/identity_decision_id" },
+          "review_decision_id": { "$ref": "#/$defs/identity_decision_id" },
+          "review_status": { "const": "accepted" }
+        }
+      },
+      "else": { "not": { "required": ["identity_decision_id"] } }
+    }
+  ],
+  "$defs": {
+    "review_decision_id": {
+      "type": "string",
+      "pattern": "^mw:(?:review-decision|identity-decision):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "identity_decision_id": {
+      "type": "string",
+      "pattern": "^mw:identity-decision:[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "reviewer_id": {
+      "type": "string",
+      "pattern": "^mw:(?:agent|entity):[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "canonical_id": {
+      "type": "string",
+      "pattern": "^mw:[a-z]+(?:-[a-z]+)*:[a-z0-9][a-z0-9._-]{0,179}(?::[a-z0-9][a-z0-9._-]{0,179})*$"
+    }
+  }
+}

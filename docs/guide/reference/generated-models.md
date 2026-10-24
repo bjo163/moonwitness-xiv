@@ -1,6 +1,6 @@
 # Generated model and addon reference
 
-Source fingerprint: `02d350aef379d0bbec1da0bc5438849bf7a4933bf49225ed94c758dbba4b7630`. Seed values and field defaults are intentionally omitted.
+Source fingerprint: `e74e84553ba256692153d5d389d07d489471bbd546554ba69f1b7c5670c88166`. Seed values and field defaults are intentionally omitted.
 
 ## Addon `auth`
 
@@ -285,11 +285,174 @@ Models: 4; declared views: 0; menu entries: 0; seed rows: 1.
 
 - Seed coverage: `base.cron` has 1 declared seed row(s); seed values are not included.
 
+## Addon `knowledge`
+
+Version: `1.6.0`; dependencies: `base`.
+
+Models: 15; declared views: 3; menu entries: 3; seed rows: 26.
+
+| Model                                           | Table                                            | Field                         | Kind      | Required | Optional | Default    | Relation                           |
+| ----------------------------------------------- | ------------------------------------------------ | ----------------------------- | --------- | -------- | -------- | ---------- | ---------------------------------- |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `concept_id`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `profile_digest`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `profile_id`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `profile_json`                | text      | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `version`                     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `projection_digest`           | string    | No       | Yes      | No         | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `projection_json`             | text      | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `projection_key`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `revoked_at`                  | string    | No       | Yes      | No         | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `state`                       | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `subject_ref_sha256`          | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `synthetic`                   | boolean   | No       | Yes      | [redacted] | —                                  |
+| `knowledge.privacy_projection`                  | `knowledge_privacy_projections`                  | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `actor`                       | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `consent_decision_ref_sha256` | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `decided_at`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `event_digest`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `idempotency_key`             | string    | Yes      | No       | No         | —                                  |
+| `knowledge.privacy_revocation`                  | `knowledge_privacy_revocations`                  | `subject_ref_sha256`          | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_active_release`             | `knowledge_research_active_releases`             | `activated_at`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_active_release`             | `knowledge_research_active_releases`             | `corpus_key`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_active_release`             | `knowledge_research_active_releases`             | `release`                     | belongsTo | Yes      | No       | No         | `knowledge.research_graph_release` |
+| `knowledge.research_actor_identity`             | `knowledge_research_actor_identities`            | `canonical_user_id`           | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_actor_identity`             | `knowledge_research_actor_identities`            | `provisioned_by`              | belongsTo | No       | Yes      | No         | `base.user`                        |
+| `knowledge.research_actor_identity`             | `knowledge_research_actor_identities`            | `reason`                      | text      | No       | Yes      | No         | —                                  |
+| `knowledge.research_actor_identity`             | `knowledge_research_actor_identities`            | `request_id`                  | string    | No       | Yes      | No         | —                                  |
+| `knowledge.research_actor_identity`             | `knowledge_research_actor_identities`            | `user`                        | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `content_digest`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `content_json`                | text      | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `record_key`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `record_kind`                 | enum      | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `release`                     | belongsTo | Yes      | No       | No         | `knowledge.research_graph_release` |
+| `knowledge.research_graph_record`               | `knowledge_research_graph_records`               | `visibility`                  | enum      | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `manifest_digest`             | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `manifest_json`               | text      | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `previous_release_digest`     | string    | No       | Yes      | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `record_count`                | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `release_digest`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_graph_release`              | `knowledge_research_graph_releases`              | `schema_version`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `event_digest`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `event_id`                    | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `event_json`                  | text      | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `idempotency_key`             | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `research_release_digest`     | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `subject_id`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `subject_revision`            | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `workflow_event_sequence`     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_review_event`               | `knowledge_research_review_events`               | `workflow_instance_id`        | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `status`                      | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `suggestion_digest`           | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `suggestion_id`               | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `suggestion_json`             | text      | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `version`                     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_version`         | `knowledge_research_suggestion_versions`         | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `media_ref_json`              | text      | No       | Yes      | No         | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `original_text`               | text      | Yes      | No       | No         | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `original_text_digest`        | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `page_id`                     | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `page_order`                  | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_page_version`                  | `knowledge_story_page_versions`                  | `story_version`               | belongsTo | Yes      | No       | No         | `knowledge.story_version`          |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `page_count`                  | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `previous_story_digest`       | string    | No       | Yes      | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `story_digest`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `story_id`                    | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `story_json`                  | text      | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `title`                       | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `version`                     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_version`                       | `knowledge_story_versions`                       | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `candidate_digest`            | string    | Yes      | No       | No         | —                                  |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `candidate_id`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `candidate_json`              | text      | Yes      | No       | No         | —                                  |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `version`                     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.textual_alignment_candidate_version` | `knowledge_textual_alignment_candidate_versions` | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `asserted_time_precision`     | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `asserted_time_text`          | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `correction_text`             | text      | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `reason`                      | text      | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `sequence`                    | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `source_digest`               | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `source_label`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `source_locator`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `synthetic`                   | boolean   | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `testimony`                   | belongsTo | Yes      | No       | No         | `knowledge.witness_testimony`      |
+| `knowledge.witness_correction`                  | `knowledge_witness_corrections`                  | `uncertainty_note`            | text      | No       | Yes      | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `assertion_ref`               | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `epistemic_status`            | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `evidence_ref`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `interpretation_text`         | text      | Yes      | No       | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `method_label`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `method_version`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `synthetic`                   | boolean   | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `testimony`                   | belongsTo | Yes      | No       | No         | `knowledge.witness_testimony`      |
+| `knowledge.witness_interpretation`              | `knowledge_witness_interpretations`              | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `company`                     | belongsTo | No       | Yes      | No         | `base.company`                     |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `created_by`                  | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `external_key`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `original_text`               | text      | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `received_time_precision`     | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `received_time_text`          | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `source_digest`               | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `source_label`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `source_locator`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `synthetic`                   | boolean   | No       | Yes      | [redacted] | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `uncertainty_note`            | text      | No       | Yes      | No         | —                                  |
+| `knowledge.witness_testimony`                   | `knowledge_witness_testimonies`                  | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+
+### Menus and seed coverage
+
+| Menu model                         | Label                   | Group     | Sequence | Visibility       |
+| ---------------------------------- | ----------------------- | --------- | -------: | ---------------- |
+| `knowledge.witness_correction`     | Witness Corrections     | Knowledge |       81 | Development mode |
+| `knowledge.witness_interpretation` | Witness Interpretations | Knowledge |       82 | Development mode |
+| `knowledge.witness_testimony`      | Witness Testimony       | Knowledge |       80 | Development mode |
+
+- Seed coverage: `base.access_group` has 2 declared seed row(s); seed values are not included.
+- Seed coverage: `base.group_membership` has 2 declared seed row(s); seed values are not included.
+- Seed coverage: `base.model_access` has 15 declared seed row(s); seed values are not included.
+- Seed coverage: `knowledge.privacy_projection` has 1 declared seed row(s); seed values are not included.
+- Seed coverage: `knowledge.witness_correction` has 2 declared seed row(s); seed values are not included.
+- Seed coverage: `knowledge.witness_interpretation` has 2 declared seed row(s); seed values are not included.
+- Seed coverage: `knowledge.witness_testimony` has 2 declared seed row(s); seed values are not included.
+
+### Seeded model access rules
+
+| Group reference   | Model                                           | Read | Create | Write | Delete |
+| ----------------- | ----------------------------------------------- | ---- | ------ | ----- | ------ |
+| `base.group_user` | `knowledge.concept_profile_version`             | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.privacy_projection`                  | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.privacy_revocation`                  | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_active_release`             | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_actor_identity`             | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_graph_record`               | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_graph_release`              | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_review_event`               | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.research_suggestion_version`         | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.story_page_version`                  | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.story_version`                       | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.textual_alignment_candidate_version` | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.witness_correction`                  | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.witness_interpretation`              | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.witness_testimony`                   | No   | No     | No    | No     |
+
 ## Addon `notification`
 
 Version: `1.0.0`; dependencies: `base`, `jobs`.
 
-Models: 3; declared views: 3; menu entries: 3; seed rows: 8.
+Models: 3; declared views: 3; menu entries: 3; seed rows: 9.
 
 | Model                       | Table                      | Field             | Kind      | Required | Optional | Default    | Relation                |
 | --------------------------- | -------------------------- | ----------------- | --------- | -------- | -------- | ---------- | ----------------------- |
@@ -326,7 +489,7 @@ Models: 3; declared views: 3; menu entries: 3; seed rows: 8.
 
 - Seed coverage: `base.model_access` has 2 declared seed row(s); seed values are not included.
 - Seed coverage: `notification.preference` has 4 declared seed row(s); seed values are not included.
-- Seed coverage: `notification.template` has 2 declared seed row(s); seed values are not included.
+- Seed coverage: `notification.template` has 3 declared seed row(s); seed values are not included.
 
 ### Seeded model access rules
 
@@ -481,7 +644,7 @@ Models: 1; declared views: 1; menu entries: 1; seed rows: 7.
 
 ## Addon `workflow`
 
-Version: `1.0.0`; dependencies: `base`, `jobs`, `notification`.
+Version: `1.2.0`; dependencies: `base`, `jobs`, `notification`.
 
 Models: 4; declared views: 4; menu entries: 4; seed rows: 6.
 
@@ -505,6 +668,7 @@ Models: 4; declared views: 4; menu entries: 4; seed rows: 6.
 | `workflow.event`      | `workflow_events`      | `from_state`          | string    | Yes      | No       | No         | —                     |
 | `workflow.event`      | `workflow_events`      | `idempotency_key`     | string    | Yes      | No       | No         | —                     |
 | `workflow.event`      | `workflow_events`      | `instance`            | belongsTo | Yes      | No       | No         | `workflow.instance`   |
+| `workflow.event`      | `workflow_events`      | `payload`             | text      | No       | Yes      | No         | —                     |
 | `workflow.event`      | `workflow_events`      | `revision`            | integer   | Yes      | No       | No         | —                     |
 | `workflow.event`      | `workflow_events`      | `sequence`            | integer   | Yes      | No       | No         | —                     |
 | `workflow.event`      | `workflow_events`      | `to_state`            | string    | Yes      | No       | No         | —                     |

@@ -134,6 +134,49 @@ export function findPnpmVersionDrift(sources, packageManager) {
   return findings;
 }
 
+/**
+ * The root `engines.node` value is the one place the runtime line is declared, so
+ * every workflow pin and every image tag has to agree with it.
+ */
+export function findNodeVersionDrift(sources, enginesNode) {
+  const expected = /^(\d+)\.x$/u.exec(enginesNode ?? '')?.[1];
+  if (expected === undefined) {
+    return [
+      {
+        path: 'package.json',
+        line: 1,
+        reference: String(enginesNode ?? ''),
+        reason: 'engines.node must pin one exact major such as "22.x"',
+      },
+    ];
+  }
+  const findings = [];
+  for (const source of sources) {
+    const lines = source.content.split(/\r?\n/u);
+    for (let index = 0; index < lines.length; index += 1) {
+      const references = [
+        ...lines[index].matchAll(/node-version:\s*['"]([^'"\s]+)['"]/gu),
+        ...(source.path === 'Dockerfile'
+          ? [...lines[index].matchAll(/^FROM\s+node:(?<tag>[A-Za-z0-9._-]+)/giu)]
+          : []),
+      ];
+      for (const match of references) {
+        const actual = match[1];
+        if (/^\$\{\{/u.test(actual)) continue;
+        const major = /^\d+/u.exec(actual)?.[0];
+        if (major === expected) continue;
+        findings.push({
+          path: source.path,
+          line: index + 1,
+          reference: actual,
+          reason: `must use the Node ${expected}.x line pinned by the root engines field`,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
 async function main() {
   const paths = await collectFiles(githubDirectory);
   const sources = await Promise.all(
@@ -159,6 +202,11 @@ async function main() {
   }
   const packageManifest = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8'));
   findings.push(...findPnpmVersionDrift(sources, packageManifest.packageManager ?? ''));
+  const runtimeSources = [
+    ...sources,
+    { path: 'Dockerfile', content: await readFile(join(repositoryRoot, 'Dockerfile'), 'utf8') },
+  ];
+  findings.push(...findNodeVersionDrift(runtimeSources, packageManifest.engines?.node));
   const pnpmSetup = sources.find(
     (source) => source.path === '.github/actions/setup-pnpm/action.yml'
   );

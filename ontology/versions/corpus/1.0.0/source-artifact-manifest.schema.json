@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.local/schema/source-artifact-manifest/1",
+  "title": "MoonWitness source artifact manifest",
+  "description": "Structural metadata contract. This schema does not establish legal rights or authorize ingestion or publication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_id",
+    "edition_id",
+    "locale",
+    "artifact",
+    "rights",
+    "publication"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "source_id": { "type": "string", "pattern": "^mw:source:[a-z0-9][a-z0-9._-]*$" },
+    "edition_id": { "type": "string", "pattern": "^mw:edition:[a-z0-9][a-z0-9._-]*$" },
+    "locale": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 35,
+      "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+    },
+    "references": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" },
+      "uniqueItems": true
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["representation"],
+      "properties": {
+        "representation": { "enum": ["metadata_only", "source_bytes"] },
+        "media_type": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "byte_length": { "type": "integer", "minimum": 0 },
+        "retrieved_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "allowed_uses"],
+      "properties": {
+        "state": {
+          "enum": ["unknown", "review_pending", "permitted", "restricted", "disputed", "withdrawn"]
+        },
+        "allowed_uses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "read_analyze",
+              "store",
+              "transform",
+              "quote_excerpt",
+              "redistribute_full",
+              "model_training"
+            ]
+          }
+        },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "decision_date": { "type": "string", "format": "date" },
+        "evidence_ref": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "expiry": { "type": "string", "format": "date" },
+        "territories": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "display_locations"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "display_locations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "complaint_process_owner": { "type": "string", "minLength": 1 },
+    "transformations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recipe", "version", "output_sha256"],
+        "properties": {
+          "recipe": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["metadata_only", "source_bytes"] },
+        "release_ref": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "publication": {
+            "type": "object",
+            "properties": { "mode": { "const": "source_bytes" } },
+            "required": ["mode"]
+          }
+        },
+        "required": ["publication"]
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "type": "object",
+            "properties": {
+              "representation": { "const": "source_bytes" },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "byte_length": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["representation", "sha256", "byte_length"]
+          },
+          "rights": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "permitted" },
+              "allowed_uses": { "type": "array", "contains": { "const": "redistribute_full" } },
+              "reviewer": { "type": "string", "minLength": 1 },
+              "decision_date": { "type": "string", "format": "date" },
+              "evidence_ref": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 }
+            },
+            "required": [
+              "state",
+              "allowed_uses",
+              "reviewer",
+              "decision_date",
+              "evidence_ref",
+              "scope"
+            ]
+          },
+          "attribution": { "type": "object" },
+          "complaint_process_owner": { "type": "string", "minLength": 1 }
+        },
+        "required": ["attribution", "complaint_process_owner"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication": {
+            "type": "object",
+            "properties": { "mode": { "const": "metadata_only" } },
+            "required": ["mode"]
+          }
+        },
+        "required": ["publication"]
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "type": "object",
+            "properties": { "representation": { "const": "metadata_only" } }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -106,14 +106,21 @@ test('unit runner executes each workspace package suite only once', () => {
 
 test('root workspace builds use the diagnostic wrapper and its tests run in CI', () => {
   assert.equal(rootPackage.scripts.build, 'node scripts/ci/build-workspace.mjs');
-  assert.match(
-    e2eRunner,
-    /runPreflight\('build-api', 'node', \['scripts\/ci\/build-workspace\.mjs', '@moonwitness\/api\.\.\.'\]\)/u
-  );
+  assert.match(e2eRunner, /runPreflight\('build-api', 'node'/u);
+  assert.match(e2eRunner, /'@moonwitness\/api\.\.\.'/u);
   assert.match(
     rootPackage.scripts['test:e2e:diagnostics'],
     /scripts\/ci\/workspace-build-diagnostics\.test\.mjs/u
   );
+});
+
+test('candidate Board E2E reuses the exact workspace build produced by typecheck', () => {
+  assert.equal(rootPackage.scripts['test:e2e:built'], 'node scripts/run-e2e.mjs --built');
+  assert.match(e2eRunner, /const built = args\[0\] === '--built'/u);
+  assert.match(e2eRunner, /if \(built\) \{[\s\S]*Using the existing workspace build/u);
+  assert.match(e2eRunner, /MW_E2E_USE_BUILT_API: 'true'/u);
+  const playwrightConfig = readFileSync('apps/board/playwright.config.ts', 'utf8');
+  assert.match(playwrightConfig, /MW_E2E_USE_BUILT_API !== 'true'/u);
 });
 
 test('documentation builds are isolated and portal failures annotate sanitized JUnit names', () => {
@@ -129,6 +136,7 @@ test('documentation builds are isolated and portal failures annotate sanitized J
     ['@moonwitness/orm-workflow', 'workflow'],
     ['@moonwitness/orm-request', 'requests'],
     ['@moonwitness/orm-storage', 'storage'],
+    ['@moonwitness/orm-knowledge', 'knowledge'],
   ];
 
   for (const [packageName, label] of documentedPackages) {
@@ -140,14 +148,45 @@ test('documentation builds are isolated and portal failures annotate sanitized J
       )
     );
   }
+  for (const [packageName, label] of [
+    ['@moonwitness/knowledge', 'core knowledge contracts'],
+    ['@moonwitness/corpus', 'corpus'],
+    ['@moonwitness/research', 'research'],
+  ]) {
+    assert.match(
+      pagesWorkflow,
+      new RegExp(
+        `name: Build documentation package ${label}\\s+run: pnpm --filter ${packageName} build`,
+        'u'
+      )
+    );
+  }
+  const coreKnowledgePosition = pagesWorkflow.indexOf(
+    'name: Build documentation package core knowledge contracts'
+  );
+  const corpusPosition = pagesWorkflow.indexOf('name: Build documentation package corpus');
+  const researchPosition = pagesWorkflow.indexOf('name: Build documentation package research');
+  const ormKnowledgePosition = pagesWorkflow.indexOf('name: Build documentation package knowledge');
+  assert.ok(coreKnowledgePosition < corpusPosition);
+  assert.ok(corpusPosition < researchPosition);
+  assert.ok(researchPosition < ormKnowledgePosition);
   const docsBuildPackages = documentedPackages.map(([packageName]) => packageName);
   const requestPackageIndex = docsBuildPackages.indexOf('@moonwitness/orm-request');
   const workflowPackageIndex = docsBuildPackages.indexOf('@moonwitness/orm-workflow');
+  const storagePackageIndex = docsBuildPackages.indexOf('@moonwitness/orm-storage');
+  const knowledgePackageIndex = docsBuildPackages.indexOf('@moonwitness/orm-knowledge');
   assert.ok(workflowPackageIndex < requestPackageIndex);
+  assert.ok(storagePackageIndex < knowledgePackageIndex);
   for (const scriptName of ['docs:check', 'docs:generate']) {
     const script = rootPackage.scripts[scriptName];
+    const coreKnowledgePosition = script.indexOf('pnpm --filter @moonwitness/knowledge build');
+    const corpusPosition = script.indexOf('pnpm --filter @moonwitness/corpus build');
+    const researchPosition = script.indexOf('pnpm --filter @moonwitness/research build');
+    const ormKnowledgePosition = script.indexOf('pnpm --filter @moonwitness/orm-knowledge build');
     const workflowPosition = script.indexOf('pnpm --filter @moonwitness/orm-workflow build');
     const requestPosition = script.indexOf('pnpm --filter @moonwitness/orm-request build');
+    assert.ok(coreKnowledgePosition >= 0 && corpusPosition > coreKnowledgePosition);
+    assert.ok(researchPosition > corpusPosition && ormKnowledgePosition > researchPosition);
     assert.ok(workflowPosition >= 0 && requestPosition > workflowPosition);
   }
   assert.match(
@@ -171,10 +210,7 @@ test('documentation builds are isolated and portal failures annotate sanitized J
     pagesWorkflow,
     /name: Test documented addon examples\s+run: pnpm --filter @moonwitness\/orm exec vitest run tests\/addon\.test\.ts/u
   );
-  assert.match(
-    pagesWorkflow,
-    /name: Build documentation portal site\s+run: pnpm --filter @moonwitness\/docs portal:build/u
-  );
+  assert.doesNotMatch(pagesWorkflow, /name: Build documentation portal site/u);
   const docsPackage = JSON.parse(readFileSync('apps/docs/package.json', 'utf8'));
   assert.match(
     docsPackage.scripts['portal:build'],

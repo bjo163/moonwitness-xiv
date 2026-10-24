@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+echo "Running the Board shared UI gate before push..."
+pnpm board:ui:check

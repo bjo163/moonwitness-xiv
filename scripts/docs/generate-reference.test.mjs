@@ -145,6 +145,31 @@ test('route extraction accepts static paths and rejects computed or malformed ro
   assert.throws(() => extractRoutes('fastify.get(', 'broken.ts'), /Could not parse route source/u);
 });
 
+test('the plugin instance is recognised under its conventional aliases and nothing wider', () => {
+  assert.deepEqual(
+    extractRoutes(`
+      app.get('/whatsapp/account', handler);
+      app.post('/whatsapp/connect', handler);
+      server.get('/health', handler);
+    `),
+    [
+      { method: 'GET', path: '/health' },
+      { method: 'GET', path: '/whatsapp/account' },
+      { method: 'POST', path: '/whatsapp/connect' },
+    ]
+  );
+  assert.deepEqual(
+    extractRoutes('router.get("/api/things", handler); cache.get("/api/other");'),
+    [],
+    'only the Fastify instance identifiers may register routes'
+  );
+  assert.throws(
+    () => extractRoutes("app.patch({ status: 'connecting' });"),
+    /static absolute path/u,
+    'an aliased instance keeps the fail-closed static-path rule'
+  );
+});
+
 test('generated API reference matches literal route declarations in source', async () => {
   const routesDirectory = path.join(root, 'apps/api/src/routes');
   const routeFiles = (await readdir(routesDirectory, { withFileTypes: true }))

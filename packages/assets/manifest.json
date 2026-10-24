@@ -5,6 +5,24 @@
   "licenseManifest": "licenses.json",
   "assets": [
     {
+      "path": "brand/app-icon-192.png",
+      "source": "brand/favicon.svg",
+      "kind": "app-icon",
+      "variant": "crown",
+      "format": "png",
+      "width": 192,
+      "height": 192
+    },
+    {
+      "path": "brand/app-icon-512.png",
+      "source": "brand/favicon.svg",
+      "kind": "app-icon",
+      "variant": "crown",
+      "format": "png",
+      "width": 512,
+      "height": 512
+    },
+    {
       "path": "brand/favicon.svg",
       "kind": "favicon",
       "variant": "dark-surface",
@@ -17,7 +35,7 @@
       "kind": "lockup",
       "variant": "dark",
       "format": "svg",
-      "width": 500,
+      "width": 520,
       "height": 80
     },
     {
@@ -25,7 +43,7 @@
       "kind": "lockup",
       "variant": "light",
       "format": "svg",
-      "width": 500,
+      "width": 520,
       "height": 80
     },
     {
@@ -33,7 +51,7 @@
       "kind": "lockup",
       "variant": "mono-dark",
       "format": "svg",
-      "width": 500,
+      "width": 520,
       "height": 80
     },
     {
@@ -41,7 +59,7 @@
       "kind": "lockup",
       "variant": "mono-light",
       "format": "svg",
-      "width": 500,
+      "width": 520,
       "height": 80
     },
     {
@@ -81,7 +99,7 @@
       "kind": "wordmark",
       "variant": "dark",
       "format": "svg",
-      "width": 440,
+      "width": 500,
       "height": 80
     },
     {
@@ -89,7 +107,7 @@
       "kind": "wordmark",
       "variant": "light",
       "format": "svg",
-      "width": 440,
+      "width": 500,
       "height": 80
     },
     {
@@ -97,7 +115,7 @@
       "kind": "wordmark",
       "variant": "mono-dark",
       "format": "svg",
-      "width": 440,
+      "width": 500,
       "height": 80
     },
     {
@@ -105,7 +123,7 @@
       "kind": "wordmark",
       "variant": "mono-light",
       "format": "svg",
-      "width": 440,
+      "width": 500,
       "height": 80
     },
     {
@@ -134,6 +152,78 @@
       "height": 630
     },
     {
+      "path": "brand/source/moonwitness-master.svg",
+      "kind": "source",
+      "variant": "canonical-crown-brush-wordmark",
+      "format": "svg",
+      "width": 500,
+      "height": 80,
+      "source": "Original vector master maintained by MoonWitness contributors"
+    },
+    {
+      "path": "fonts/Anton-latin-ext.woff2",
+      "source": "https://fonts.gstatic.com/s/anton/v27/1Ptgg87LROyAm3K9-C8QSw.woff2",
+      "kind": "font",
+      "variant": "latin-ext-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "0D17B7880F389DEEB6663A52FA4EADC6D9116BDDA725F0AA1F3D404FBB7D3D59"
+    },
+    {
+      "path": "fonts/Anton-latin.woff2",
+      "source": "https://fonts.gstatic.com/s/anton/v27/1Ptgg87LROyAm3Kz-C8.woff2",
+      "kind": "font",
+      "variant": "latin-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "D0FA07FF63DD60CBC0E2F58E29C802DCA2A5AE0276C999F59C6111AB7BBAEC3B"
+    },
+    {
+      "path": "fonts/JetBrainsMono-latin-ext.woff2",
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhsk.woff2",
+      "kind": "font",
+      "variant": "latin-ext-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "DB5FF4DB83E580426280E9337A58DC57D3A83784A1B03AD80914651594441D52"
+    },
+    {
+      "path": "fonts/JetBrainsMono-latin.woff2",
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+      "kind": "font",
+      "variant": "latin-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "83C005D49D8A6A50474C73A5A36AC0468076E9C4A29DA7BDB14995D80560A5BE"
+    },
+    {
+      "path": "fonts/RoadRage-latin.woff2",
+      "source": "source/fonts/RoadRage-Regular.ttf",
+      "kind": "font",
+      "variant": "latin-display-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "0F8B4556881B76CBA826B74B46A7DEF0B73512D2EE19E8B56C33E1FF3966DB70"
+    },
+    {
+      "path": "fonts/SpaceGrotesk-latin-ext.woff2",
+      "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb94C-s0.woff2",
+      "kind": "font",
+      "variant": "latin-ext-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "952DDDB45D2F96F71CBF3B7F510B24379AFC3C89EA02FCF89D377B45D62C0166"
+    },
+    {
+      "path": "fonts/SpaceGrotesk-latin.woff2",
+      "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2",
+      "kind": "font",
+      "variant": "latin-subset",
+      "format": "woff2",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "0640890476FC1198AB4DE571FB658DE443C4D85B66466EC09534A8737AB1CE9D"
+    },
+    {
       "path": "icons/activity.svg",
       "kind": "icon",
       "variant": "currentColor",
@@ -158,7 +248,55 @@
       "height": 24
     },
     {
+      "path": "icons/archive.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/arrow-right.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/attachment.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/bank.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/bolt.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/book-open.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/calendar-clock.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -174,7 +312,87 @@
       "height": 24
     },
     {
+      "path": "icons/check-square.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/check.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/chevron-right.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/chevrons-left.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/chevrons-right.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/close.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/code.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/columns.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/company.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/credit-card.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/currency.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -190,7 +408,31 @@
       "height": 24
     },
     {
+      "path": "icons/document.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/download.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/edit.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/error.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -222,7 +464,127 @@
       "height": 24
     },
     {
+      "path": "icons/globe.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/grid.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/hash.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/home.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/image.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/inbox.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/info.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/jobs.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/key.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/keyboard.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/knowledge.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/language.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/lock.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/logout.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/mail.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/map-pin.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -238,7 +600,23 @@
       "height": 24
     },
     {
+      "path": "icons/message.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/model.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/moon.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -262,6 +640,30 @@
       "height": 24
     },
     {
+      "path": "icons/pause.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/phone.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/play.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/refresh.svg",
       "kind": "icon",
       "variant": "currentColor",
@@ -271,6 +673,14 @@
     },
     {
       "path": "icons/relation.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/save.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -294,7 +704,95 @@
       "height": 24
     },
     {
+      "path": "icons/send.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/settings.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/signal-off.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/signal.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/smartphone.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/sort-ascending.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/sort-descending.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/sort.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/sparkle.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/story.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/sun.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/tag.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -310,7 +808,63 @@
       "height": 24
     },
     {
+      "path": "icons/upload.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
       "path": "icons/user.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/users.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/visibility-off.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/visibility.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/volume-off.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/volume.svg",
+      "kind": "icon",
+      "variant": "currentColor",
+      "format": "svg",
+      "width": 24,
+      "height": 24
+    },
+    {
+      "path": "icons/warning.svg",
       "kind": "icon",
       "variant": "currentColor",
       "format": "svg",
@@ -342,6 +896,66 @@
       "height": 152
     },
     {
+      "path": "illustrations/auth-login-desktop.webp",
+      "source": "source/artwork/auth-login-shadow-master.png",
+      "kind": "artwork",
+      "variant": "auth-login-desktop",
+      "format": "webp",
+      "width": 1200,
+      "height": 1200,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/auth-login-mobile.webp",
+      "source": "source/artwork/auth-login-shadow-master.png",
+      "kind": "artwork",
+      "variant": "auth-login-mobile",
+      "format": "webp",
+      "width": 1000,
+      "height": 600,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/board-masthead.webp",
+      "source": "source/artwork/board-masthead-master.png",
+      "kind": "artwork",
+      "variant": "masthead",
+      "format": "webp",
+      "width": 1600,
+      "height": 440,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/editorial-knowledge.webp",
+      "source": "source/artwork/home-editorial-triptych-master.png",
+      "kind": "artwork",
+      "variant": "homepage-knowledge-card",
+      "format": "webp",
+      "width": 800,
+      "height": 450,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/editorial-people.webp",
+      "source": "source/artwork/home-editorial-triptych-master.png",
+      "kind": "artwork",
+      "variant": "homepage-people-card",
+      "format": "webp",
+      "width": 800,
+      "height": 450,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/editorial-stories.webp",
+      "source": "source/artwork/home-editorial-triptych-master.png",
+      "kind": "artwork",
+      "variant": "homepage-stories-card",
+      "format": "webp",
+      "width": 800,
+      "height": 450,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
       "path": "illustrations/empty-dark.svg",
       "kind": "illustration",
       "variant": "dark",
@@ -356,6 +970,26 @@
       "format": "svg",
       "width": 164,
       "height": 152
+    },
+    {
+      "path": "illustrations/home-hero-desktop.webp",
+      "source": "source/artwork/home-hero-master.png",
+      "kind": "artwork",
+      "variant": "desktop",
+      "format": "webp",
+      "width": 1800,
+      "height": 900,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "illustrations/home-hero-mobile.webp",
+      "source": "source/artwork/home-hero-master.png",
+      "kind": "artwork",
+      "variant": "mobile",
+      "format": "webp",
+      "width": 920,
+      "height": 1150,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
     },
     {
       "path": "illustrations/no-activity-dark.svg",
@@ -452,6 +1086,96 @@
       "format": "svg",
       "width": 160,
       "height": 160
+    },
+    {
+      "path": "illustrations/story-workbench-masthead.webp",
+      "source": "source/artwork/story-workbench-masthead-master.png",
+      "kind": "artwork",
+      "variant": "story-workbench-masthead",
+      "format": "webp",
+      "width": 1200,
+      "height": 600,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "sounds/ui-alert.wav",
+      "kind": "sound",
+      "variant": "ui",
+      "format": "wav",
+      "durationSeconds": 0.28,
+      "license": "ISC",
+      "source": "scripts/generate-sounds.mjs"
+    },
+    {
+      "path": "sounds/ui-signal.wav",
+      "kind": "sound",
+      "variant": "ui",
+      "format": "wav",
+      "durationSeconds": 0.28,
+      "license": "ISC",
+      "source": "scripts/generate-sounds.mjs"
+    },
+    {
+      "path": "sounds/ui-success.wav",
+      "kind": "sound",
+      "variant": "ui",
+      "format": "wav",
+      "durationSeconds": 0.28,
+      "license": "ISC",
+      "source": "scripts/generate-sounds.mjs"
+    },
+    {
+      "path": "source/artwork/auth-login-shadow-master.png",
+      "kind": "source",
+      "variant": "original-ai-artwork",
+      "format": "png",
+      "width": 1536,
+      "height": 1024,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "source/artwork/board-masthead-master.png",
+      "kind": "source",
+      "variant": "original-ai-artwork",
+      "format": "png",
+      "width": 2172,
+      "height": 724,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "source/artwork/home-editorial-triptych-master.png",
+      "kind": "source",
+      "variant": "original-ai-artwork",
+      "format": "png",
+      "width": 1536,
+      "height": 1024,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "source/artwork/home-hero-master.png",
+      "kind": "source",
+      "variant": "original-ai-artwork",
+      "format": "png",
+      "width": 1672,
+      "height": 941,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "source/artwork/story-workbench-masthead-master.png",
+      "kind": "source",
+      "variant": "original-ai-artwork",
+      "format": "png",
+      "width": 1774,
+      "height": 887,
+      "license": "OpenAI Terms of Use (Output owned by user, subject to applicable law)"
+    },
+    {
+      "path": "source/fonts/RoadRage-Regular.ttf",
+      "kind": "source",
+      "variant": "upstream-road-rage-regular",
+      "format": "ttf",
+      "license": "SIL Open Font License 1.1",
+      "sha256": "F476D2AAC31340C6F5ECB4F2750331F17548B18E29E4CD351ADBB006F609E29A"
     }
   ]
 }

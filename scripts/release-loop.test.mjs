@@ -11,7 +11,7 @@ const prepareSha = 'd'.repeat(40);
 const statusSha = 'e'.repeat(40);
 const baselineCommitSha = 'f'.repeat(40);
 const tags = [{ tag: 'v1.0.0-rc.1' }];
-const repositoryUrl = 'https://github.com/bjo163/moonwitness-xi';
+const repositoryUrl = 'https://github.com/bjo163/moonwitness-xiv';
 const startingManifests = [
   { path: 'package.json', source: '{\n  "name": "moonwitness",\n  "version": "1.0.0-rc.1"\n}\n' },
   {

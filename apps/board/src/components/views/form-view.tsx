@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArrowLeft, Check, Loader2, Save, Trash2, Zap } from 'lucide-react';
+import {
+  ArchiveIcon,
+  ArrowRightIcon,
+  BoltIcon,
+  CheckIcon,
+  DeleteIcon,
+  SaveIcon,
+} from '@moonwitness/ui/icons';
+import { LoadingSpinner } from '@moonwitness/ui/components/effects';
 import { evalDomain, type FieldMeta, type ResolvedViews } from '@moonwitness/client';
 import { useRecord, useRecordMutations } from '@/hooks/use-model';
 import { formatDateTime } from '@/lib/date-format';
@@ -229,12 +237,12 @@ function FormEditor({
   const canWrite = views.permissions.write || (isCreate && views.permissions.create);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Top action bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b-2 border-ink pb-5">
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={handleBackSafe} className="gap-1.5">
-            <ArrowLeft className="size-4" /> Back to list
+            <ArrowRightIcon className="size-4 rotate-180" /> Back to list
           </Button>
           <div className="h-6 w-0.5 bg-ink/20" />
           <div className="flex flex-wrap items-center gap-3">
@@ -282,9 +290,9 @@ function FormEditor({
                   }
                 >
                   {mutations.action.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <LoadingSpinner className="size-4" />
                   ) : (
-                    <Zap className="size-4 text-lime-600 dark:text-lime" />
+                    <BoltIcon className="size-4 text-lime-600 dark:text-lime" />
                   )}
                   {label}
                 </Button>
@@ -299,7 +307,7 @@ function FormEditor({
               className="gap-1.5 hover:bg-pink hover:text-on-pink"
               disabled={mutations.archive.isPending}
             >
-              <Archive className="size-4" /> Archive
+              <ArchiveIcon className="size-4" /> Archive
             </Button>
           )}
 
@@ -312,7 +320,7 @@ function FormEditor({
               disabled={mutations.archive.isPending}
               title="Permanently delete this record"
             >
-              <Trash2 className="size-4" /> Delete permanently
+              <DeleteIcon className="size-4" /> Delete permanently
             </Button>
           )}
 
@@ -324,9 +332,9 @@ function FormEditor({
               className="gap-1.5"
             >
               {mutations.save.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <LoadingSpinner className="size-4" />
               ) : (
-                <Save className="size-4" />
+                <SaveIcon className="size-4" />
               )}
               Save Record
             </Button>
@@ -342,7 +350,7 @@ function FormEditor({
       )}
       {successMsg && (
         <div className="border-2 border-ink bg-lime p-3 font-bold text-on-accent shadow-ink flex items-center gap-2">
-          <Check className="size-5" /> {successMsg}
+          <CheckIcon className="size-5" /> {successMsg}
         </div>
       )}
 
@@ -356,14 +364,14 @@ function FormEditor({
             .filter((f): f is FieldMeta => f !== undefined && f.name !== 'id');
 
           return (
-            <div key={sIdx} className="ink-panel bg-card p-6 sm:p-8">
+            <div key={sIdx} className="ink-panel min-w-0 bg-card p-6 sm:p-8">
               {section.title && (
                 <div className="mb-6 border-b-2 border-ink pb-2">
                   <h2 className="font-display text-xl uppercase tracking-wider">{section.title}</h2>
                 </div>
               )}
 
-              <div className="grid gap-6 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-6 sm:grid-cols-2">
                 {visibleFields.map((field) => {
                   const isInvisible = evalDomain(field.invisible, formData);
                   if (isInvisible) return null;
@@ -373,7 +381,7 @@ function FormEditor({
 
                   if (field.type === 'one2many') {
                     return (
-                      <div key={field.name} className="sm:col-span-2 pt-2">
+                      <div key={field.name} className="min-w-0 pt-2 sm:col-span-2">
                         <One2ManyWidget
                           field={field}
                           parentModel={model}

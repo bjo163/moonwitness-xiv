@@ -35,6 +35,17 @@ test('preflight reports reject unknown stages and successful exit codes', async 
   }
 });
 
+test('knowledge fixture failures are reported as a known preflight stage', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'moonwitness-e2e-knowledge-preflight-'));
+  try {
+    await writeE2EPreflightFailure(directory, 'seed-knowledge-search-fixture', 1);
+    const junit = await readFile(path.join(directory, 'board-e2e.xml'), 'utf8');
+    assert.deepEqual(summarizeFailedTests(junit), ['preflight :: seed-knowledge-search-fixture']);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('API build preflight report retains safe TypeScript locations but strips compiler messages', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'moonwitness-e2e-diagnostic-'));
   try {

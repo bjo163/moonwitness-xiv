@@ -2,6 +2,7 @@ import { useState, type ComponentType, type ReactNode, type SVGProps } from 'rea
 import {
   ActivityIcon,
   AddIcon,
+  ArrowRightIcon,
   AttachmentIcon,
   CalendarIcon,
   CompanyIcon,
@@ -19,6 +20,16 @@ import { Badge } from '@moonwitness/ui/components/badge';
 import { BarChart, LineChart } from '@moonwitness/ui/components/chart';
 import { Checkbox } from '@moonwitness/ui/components/checkbox';
 import { Button } from '@moonwitness/ui/components/button';
+import { ArtworkFrame } from '@moonwitness/ui/components/artwork-frame';
+import homeHeroDesktop from '@moonwitness/assets/illustrations/home-hero-desktop.webp';
+import homeHeroMobile from '@moonwitness/assets/illustrations/home-hero-mobile.webp';
+import boardMasthead from '@moonwitness/assets/illustrations/board-masthead.webp';
+import lockupDark from '@moonwitness/assets/brand/moonwitness-lockup-dark.svg';
+import lockupLight from '@moonwitness/assets/brand/moonwitness-lockup-light.svg';
+import symbolDark from '@moonwitness/assets/brand/moonwitness-symbol-dark.svg';
+import { MetricTile } from '@moonwitness/ui/components/metric-tile';
+import { PaperNote } from '@moonwitness/ui/components/paper-note';
+import { SectionRibbon } from '@moonwitness/ui/components/section-ribbon';
 import {
   Dialog,
   DialogContent,
@@ -62,6 +73,15 @@ import {
 } from '@moonwitness/ui/components/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@moonwitness/ui/components/tabs';
 import { toast, ToastHost } from '@moonwitness/ui/components/toast';
+import { SoundProvider, SoundToggle, useSfx } from '@moonwitness/ui/components/audio';
+import {
+  InkUnderline,
+  LoadingProgress,
+  LoadingSpinner,
+  SignalOrbit,
+  SpeechBubble,
+  SpeedLines,
+} from '@moonwitness/ui/components/effects';
 import { Toolbar } from '@moonwitness/ui/components/toolbar';
 import {
   Tooltip,
@@ -72,6 +92,11 @@ import {
 
 const sections = [
   { id: 'foundations', label: 'Foundations' },
+  { id: 'board-proof', label: 'Board dashboard proof' },
+  { id: 'brand', label: 'Brand' },
+  { id: 'typography', label: 'Typography' },
+  { id: 'materials', label: 'Materials' },
+  { id: 'editorial-proof', label: 'Editorial proof' },
   { id: 'actions', label: 'Actions & feedback' },
   { id: 'forms', label: 'Forms' },
   { id: 'overlays', label: 'Overlays' },
@@ -144,11 +169,43 @@ function Section({
   );
 }
 
-export function Catalog() {
+function CatalogContent() {
   const [dark, setDark] = useState(false);
-  const [page, setPage] = useState(2);
+  const [page, setPage] = useState(1);
   const [checked, setChecked] = useState(true);
   const [query, setQuery] = useState('');
+  const [addonSort, setAddonSort] = useState<'ascending' | 'descending' | null>(null);
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const { play } = useSfx();
+
+  const addons = [
+    ['Base', 'Platform team', 'Active'],
+    ['CRM', 'Operations', 'Review'],
+    ['Inventory', 'Supply group', 'Active'],
+    ['Analytics', 'Research team', 'Active'],
+    ['Media', 'Editorial team', 'Review'],
+    ['Timeline', 'Platform team', 'Active'],
+  ];
+  const filteredAddons = addons
+    .filter(([name]) => name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    .sort((left, right) =>
+      addonSort === null
+        ? 0
+        : left[0].localeCompare(right[0]) * (addonSort === 'ascending' ? 1 : -1)
+    );
+  const pageCount = Math.max(1, Math.ceil(filteredAddons.length / 3));
+  const currentPage = Math.min(page, pageCount);
+  const visibleAddons = filteredAddons.slice((currentPage - 1) * 3, currentPage * 3);
+  const allVisibleAddonsSelected =
+    visibleAddons.length > 0 && visibleAddons.every(([name]) => selectedAddons.includes(name));
+
+  function toggleVisibleAddons() {
+    setSelectedAddons((current) =>
+      allVisibleAddonsSelected
+        ? current.filter((name) => !visibleAddons.some(([visibleName]) => visibleName === name))
+        : [...new Set([...current, ...visibleAddons.map(([name]) => name)])]
+    );
+  }
 
   function toggleTheme() {
     setDark((current) => {
@@ -166,9 +223,7 @@ export function Catalog() {
         </a>
         <aside className="catalog-sidebar" aria-label="Catalog navigation">
           <a className="catalog-brand" href="#top" aria-label="MoonWitness UI catalog home">
-            <span className="catalog-brand-mark" aria-hidden="true">
-              MW
-            </span>
+            <img className="catalog-brand-symbol" src={symbolDark} alt="" />
             <span>
               <strong>MOONWITNESS</strong>
               <small>UI CATALOG</small>
@@ -203,26 +258,24 @@ export function Catalog() {
             <PageHeader
               title={
                 <>
-                  One system.
-                  <br />
-                  <span className="catalog-highlight">Every screen.</span>
+                  One system. <span className="catalog-highlight">Every screen.</span>
                 </>
               }
               description="A practical catalog of the shared MoonWitness UI package. Explore real components, keyboard behavior, themes, and responsive states."
-              actions={<Badge variant="primary">21 public components</Badge>}
+              actions={<Badge variant="primary">50 typed icons</Badge>}
             />
 
             <Panel
               className="catalog-intro-panel"
-              title="Built from the package, not a mock"
-              description="Every example below renders the public @moonwitness/ui exports used by the Board. The same semantic token source drives both themes."
+              title="MoonWitness visual system"
+              description="Shared assets, readable controls, and expressive editorial details are built from the public @moonwitness/ui package."
             >
               <div className="catalog-intro-meta">
                 <span>
-                  <strong>21</strong> components
+                  <strong>50</strong> typed icons
                 </span>
                 <span>
-                  <strong>24</strong> typed icons
+                  <strong>4</strong> new compositions
                 </span>
                 <span>
                   <strong>AA</strong> contrast checked
@@ -260,7 +313,7 @@ export function Catalog() {
                 description="Avatar initials stay accessible; badges retain text labels across themes."
               >
                 <div className="catalog-inline">
-                  <Avatar name="Moon Witness" />
+                  <Avatar name="MoonWitness" />
                   <Avatar name="System Operator" />
                   <Badge>Draft</Badge>
                   <Badge variant="primary">Active</Badge>
@@ -269,7 +322,7 @@ export function Catalog() {
               </Example>
               <Example
                 title="Typed product icons"
-                description="Package-owned exports are individually importable and tree-shakeable."
+                description="Canonical vector paths generate individually importable, tree-shakeable React icons."
               >
                 <div className="icon-grid">
                   {iconSamples.map(({ Component, label }) => (
@@ -277,6 +330,342 @@ export function Catalog() {
                       <Component aria-hidden="true" /> <small>{label}</small>
                     </span>
                   ))}
+                </div>
+              </Example>
+              <Example
+                title="Editorial composition"
+                description="These reusable package components create the visual rhythm used by the homepage and Board."
+              >
+                <SectionRibbon title="Stories" number="01" accent="magenta" />
+                <div className="catalog-inline">
+                  <PaperNote accent="yellow">Same moon. Different people.</PaperNote>
+                  <MetricTile label="Stories in progress" value="12" detail="Example design data" />
+                  <ArtworkFrame shape="portrait" caption="Example artwork">
+                    <img src={homeHeroMobile} alt="Illustrative night city artwork" />
+                  </ArtworkFrame>
+                </div>
+              </Example>
+            </Section>
+
+            <Section
+              id="board-proof"
+              title="Board dashboard proof"
+              description="A dashboard composition inspired by the command-center reference. Values and records below are illustrative design samples, not live MoonWitness data."
+            >
+              <Example
+                title="Command center · sample layout"
+                description="Review the masthead, dense navigation, KPI rhythm, operational panels, and responsive collapse using shared package components."
+              >
+                <div className="catalog-board-proof">
+                  <aside className="catalog-board-rail" aria-label="Sample dashboard navigation">
+                    <div className="catalog-board-identity">
+                      <img src={symbolDark} alt="" />
+                      <span>
+                        MOONWITNESS<small>COMMAND CENTER</small>
+                      </span>
+                    </div>
+                    <div className="catalog-board-rail-menu" aria-hidden="true">
+                      <span className="is-active">
+                        <ActivityIcon /> Overview
+                      </span>
+                      <span>
+                        <ModelIcon /> Stories
+                      </span>
+                      <span>
+                        <CompanyIcon /> Companies
+                      </span>
+                      <span>
+                        <UserIcon /> People
+                      </span>
+                      <span>
+                        <SettingsIcon /> Settings
+                      </span>
+                    </div>
+                    <p className="catalog-board-rail-note">
+                      DESIGN SAMPLE
+                      <br />
+                      NOT LIVE DATA
+                    </p>
+                  </aside>
+                  <div className="catalog-board-main">
+                    <header className="catalog-board-masthead">
+                      <img src={boardMasthead} alt="" />
+                      <div>
+                        <p>MOONWITNESS NETWORK · SAMPLE VIEW</p>
+                        <h3>
+                          SHADOW <span>COMMAND CENTER</span>
+                        </h3>
+                        <strong>Stories observed. People amplified. Worlds connected.</strong>
+                      </div>
+                    </header>
+                    <div className="catalog-board-sample-label">
+                      <Badge variant="primary">Contoh desain</Badge>
+                      <span>All values are illustrative and do not represent production data.</span>
+                    </div>
+                    <div className="catalog-board-metrics">
+                      <MetricTile
+                        label="Partners"
+                        value="24"
+                        detail="Sample records"
+                        accent="magenta"
+                        icon={<CompanyIcon />}
+                      />
+                      <MetricTile
+                        label="Active users"
+                        value="18"
+                        detail="Sample accounts"
+                        accent="cyan"
+                        icon={<UserIcon />}
+                      />
+                      <MetricTile
+                        label="Companies"
+                        value="12"
+                        detail="Sample records"
+                        accent="yellow"
+                        icon={<ModelIcon />}
+                      />
+                      <MetricTile
+                        label="Planned activities"
+                        value="07"
+                        detail="Sample schedule"
+                        accent="green"
+                        icon={<CalendarIcon />}
+                      />
+                    </div>
+                    <div className="catalog-board-panels">
+                      <Panel
+                        className="catalog-board-work-panel"
+                        title="Planned activities"
+                        description="Illustrative schedule entries"
+                        surface="ink"
+                        frame="torn"
+                        density="compact"
+                        headingLevel={4}
+                        actions={
+                          <Button variant="outline" size="xs">
+                            View sample
+                          </Button>
+                        }
+                      >
+                        <ul className="catalog-board-activity-list">
+                          <li>
+                            <span className="catalog-board-dot" /> <span>Review field notes</span>
+                            <Badge>Today</Badge>
+                          </li>
+                          <li>
+                            <span className="catalog-board-dot" />{' '}
+                            <span>Prepare story outline</span>
+                            <Badge>Tomorrow</Badge>
+                          </li>
+                          <li>
+                            <span className="catalog-board-dot" />{' '}
+                            <span>Check source references</span>
+                            <Badge>Friday</Badge>
+                          </li>
+                        </ul>
+                      </Panel>
+                      <Panel
+                        className="catalog-board-work-panel"
+                        title="Recent activity"
+                        description="Illustrative system events"
+                        surface="ink"
+                        frame="torn"
+                        density="compact"
+                        headingLevel={4}
+                      >
+                        <ul className="catalog-board-event-list">
+                          <li>
+                            <ActivityIcon aria-hidden="true" />
+                            <span>
+                              <strong>Draft updated</strong>
+                              <small>Sample story · 12 min ago</small>
+                            </span>
+                          </li>
+                          <li>
+                            <AttachmentIcon aria-hidden="true" />
+                            <span>
+                              <strong>Reference added</strong>
+                              <small>Sample record · 38 min ago</small>
+                            </span>
+                          </li>
+                          <li>
+                            <SecurityIcon aria-hidden="true" />
+                            <span>
+                              <strong>Access reviewed</strong>
+                              <small>Sample workspace · 1 hr ago</small>
+                            </span>
+                          </li>
+                        </ul>
+                      </Panel>
+                    </div>
+                  </div>
+                </div>
+              </Example>
+            </Section>
+
+            <Section
+              id="brand"
+              title="Brand system"
+              description="These lockups come from the canonical vector master in @moonwitness/assets. Use the crown symbol for compact rails and keep the full MoonWitness wordmark wherever it fits."
+            >
+              <Example
+                title="Canonical lockups"
+                description="The same editable master produces contrast-safe light and dark variants. The wordmark remains a vector path, not an image of text."
+              >
+                <div className="brand-variant-grid">
+                  <figure className="brand-variant brand-variant-paper">
+                    <img
+                      src={lockupLight}
+                      alt="MoonWitness crown and wordmark, dark ink on paper"
+                    />
+                    <figcaption>Paper surface · full lockup</figcaption>
+                  </figure>
+                  <figure className="brand-variant brand-variant-ink">
+                    <img src={lockupDark} alt="MoonWitness crown and wordmark, paper ink on dark" />
+                    <figcaption>Ink surface · full lockup</figcaption>
+                  </figure>
+                  <figure className="brand-variant brand-variant-paper brand-variant-symbol">
+                    <img src={symbolDark} alt="MoonWitness crown symbol" />
+                    <figcaption>Compact rail · crown symbol</figcaption>
+                  </figure>
+                </div>
+              </Example>
+            </Section>
+
+            <Section
+              id="typography"
+              title="Typography"
+              description="Expressive brush lettering is reserved for short headlines. Condensed display, readable UI text, and mono metadata keep data and controls clear."
+            >
+              <Example
+                title="Four type roles"
+                description="The specimens use local package fonts and semantic typography tokens."
+              >
+                <div className="type-specimen-list">
+                  <div className="type-specimen type-specimen-brush">
+                    <span>Brush display · short headlines</span>
+                    <strong>FOLLOW THE SIGNAL</strong>
+                  </div>
+                  <div className="type-specimen type-specimen-condensed">
+                    <span>Condensed display · section titles and metrics</span>
+                    <strong>02 STORIES IN PROGRESS</strong>
+                  </div>
+                  <div className="type-specimen type-specimen-body">
+                    <span>Space Grotesk · product copy and controls</span>
+                    <strong>Different people. Shared context.</strong>
+                  </div>
+                  <div className="type-specimen type-specimen-mono">
+                    <span>JetBrains Mono · identifiers and metadata</span>
+                    <strong>MW:STORY:EDITORIAL-001 · 14:32 UTC</strong>
+                  </div>
+                  <div
+                    className="type-specimen type-specimen-body"
+                    data-testid="typography-copy-stress"
+                  >
+                    <span>
+                      Space Grotesk · Indonesian copy, punctuation, numbers, and long words
+                    </span>
+                    <p>
+                      Kisah lintas generasi ini memuat pertanggungjawaban, angka Rp1.234.567,
+                      tanggal 24/10/2026, tanda baca—termasuk “kutipan”, (kurung), dan tanda
+                      tanya?—serta karakter naïve yang harus tetap terbaca.
+                    </p>
+                  </div>
+                </div>
+              </Example>
+            </Section>
+
+            <Section
+              id="materials"
+              title="Materials & effects"
+              description="Paper, ink, torn frames, brush ribbons, and halftone texture are layered around content. They stay decorative and never replace labels, state, or focus."
+            >
+              <Example
+                title="Editorial materials"
+                description="Use stronger material in editorial moments and keep work surfaces calm and readable."
+              >
+                <SectionRibbon title="A signal worth keeping" number="01" accent="magenta" />
+                <div className="material-specimen-grid">
+                  <Panel
+                    className="material-panel"
+                    title="Paper dossier"
+                    description="The torn frame is shared UI; content remains selectable HTML."
+                    surface="paper"
+                    frame="torn"
+                    density="compact"
+                    headingLevel={3}
+                  >
+                    <p>People. Places. Stories.</p>
+                  </Panel>
+                  <PaperNote accent="yellow">Same moon. Different people.</PaperNote>
+                  <div className="material-halftone" aria-hidden="true" />
+                </div>
+              </Example>
+              <Example
+                title="Motion and reduced motion"
+                description="Decorative motion is brief; reduced motion keeps the mark and status visible without animation."
+              >
+                <div className="catalog-motion-grid">
+                  <div>
+                    <span>Focus lines</span>
+                    <div className="catalog-motion-lines">
+                      <SpeedLines count={20} />
+                    </div>
+                  </div>
+                  <div>
+                    <span>Ink underline</span>
+                    <InkUnderline />
+                  </div>
+                  <SignalOrbit className="catalog-motion-orbit">
+                    <SpeechBubble>Story saved</SpeechBubble>
+                  </SignalOrbit>
+                  <div className="catalog-motion-progress">
+                    <span>Loading preview…</span>
+                    <LoadingProgress label="Loading preview" />
+                  </div>
+                  <div className="catalog-motion-progress">
+                    <span>Submitting action</span>
+                    <Button size="sm" disabled aria-busy="true">
+                      <LoadingSpinner /> Signing in…
+                    </Button>
+                  </div>
+                </div>
+              </Example>
+            </Section>
+
+            <Section
+              id="editorial-proof"
+              title="Homepage hero proof"
+              description="A responsive composition specimen built from the same shared button, paper note, headline typography, and canonical hero artwork used by the public homepage."
+            >
+              <Example
+                title="Editorial hero · specimen"
+                description="Review the left-side text safe area, visual focal point, readable overlay, and CTA placement before changing production composition."
+              >
+                <div className="catalog-hero-proof">
+                  <picture>
+                    <source media="(max-width: 600px)" srcSet={homeHeroMobile} />
+                    <img src={homeHeroDesktop} alt="" />
+                  </picture>
+                  <div className="catalog-hero-proof-shade" aria-hidden="true" />
+                  <div className="catalog-hero-proof-copy">
+                    <p className="catalog-hero-proof-kicker">PEOPLE · PLACES · STORIES</p>
+                    <h3>
+                      MOON<span>WITNESS</span>
+                    </h3>
+                    <p className="catalog-hero-proof-ribbon">Follow the signal</p>
+                    <p className="catalog-hero-proof-body">
+                      Different people. Shared context. A clearer view of the work that connects us.
+                    </p>
+                    <Button treatment="brush" size="sm">
+                      Explore stories <ArrowRightIcon aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <PaperNote className="catalog-hero-proof-note" accent="yellow">
+                    Same moon.
+                    <br />
+                    Different people.
+                  </PaperNote>
                 </div>
               </Example>
             </Section>
@@ -292,6 +681,7 @@ export function Catalog() {
               >
                 <div className="catalog-button-grid">
                   <Button>Primary action</Button>
+                  <Button treatment="brush">Brush action</Button>
                   <Button variant="secondary">Secondary</Button>
                   <Button variant="outline">Outline</Button>
                   <Button variant="destructive">Delete record</Button>
@@ -300,6 +690,20 @@ export function Catalog() {
                   <Button size="xs">Extra small</Button>
                   <Button size="lg">Large action</Button>
                   <Button disabled>Disabled</Button>
+                  <Button asChild variant="outline">
+                    <a href="#brand">Enabled link action</a>
+                  </Button>
+                  <Button asChild disabled variant="outline">
+                    <a
+                      href="#brand"
+                      data-testid="disabled-button-link"
+                      onClick={() => {
+                        window.location.hash = 'brand';
+                      }}
+                    >
+                      Disabled link action
+                    </a>
+                  </Button>
                   <Button className="catalog-long-button">
                     Save these organization preferences and notify every workspace administrator
                   </Button>
@@ -307,9 +711,13 @@ export function Catalog() {
               </Example>
               <Example
                 title="Tooltip & toast"
-                description="Tooltip opens on focus or hover; toast reports the result without moving focus."
+                description="Tooltip opens on focus or hover; toast reports results, and SFX stays muted until enabled."
               >
                 <div className="catalog-inline">
+                  <SoundToggle />
+                  <Button variant="outline" onClick={() => play('success')}>
+                    Play success cue
+                  </Button>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button variant="outline">
@@ -507,43 +915,80 @@ export function Catalog() {
             >
               <Example
                 title="Table & pagination"
-                description="Native table semantics and bounded, controlled page navigation."
+                description="Contoh desain: native table semantics, row selection, sorting, and bounded page navigation."
               >
-                <Table>
-                  <caption className="sr-only">Sample installed addons</caption>
+                <Table
+                  className="min-w-[36rem]"
+                  scrollLabel="Installed add-ons table horizontal scroll"
+                  aria-label="Installed add-ons"
+                >
+                  <caption className="sr-only">Sample design: installed add-ons</caption>
                   <TableHead>
                     <TableRow>
-                      <TableHeader scope="col">Addon</TableHeader>
+                      <TableHeader scope="col" aria-sort={addonSort ?? 'none'}>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            aria-label="Select all add-ons on this page"
+                            checked={allVisibleAddonsSelected}
+                            onChange={toggleVisibleAddons}
+                          />
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            aria-label="Sort by addon"
+                            onClick={() => {
+                              setAddonSort((current) =>
+                                current === 'ascending' ? 'descending' : 'ascending'
+                              );
+                              setPage(1);
+                            }}
+                          >
+                            Addon{' '}
+                            {addonSort === 'ascending'
+                              ? '↑'
+                              : addonSort === 'descending'
+                                ? '↓'
+                                : '↕'}
+                          </Button>
+                        </div>
+                      </TableHeader>
                       <TableHeader scope="col">Owner</TableHeader>
                       <TableHeader scope="col">Status</TableHeader>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {[
-                      ['Base', 'Platform team', 'Active'],
-                      ['CRM', 'Operations', 'Review'],
-                      ['Inventory', 'Supply group', 'Active'],
-                    ]
-                      .filter(([name]) =>
-                        name.toLocaleLowerCase().includes(query.toLocaleLowerCase())
-                      )
-                      .map(([name, owner, status]) => (
-                        <TableRow key={name}>
-                          <TableCell>{name}</TableCell>
-                          <TableCell>{owner}</TableCell>
-                          <TableCell>
-                            <Badge variant={status === 'Active' ? 'primary' : 'default'}>
-                              {status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                    {visibleAddons.map(([name, owner, status]) => (
+                      <TableRow key={name}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              aria-label={`Select ${name}`}
+                              checked={selectedAddons.includes(name)}
+                              onChange={() =>
+                                setSelectedAddons((current) =>
+                                  current.includes(name)
+                                    ? current.filter((selected) => selected !== name)
+                                    : [...current, name]
+                                )
+                              }
+                            />
+                            {name}
+                          </div>
+                        </TableCell>
+                        <TableCell>{owner}</TableCell>
+                        <TableCell>
+                          <Badge variant={status === 'Active' ? 'primary' : 'default'}>
+                            {status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
                 <Pagination
                   className="catalog-pagination"
-                  page={page}
-                  pageCount={5}
+                  page={currentPage}
+                  pageCount={pageCount}
                   onPageChange={setPage}
                 />
               </Example>
@@ -609,5 +1054,13 @@ export function Catalog() {
         </main>
       </div>
     </TooltipProvider>
+  );
+}
+
+export function Catalog() {
+  return (
+    <SoundProvider>
+      <CatalogContent />
+    </SoundProvider>
   );
 }

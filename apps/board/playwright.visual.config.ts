@@ -51,12 +51,17 @@ export default defineConfig({
       },
     },
     {
-      command: `pnpm --filter @moonwitness/board exec vite --host 127.0.0.1 --port ${boardPort} --strictPort`,
+      command: `pnpm --filter @moonwitness/board exec next dev --hostname 127.0.0.1 --port ${boardPort}`,
       cwd: repositoryRoot,
       url: `${baseURL}/login`,
       timeout: 120_000,
       reuseExistingServer: false,
-      env: { ...env, API_PORT: apiPort, BOARD_API_TARGET: `http://127.0.0.1:${apiPort}` },
+      env: {
+        ...env,
+        API_PORT: apiPort,
+        BOARD_API_TARGET: `http://127.0.0.1:${apiPort}`,
+        MW_BOARD_DIST_DIR: '.next-visual',
+      },
     },
   ],
 });

@@ -1,0 +1,281 @@
+name: Orchestrate release
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel to evaluate
+        required: true
+        type: choice
+        options:
+          - rc
+          - stable
+          - hotfix
+        default: rc
+      confirm_version:
+        description: Exact stable tag (for example v1.0.0) authorizing stable publication
+        required: false
+        type: string
+      expected_main_sha:
+        description: Optional full main SHA for an exact manual source check
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-orchestration
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    name: decide-release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      status: ${{ steps.decision.outputs.status }}
+      action: ${{ steps.decision.outputs.action }}
+      tag: ${{ steps.decision.outputs.tag }}
+      create_tag: ${{ steps.decision.outputs.create_tag }}
+      confirm_stable: ${{ steps.decision.outputs.confirm_stable }}
+      expected_dev_sha: ${{ steps.decision.outputs.expected_dev_sha }}
+      channel: ${{ steps.decision.outputs.channel }}
+      source_sha: ${{ steps.decision.outputs.source_sha }}
+    steps:
+      - name: Resolve and verify the trusted main source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_SHA: ${{ github.sha }}
+          INPUT_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            [[ "$RUN_CONCLUSION" == "success" ]]
+            [[ "$RUN_EVENT" == "push" ]]
+            [[ "$RUN_BRANCH" == "main" ]]
+            [[ "$RUN_REPOSITORY" == "$GH_REPO" ]]
+            source="$RUN_SHA"
+            run_id="$RUN_ID"
+          else
+            [[ "$DISPATCH_REF" == "refs/heads/main" ]]
+            if [[ -n "$INPUT_SHA" ]]; then source="$INPUT_SHA"; else source="$DISPATCH_SHA"; fi
+            run_id=""
+          fi
+          [[ "$source" =~ ^[a-f0-9]{40}$ ]]
+          current="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current" != "$source" ]]; then
+            echo "Source $source is not current main $current; a newer CI run must orchestrate."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.source.outputs.stale != 'true'
+        with:
+          ref: ${{ steps.source.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.source.outputs.stale != 'true'
+        with:
+          node-version: '22'
+      - name: Collect remote tags, dev state, and published releases
+        if: steps.source.outputs.stale != 'true'
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ steps.source.outputs.source }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          dev_sha="$(git ls-remote origin refs/heads/dev | cut -f1)"
+          [[ "$dev_sha" =~ ^[a-f0-9]{40}$ ]]
+          git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
+          test "$(git rev-parse refs/remotes/origin/dev)" = "$dev_sha"
+          git ls-remote --tags origin > "$RUNNER_TEMP/remote-tags.txt"
+          gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          echo "dev-sha=$dev_sha" >> "$GITHUB_OUTPUT"
+      - name: Decide the next idempotent release action
+        if: steps.source.outputs.stale != 'true'
+        id: decision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ inputs.channel || '' }}
+          CONFIRM_VERSION: ${{ inputs.confirm_version || '' }}
+          SOURCE_SHA: ${{ steps.source.outputs.source }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            version="$(jq -r '.version' package.json)"
+            if [[ "$version" != *-rc.* ]]; then
+              echo "### Release orchestration" >> "$GITHUB_STEP_SUMMARY"
+              echo "Main version $version is stable; stable and hotfix publication require an explicit dispatch with confirm_version." >> "$GITHUB_STEP_SUMMARY"
+              echo "manual-required=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            CHANNEL=rc
+          else
+            CHANNEL="$INPUT_CHANNEL"
+          fi
+          args=(--head "$SOURCE_SHA" --channel "$CHANNEL" --remote-tags-file "$RUNNER_TEMP/remote-tags.txt" --releases-file "$RUNNER_TEMP/releases.json" --output "$RUNNER_TEMP/decision.json")
+          if [[ -n "$CONFIRM_VERSION" ]]; then args+=(--confirm-version "$CONFIRM_VERSION"); fi
+          node scripts/release-orchestrator.mjs "${args[@]}"
+          cat "$RUNNER_TEMP/decision.json"
+          {
+            echo "status=$(jq -r '.status' "$RUNNER_TEMP/decision.json")"
+            echo "action=$(jq -r '.action.type // ""' "$RUNNER_TEMP/decision.json")"
+            echo "tag=$(jq -r '.action.tag // ""' "$RUNNER_TEMP/decision.json")"
+            echo "create_tag=$(jq -r '.action.createTag // false' "$RUNNER_TEMP/decision.json")"
+            echo "confirm_stable=$(jq -r '.action.confirmStable // ""' "$RUNNER_TEMP/decision.json")"
+            echo "expected_dev_sha=$(jq -r '.action.expectedDevSha // ""' "$RUNNER_TEMP/decision.json")"
+            echo "channel=$CHANNEL"
+            echo "source_sha=$SOURCE_SHA"
+          } >> "$GITHUB_OUTPUT"
+          status="$(jq -r '.status' "$RUNNER_TEMP/decision.json")"
+          {
+            echo "### Release orchestration"
+            echo "- Source: $SOURCE_SHA"
+            echo "- Channel: $CHANNEL"
+            echo "- Status: $status"
+            echo "- Reason: $(jq -r '.reason' "$RUNNER_TEMP/decision.json")"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" == "blocked" ]]; then
+            jq -r '"Blocked: " + .reason + " - " + (.detail // "")' "$RUNNER_TEMP/decision.json" >&2
+            exit 1
+          fi
+
+  prepare:
+    name: prepare-release
+    needs: decide
+    if: needs.decide.outputs.action == 'prepare'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch release preparation on dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EXPECTED_DEV_SHA: ${{ needs.decide.outputs.expected_dev_sha }}
+          CHANNEL: ${{ needs.decide.outputs.channel }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DEV_SHA" =~ ^[a-f0-9]{40}$ ]]
+          gh workflow run release-prepare.yml --repo "$GH_REPO" --ref dev \
+            -f expected_dev_sha="$EXPECTED_DEV_SHA" -f channel="$CHANNEL"
+          echo "Requested $CHANNEL release preparation from dev $EXPECTED_DEV_SHA." >> "$GITHUB_STEP_SUMMARY"
+
+  publish-rc:
+    name: tag-and-publish-rc
+    needs: decide
+    if: needs.decide.outputs.action == 'release' && needs.decide.outputs.confirm_stable == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: release-asset-updates
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.decide.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Revalidate main and create the immutable release tag
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.source_sha }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
+          node scripts/create-release-tag.mjs "$TAG" "$SOURCE_SHA"
+      - name: Dispatch the trusted release workflow for the new tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --repo "$GH_REPO" --ref "$TAG" \
+            -f version="$TAG" -f publish=true
+          echo "Dispatched verified publication for $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  publish-stable:
+    name: tag-and-publish-stable
+    needs: decide
+    if: needs.decide.outputs.action == 'release' && needs.decide.outputs.confirm_stable != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: release-asset-updates
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.decide.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Revalidate main, stable confirmation, and the release tag
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.source_sha }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          CONFIRM_STABLE: ${{ needs.decide.outputs.confirm_stable }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRM_STABLE" = "$TAG"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"
+          node scripts/create-release-tag.mjs "$TAG" "$SOURCE_SHA"
+      - name: Dispatch the confirmed stable release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --repo "$GH_REPO" --ref "$TAG" \
+            -f version="$TAG" -f publish=true -f confirm_stable="$TAG"
+          echo "Dispatched confirmed stable publication for $TAG." >> "$GITHUB_STEP_SUMMARY"

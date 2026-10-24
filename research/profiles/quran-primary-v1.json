@@ -1,0 +1,26 @@
+{
+  "id": "mw:research-profile:quran-primary-v1",
+  "schema_version": 1,
+  "label": "Qur'an-primary research profile",
+  "purpose": "Source-scoped analytical candidate generation for Asma research",
+  "interpretation_scope": "analysis_not_revelation",
+  "primary_source_class": "Quran textual witness",
+  "authorized_passages": [
+    {
+      "source_id": "mw:source:tanzil-quran-text",
+      "edition_id": "mw:edition:tanzil-quran-text-v1.1-uthmani-txt2",
+      "locator": "Q7:46",
+      "content_sha256": "6ff83b01099fb7992b5f7fa101cfab3d6556607ca6b1fe69d53cb76f97027760",
+      "allowed_use": "read_analyze",
+      "rights_evidence_ref": "docs/roadmap/evidence/K2-005.md#source-specific-rights-decision"
+    }
+  ],
+  "source_policy": "Only locally present passages whose per-passage rights explicitly permit the intended analysis may be processed. This profile does not authorize fetching, copying, publishing, or deriving records from other passages or editions.",
+  "method_policy": "Every candidate must record a named, versioned analysis method and exact source passage, edition, hash, evidence, and term offsets.",
+  "candidate_policy": "Candidates are reviewable analytical hypotheses, never canonical facts or revelation claims.",
+  "lexical_inventory": "none",
+  "historical_metrics": {
+    "state": "unverified",
+    "note": "Historical Asma counts remain unreconciled and are not used as extraction targets or acceptance thresholds."
+  }
+}

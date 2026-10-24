@@ -1,15 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
-import { delimiter, join } from 'node:path';
-import { tmpdir } from 'node:os';
-import process from 'node:process';
+import { readFile, readdir } from 'node:fs/promises';
 
-const workflow = await readFile(
-  new globalThis.URL('../.github/workflows/release.yml', import.meta.url),
-  'utf8'
-);
+const workflow = (
+  await readFile(new globalThis.URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+).replace(/\r\n/gu, '\n');
 const smokeScript = await readFile(
   new globalThis.URL('./smoke-containers.sh', import.meta.url),
   'utf8'
@@ -20,6 +15,14 @@ const imagePublisher = await readFile(
 );
 const assetReconciler = await readFile(
   new globalThis.URL('./reconcile-release-assets.mjs', import.meta.url),
+  'utf8'
+);
+const releaseLifecycle = await readFile(
+  new globalThis.URL('./github-release-lifecycle.mjs', import.meta.url),
+  'utf8'
+);
+const releaseLifecycleRunner = await readFile(
+  new globalThis.URL('./complete-github-release.mjs', import.meta.url),
   'utf8'
 );
 const workflowDirectory = new globalThis.URL('../.github/workflows/', import.meta.url);
@@ -92,25 +95,8 @@ test('the verified and scanned API and Board images are smoke-tested and handed 
   assert.match(verify, /org\.opencontainers\.image\.revision=\$GITHUB_SHA/u);
   assert.match(verify, /org\.opencontainers\.image\.version=\$RELEASE_VERSION/u);
   assert.match(verify, /SMOKE_USE_PREBUILT_IMAGES: 'true'/u);
-  assert.match(smokeScript, /SMOKE_USE_PREBUILT_IMAGES:-false/u);
-  assert.match(smokeScript, /up --detach --no-build --wait --wait-timeout 180 api board/u);
-  for (const phase of [
-    'compose_up',
-    'api_root',
-    'api_banner',
-    'api_readiness',
-    'board_root',
-    'api_stop',
-    'graceful_shutdown',
-  ]) {
-    assert.ok(smokeScript.includes(`phase=${phase}`), `container smoke should name ${phase}`);
-  }
-  assert.match(
-    smokeScript,
-    /::error title=Container smoke failed::Phase %s failed; inspect the authorized runner log for details\./u
-  );
-  assert.doesNotMatch(smokeScript, /shellcheck disable/u);
-  assert.match(smokeScript, /trap cleanup EXIT/u);
+  assert.match(smokeScript, /exec node "\$\(dirname "\$0"\)\/smoke-containers\.mjs"/u);
+  assert.doesNotMatch(smokeScript, /docker compose|DATABASE_URL|JWT_SECRET/u);
   assert.match(verify, /docker save --output release-images\.tar/u);
   assert.match(verify, /docker image inspect moonwitness-api:production --format '\{\{\.Id\}\}'/u);
   assert.match(
@@ -123,7 +109,31 @@ test('the verified and scanned API and Board images are smoke-tested and handed 
   );
   assert.match(publish, /actions\/download-artifact@/u);
   assert.match(verify, /name: release-images-\$\{\{ github\.sha \}\}/u);
-  assert.match(publish, /name: release-images-\$\{\{ github\.sha \}\}/u);
+  assert.match(
+    verify,
+    /release_artifact_id: \$\{\{ steps\.upload_images\.outputs\.artifact-id \}\}/u
+  );
+  assert.match(
+    verify,
+    /release_artifact_digest: \$\{\{ steps\.upload_images\.outputs\.artifact-digest \}\}/u
+  );
+  for (const consumerJob of [
+    workflow.slice(workflow.indexOf('  attest-artifact:'), publishStart),
+    publish,
+  ]) {
+    const identityValidation = consumerJob.indexOf(
+      'run: node scripts/verify-release-artifact-identity.mjs'
+    );
+    const artifactDownload = consumerJob.indexOf('uses: actions/download-artifact@');
+    assert.ok(identityValidation >= 0 && identityValidation < artifactDownload);
+    assert.match(
+      consumerJob,
+      /artifact-ids: \$\{\{ needs\.verify\.outputs\.release_artifact_id \}\}/u
+    );
+  }
+  const attestationJob = workflow.slice(workflow.indexOf('  attest-artifact:'), publishStart);
+  assert.match(attestationJob, /uses: actions\/checkout@/u);
+  assert.match(attestationJob, /persist-credentials: false/u);
   assert.match(verify, /steps\.upload_images\.outputs\.artifact-digest/u);
   assert.match(publish, /sha256sum --check release-artifacts\.sha256/u);
   assert.match(publish, /\.apiImageId' release-image-manifest\.json/u);
@@ -169,11 +179,11 @@ test('tag releases publish SPDX SBOMs and attest artifact/image subjects before 
   assert.ok(attestationJob.indexOf('uses: actions/attest@') >= 0);
   assert.ok(
     publish.indexOf('Attest API image SPDX SBOM') <
-      publish.indexOf('Ensure a draft GitHub release exists')
+      publish.indexOf('Complete the same verified GitHub Release idempotently')
   );
   assert.ok(
     publish.indexOf('Attest Board image build provenance') <
-      publish.indexOf('Ensure a draft GitHub release exists')
+      publish.indexOf('Complete the same verified GitHub Release idempotently')
   );
 });
 
@@ -195,27 +205,32 @@ test('critical candidates fail verification and latest only advances for a newer
   assert.equal((publish.match(/docker push "\$image:latest"/gu) ?? []).length, 2);
   assert.equal((publish.match(/test "\$latest_digest" = "\$VERSION_DIGEST"/gu) ?? []).length, 2);
   assert.ok(
-    publish.indexOf('Ensure a draft GitHub release exists') <
-      publish.indexOf('Reconcile immutable release assets')
-  );
-  assert.ok(
-    publish.indexOf('Reconcile immutable release assets') <
-      publish.indexOf('Verify release assets before completing release')
-  );
-  assert.ok(
-    publish.indexOf('Verify release assets before completing release') <
+    publish.indexOf('Complete the same verified GitHub Release idempotently') <
       publish.indexOf('Advance stable API latest')
   );
-  assert.match(publish, /--prerelease --latest=false/u);
-  assert.match(publish, /--latest=false/u);
-  assert.match(publish, /gh release edit "\$TAG" --draft=false --latest/u);
-  assert.match(publish, /--draft --prerelease/u);
-  assert.match(publish, /--draft=false/u);
-  assert.match(publish, /gh release verify-asset/u);
-  assert.doesNotMatch(publish, /gh release upload .*--clobber/u);
+  assert.match(publish, /run: node scripts\/complete-github-release\.mjs/u);
+  assert.match(releaseLifecycleRunner, /'--draft',\s*'--latest=false'/u);
+  assert.match(releaseLifecycleRunner, /--prerelease/u);
+  assert.match(releaseLifecycleRunner, /release', 'verify-asset'/u);
+  assert.match(releaseLifecycleRunner, /release', 'edit'/u);
+  assert.doesNotMatch(releaseLifecycleRunner, /--clobber/u);
   assert.match(assetReconciler, /actual\?\.digest === expected\.digest/u);
   assert.match(assetReconciler, /isDraft: release\.draft/u);
   assert.match(assetReconciler, /if \(!existing && !isDraft\)/u);
+});
+
+test('stable publication requires the exact confirmation after tag revalidation', () => {
+  const header = workflow.slice(0, jobsStart);
+  assert.match(header, /confirm_stable:\n\s+description: .*\n\s+required: false/u);
+  const tagGuard = publish.indexOf('Require the source tag to remain on the verified SHA');
+  const confirmation = publish.indexOf('Require explicit stable release confirmation');
+  const registryLogin = publish.indexOf('uses: docker/login-action@');
+  assert.ok(tagGuard >= 0 && tagGuard < confirmation);
+  assert.ok(confirmation < registryLogin, 'confirmation must precede any registry write');
+  const guard = publish.slice(confirmation, registryLogin);
+  assert.match(guard, /RELEASE_TAG" == \*-\*/u);
+  assert.match(guard, /CONFIRM_STABLE" != "\$RELEASE_TAG"/u);
+  assert.match(publish, /CONFIRM_STABLE: \$\{\{ inputs\.confirm_stable \}\}/u);
 });
 
 test('publish revalidates the source tag after verification before any image write', () => {
@@ -233,13 +248,16 @@ test('publish revalidates the source tag after verification before any image wri
 
 test('release fault recovery preserves no-op plans and explicitly models hostile failures', () => {
   assert.match(releasePlanner, /classification\.changeKind === 'none'/u);
-  assert.match(releasePlanner, /result\.status = 'no-release'/u);
+  assert.match(releasePlanner, /plan\.status = 'no-release'/u);
   assert.match(imagePublisher, /manifest unknown/iu);
   assert.match(imagePublisher, /if \(!missingImageManifest\(error\)\) throw error/u);
   assert.match(publish, /remote_tag_sha/u);
-  assert.match(publish, /gh release view "\$TAG"/u);
   assert.match(publish, /sha256sum --check release-artifacts\.sha256/u);
-  assert.match(publish, /node scripts\/reconcile-release-assets\.mjs/u);
+  assert.match(publish, /node scripts\/complete-github-release\.mjs/u);
+  assert.match(releaseLifecycle, /getReleaseByTag\(tag\)/u);
+  assert.match(releaseLifecycle, /Unable to verify draft release creation/u);
+  assert.match(releaseLifecycle, /Unable to verify published release/u);
+  assert.match(releaseLifecycle, /reconcileReleaseAssets/u);
   assert.match(assetReconciler, /adapter\.listAssets\(releaseId\)/u);
   assert.match(
     assetReconciler,
@@ -248,76 +266,4 @@ test('release fault recovery preserves no-op plans and explicitly models hostile
   assert.match(assetReconciler, /Cannot add missing asset .* to a published release/u);
   assert.match(assetReconciler, /Duplicate expected release asset/u);
   assert.doesNotMatch(publish, /gh release upload .*--clobber/u);
-});
-
-test('container smoke reports the failing phase and preserves failures through cleanup', async (t) => {
-  if (process.platform === 'win32') {
-    assert.match(smokeScript, /local exit_code=\$\?/u);
-    assert.match(smokeScript, /local cleanup_status=0/u);
-    assert.match(smokeScript, /if \(\( exit_code == 0 \)\); then/u);
-    assert.match(smokeScript, /exit "\$exit_code"/u);
-    assert.match(smokeScript, /Phase cleanup failed/u);
-    t.skip(
-      'container smoke runtime test executes on Linux CI; Windows validates the shell contract'
-    );
-    return;
-  }
-
-  const bash = '/usr/bin/bash';
-  const scriptPath = new globalThis.URL('./smoke-containers.sh', import.meta.url).pathname;
-
-  const temp = await mkdtemp(join(tmpdir(), 'moonwitness-smoke-test-'));
-  t.after(async () => rm(temp, { recursive: true, force: true }));
-  const bin = join(temp, 'bin');
-  await mkdir(bin);
-  const logPath = join(temp, 'docker.log');
-  const dockerPath = join(bin, 'docker');
-  const curlPath = join(bin, 'curl');
-  const dockerMock = `#!/usr/bin/bash\nprintf '%s\\n' "$*" >> "$SMOKE_TEST_DOCKER_LOG"\ncase " $* " in\n  *" up "*) [[ "\${SMOKE_TEST_FAIL_UP:-}" != true ]] || exit 42 ;;\n  *" down "*) [[ "\${SMOKE_TEST_FAIL_DOWN:-}" != true ]] || exit 55 ;;\n  *" logs "*) printf 'Graceful shutdown complete\\n' ;;\nesac\n`;
-  const curlMock = `#!/usr/bin/bash\nurl="\${@: -1}"\n[[ "$url" != "\${SMOKE_TEST_FAIL_URL:-}" ]] || exit 22\ncase "$url" in\n  http://127.0.0.1:3000/) printf 'MoonWitness Enterprise ORM API\\n' ;;\n  http://127.0.0.1:3000/readyz) printf '{"status":"healthy"}\\n' ;;\n  http://127.0.0.1:4174/) printf 'MoonWitness Board\\n' ;;\nesac\n`;
-  await writeFile(dockerPath, dockerMock);
-  await writeFile(curlPath, curlMock);
-  await chmod(dockerPath, 0o755);
-  await chmod(curlPath, 0o755);
-
-  const runSmoke = async (extraEnv = {}) => {
-    await rm(logPath, { force: true });
-    const result = spawnSync(bash, [scriptPath], {
-      encoding: 'utf8',
-      timeout: 15_000,
-      env: {
-        ...process.env,
-        PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-        SMOKE_TEST_DOCKER_LOG: logPath,
-        ...extraEnv,
-      },
-    });
-    return {
-      ...result,
-      dockerLog: await readFile(logPath, 'utf8'),
-      failureOutput: [result.error?.message, result.stderr, result.stdout]
-        .filter(Boolean)
-        .join('\n'),
-    };
-  };
-
-  await t.test('compose-up failure stays nonzero after successful down', async () => {
-    const result = await runSmoke({ SMOKE_TEST_FAIL_UP: 'true' });
-    assert.equal(result.status, 42, result.failureOutput);
-    assert.match(result.failureOutput, /Phase compose_up failed/u);
-    assert.match(result.dockerLog, /down --volumes --remove-orphans/u);
-  });
-
-  await t.test('health-check failure reports its phase and runs cleanup', async () => {
-    const result = await runSmoke({ SMOKE_TEST_FAIL_URL: 'http://127.0.0.1:4174/' });
-    assert.equal(result.status, 22, result.failureOutput);
-    assert.match(result.failureOutput, /Phase board_root failed/u);
-    assert.match(result.dockerLog, /down --volumes --remove-orphans/u);
-  });
-
-  await t.test('cleanup failure is surfaced after an otherwise successful smoke', async () => {
-    const result = await runSmoke({ SMOKE_TEST_FAIL_DOWN: 'true' });
-    assert.equal(result.status, 55, result.failureOutput);
-    assert.match(result.failureOutput, /Phase cleanup failed/u);
-  });
 });

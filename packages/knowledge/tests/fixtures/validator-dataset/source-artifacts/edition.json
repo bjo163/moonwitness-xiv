@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:synthetic-demo",
+  "edition_id": "mw:edition:synthetic-edition",
+  "locale": "en",
+  "artifact": { "representation": "metadata_only" },
+  "rights": { "state": "unknown", "allowed_uses": [] },
+  "publication": { "mode": "metadata_only" },
+  "references": ["https://example.invalid/synthetic-source"]
+}

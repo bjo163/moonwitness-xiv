@@ -181,3 +181,151 @@ export interface MoonWitnessClientOptions {
   onSessionExpired?: () => void;
   fetch?: typeof fetch;
 }
+
+interface SourceCitationBase {
+  publication: 'source_bytes';
+  citation: string;
+  references: string[];
+  availablePassages: string[];
+}
+
+/** Citation for one exact locally published and rights-cleared source slice. */
+export type SourceCitation =
+  | (SourceCitationBase & {
+      sourceId: 'mw:source:tanzil-quran-text';
+      editionId: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2';
+      locale: 'ar';
+      availablePassages: ['Q7:46'];
+    })
+  | (SourceCitationBase & {
+      sourceId: 'mw:source:ebible-webp-protestant';
+      expressionId: 'mw:expression:webp-protestant';
+      editionId: 'mw:edition:webp-protestant-2020-stable';
+      locale: 'en-US';
+      availablePassages: ['Genesis 1:1'];
+    });
+
+/** Exact source text and citation for one of the locally published passages. */
+export type CorpusPassage =
+  | {
+      sourceId: 'mw:source:tanzil-quran-text';
+      editionId: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2';
+      locator: 'Q7:46';
+      text: string;
+      sha256: string;
+      citation: string;
+    }
+  | {
+      sourceId: 'mw:source:ebible-webp-protestant';
+      expressionId: 'mw:expression:webp-protestant';
+      editionId: 'mw:edition:webp-protestant-2020-stable';
+      locator: 'Genesis 1:1';
+      text: string;
+      sha256: string;
+      citation: string;
+    };
+
+export interface StoryMediaReference {
+  artifact_id: string;
+  sha256: string;
+  media_type: string;
+  rights_ref: string;
+}
+
+export interface StoryPageDocument {
+  page_id: string;
+  page_order: number;
+  original_text: string;
+  media?: StoryMediaReference;
+}
+
+export interface StoryVersionDocument {
+  schema_version: 1;
+  story_id: string;
+  version: number;
+  title: string;
+  visibility: 'INTERNAL';
+  pages: StoryPageDocument[];
+}
+
+export interface StoredStoryVersion {
+  storyId: string;
+  version: number;
+  digest: string;
+  previousDigest: string | null;
+  visibility: 'INTERNAL';
+  story: StoryVersionDocument;
+  idempotent: boolean;
+}
+
+export interface ResearchExplanationEvidence {
+  evidence: {
+    id: string;
+    assertion_id: string;
+    direction: 'supporting' | 'counterevidence';
+    selector: {
+      source_id: string;
+      edition_id: string;
+      locator: string;
+      content_sha256: string;
+      expression_id?: string;
+      quote?: string;
+      range?: { unit: 'unicode_scalar'; start: number; end: number };
+    };
+  };
+  direction: 'supporting' | 'counterevidence';
+  source_id: string;
+  expression_id?: string;
+  edition_id: string;
+  locator: string;
+  content_sha256: string;
+  citation: string;
+  excerpt: string;
+  range?: { unit: 'unicode_scalar'; start: number; end: number };
+}
+
+export interface ResearchRelationSummary {
+  id: string;
+  kind: 'ResearchRelation';
+  schema_version: 1;
+  content_revision: number;
+  predicate: string;
+  subject_id: string;
+  object_id: string;
+  scope: { kind: string; reference_id: string };
+  epistemic_status: string;
+  review_status: string;
+  interpretation_boundary: 'linked_evidence_only';
+}
+
+export interface ResearchRelationExplanation extends ResearchRelationSummary {
+  supporting_evidence: ResearchExplanationEvidence[];
+  counterevidence: ResearchExplanationEvidence[];
+  alternatives: Array<{
+    relation: ResearchRelationSummary;
+    supporting_evidence: ResearchExplanationEvidence[];
+    counterevidence: ResearchExplanationEvidence[];
+  }>;
+}
+
+export type ResearchGraphSearchResult =
+  | { id: string; kind: 'assertion'; title: string; summary: string }
+  | { id: string; kind: 'relation'; title: string; summary: string }
+  | ({
+      id: string;
+      kind: 'evidence';
+      title: string;
+      summary: string;
+      assertionId: string;
+    } & (
+      | {
+          sourceId: 'mw:source:tanzil-quran-text';
+          editionId: 'mw:edition:tanzil-quran-text-v1.1-uthmani-txt2';
+          locator: 'Q7:46';
+        }
+      | {
+          sourceId: 'mw:source:ebible-webp-protestant';
+          editionId: 'mw:edition:webp-protestant-2020-stable';
+          locator: 'Genesis 1:1';
+        }
+    ));

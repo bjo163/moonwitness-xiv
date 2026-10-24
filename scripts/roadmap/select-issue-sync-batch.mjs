@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { taskIdPattern } from './task-ids.mjs';
 
-const taskIdPattern = /^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u;
 const maximumBatchSize = 5;
 
 /**

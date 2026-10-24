@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.invalid/schemas/ingestion-recipe.schema.json",
+  "title": "MoonWitness offline ingestion recipe",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "recipeId", "source", "parser"],
+  "properties": {
+    "format": { "const": "moonwitness-ingestion-recipe/v1" },
+    "recipeId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "parser": { "const": "json-record-array/v1" }
+  }
+}

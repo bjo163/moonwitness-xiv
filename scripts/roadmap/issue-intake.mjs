@@ -1,4 +1,4 @@
-const taskIdPattern = /^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u;
+import { taskIdPattern } from './task-ids.mjs';
 const allowedActions = new Set(['status', 'scope', 'close', 'reopen']);
 const allowedStatuses = new Set(['planned', 'in_progress', 'blocked', 'complete']);
 const maximumProposalLength = 2000;

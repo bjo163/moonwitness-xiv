@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve, dirname, extname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -59,7 +61,45 @@ export function collectMarkdownAnchors(source) {
   return anchors;
 }
 
+function git(args) {
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+// A clean checkout only ever contains tracked files, so the local gate has to
+// read the same file set; otherwise an untracked scratch document fails a check
+// that hosted runs cannot reproduce.
+function trackedMarkdownFiles(directory) {
+  const topLevel = git(['-C', directory, 'rev-parse', '--show-toplevel'])?.trim();
+  if (topLevel === undefined) return undefined;
+  const scope = relative(topLevel, directory).replaceAll('\\', '/');
+  const listing = git(['-C', topLevel, 'ls-files', '--cached', '-z', '--', scope || '.']);
+  if (listing === undefined) return undefined;
+  return listing
+    .split('\0')
+    .filter(
+      (file) =>
+        file.toLowerCase().endsWith('.md') &&
+        !file.split('/').some((segment) => ignoredDirectories.has(segment))
+    )
+    .map((file) => join(topLevel, file))
+    .filter((file) => existsSync(file));
+}
+
 export async function listMarkdownFiles(directory, files = []) {
+  const tracked = trackedMarkdownFiles(directory);
+  if (tracked) {
+    files.push(...tracked);
+    return files;
+  }
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory() && !ignoredDirectories.has(entry.name)) {

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateRoadmapIndex } from './validate-roadmap.mjs';
+import { findDuplicateJsonObjectKeys, validateRoadmapIndex } from './validate-roadmap.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const schema = JSON.parse(await readFile(path.join(root, 'docs/roadmap/task.schema.json'), 'utf8'));
@@ -60,11 +60,44 @@ test('schema declares versioned tasks and optional prioritization/assignment fie
   assert.deepEqual(schema.$defs.task.properties.priority.enum, ['p0', 'p1', 'p2', 'p3']);
   assert.ok(schema.$defs.task.properties.assignee);
   assert.ok(schema.$defs.task.properties.labels);
+  assert.match(schema.$defs.task.properties.id.pattern, /K\(\?:0/u);
+});
+
+test('detects duplicate keys within one object without confusing separate objects', () => {
+  assert.deepEqual(
+    findDuplicateJsonObjectKeys('{"task":{"evidence":"first","evidence":"second"}}'),
+    ['evidence']
+  );
+  assert.deepEqual(
+    findDuplicateJsonObjectKeys(
+      String.raw`{"task":{"evidence":"first"},"other":{"evidence":"second"}}`
+    ),
+    []
+  );
+  assert.deepEqual(findDuplicateJsonObjectKeys(String.raw`{"a":1,"\u0061":2}`), ['a']);
 });
 
 test('accepts stable unique IDs, safe cards, DAG dependencies, evidence and checkbox agreement', () => {
   const { index, roadmap, documents } = fixture();
   assert.deepEqual(validateRoadmapIndex(index, roadmap, documents), []);
+});
+
+test('rejects prose that reports an open-card count the checklist does not hold', () => {
+  const { index, roadmap, documents } = fixture();
+  assert.deepEqual(validateRoadmapIndex(index, 'semua 1 kartu terbuka\n' + roadmap, documents), []);
+  const problems = validateRoadmapIndex(
+    index,
+    'semua 49 kartu terbuka dan 34 kartu K-series terbuka\n' + roadmap,
+    documents
+  );
+  assert.ok(
+    problems.some((problem) => /claims 49 open cards but the checklist holds 1/u.test(problem))
+  );
+  assert.ok(
+    problems.some((problem) =>
+      /claims 34 open K-series cards but the checklist holds 0/u.test(problem)
+    )
+  );
 });
 
 test('rejects duplicate IDs, missing dependencies, unsafe paths, and dependency cycles', () => {
@@ -131,6 +164,49 @@ test('accepts a shared evidence file only when its roadmap range covers the task
       problem.includes(
         'M11.01.evidence must reference an existing evidence file linked to this task'
       )
+    )
+  );
+});
+
+test('accepts K-series task IDs, milestones, dependencies, and range evidence', () => {
+  const index = {
+    schemaVersion: 1,
+    description: 'K-series fixture',
+    tasks: [
+      {
+        id: 'K0-001',
+        title: 'Foundation',
+        milestone: 'K0',
+        dependsOn: [],
+        output: 'ADR',
+        detailFile: 'docs/roadmap/12-local-ai-rebuild.md',
+        status: 'complete',
+        evidence: 'docs/roadmap/evidence/K0-001-003.md',
+      },
+      {
+        id: 'K0-003',
+        title: 'Ownership',
+        milestone: 'K0',
+        dependsOn: ['K0-001'],
+        output: 'matrix',
+        detailFile: 'docs/roadmap/12-local-ai-rebuild.md',
+        evidence: 'docs/roadmap/evidence/K0-001-003.md',
+      },
+    ],
+  };
+  const roadmap = [
+    '- [x] K0-001 Foundation. Evidence: [K0-001–K0-003](docs/roadmap/evidence/K0-001-003.md).',
+    '- [x] K0-003 Ownership. Evidence: [K0-001–K0-003](docs/roadmap/evidence/K0-001-003.md).',
+  ].join('\n');
+  const documents = new Map([
+    ['docs/roadmap/12-local-ai-rebuild.md', '## K0-001 — Foundation\n## K0-003 — Ownership'],
+    ['docs/roadmap/evidence/K0-001-003.md', '# K0 evidence'],
+  ]);
+  assert.deepEqual(validateRoadmapIndex(index, roadmap, documents), []);
+  index.tasks[1].milestone = 'M0';
+  assert.ok(
+    validateRoadmapIndex(index, roadmap, documents).some((problem) =>
+      problem.includes('K0-003.milestone must match its task ID prefix')
     )
   );
 });

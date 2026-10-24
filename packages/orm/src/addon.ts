@@ -66,6 +66,8 @@ export interface Addon {
   readonly data?: readonly SeedRecord[];
   readonly views?: readonly ViewDefinition[];
   readonly menus?: readonly AddonMenu[];
+  /** Idempotent database setup run transactionally after addon tables are synchronized. */
+  readonly setup?: (transaction: Knex.Transaction) => Promise<void>;
   /** Programmatic, transactional data/schema backfills keyed by the exact prior addon version. */
   readonly upgrade?: Readonly<Record<string, (transaction: Knex.Transaction) => Promise<void>>>;
 }
@@ -321,6 +323,11 @@ async function installData(db: Knex.Transaction, data: readonly SeedRecord[]) {
     const values = await resolveValues(record);
     // Adopt existing default records once, then track only immutable external IDs.
     let existing: Identity | undefined;
+    const adopt = (match: Identity | undefined) => {
+      if (existing && match && existing.id !== match.id)
+        throw new Error(`Conflicting seed identity: ${id}`);
+      existing = match ?? existing;
+    };
     for (const [name, field] of Object.entries(record.model.fields)) {
       const value = values[columnName(name, field)];
       if (!field.unique || value === undefined || value === null || field.kind === 'belongsTo')
@@ -328,13 +335,23 @@ async function installData(db: Knex.Transaction, data: readonly SeedRecord[]) {
       const match = await db<Identity>(record.model.tableName)
         .where(columnName(name, field), value)
         .first('id');
-      if (existing && match && existing.id !== match.id)
-        throw new Error(`Conflicting seed identity: ${id}`);
-      existing = match ?? existing;
+      adopt(match);
+    }
+    for (const constraint of record.model.uniqueConstraints) {
+      const columns = constraint.map((name) => columnName(name, record.model.fields[name]!));
+      const identity = Object.fromEntries(columns.map((column) => [column, values[column]]));
+      if (Object.values(identity).some((value) => value === undefined || value === null)) continue;
+      const match = await db<Identity>(record.model.tableName).where(identity).first('id');
+      adopt(match);
     }
     const created = existing ?? (await record.model.query(db).insertAndFetch(values));
     const identity = { id, model: record.model.modelName, record_id: created.id };
-    await db<ExternalRecord>('_orm_data').insert(identity);
+    const mappedRecord = await db<ExternalRecord>('_orm_data')
+      .where({ model: identity.model, record_id: identity.record_id })
+      .first('id');
+    // A legacy/manual row may already belong to another external seed ID. Keep
+    // that canonical mapping; the current seed can still reference its record.
+    if (!mappedRecord) await db<ExternalRecord>('_orm_data').insert(identity);
     resolving.delete(id);
     return identity;
   }
@@ -412,6 +429,7 @@ export async function installAddons(db: Knex, addons: readonly Addon[]): Promise
         await addon.upgrade?.[installed.version]?.(trx);
       }
     }
+    for (const addon of ordered) await addon.setup?.(trx);
     await installData(trx, data);
     for (const addon of ordered) {
       await trx<InstalledAddon>('_orm_addons')

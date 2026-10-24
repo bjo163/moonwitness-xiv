@@ -2,6 +2,15 @@ export interface EnvConfig {
   superadminPassword?: string;
   metricsToken?: string;
   attachmentStorageDirectory: string;
+  attachmentStorageDriver: 'local' | 's3';
+  s3Storage?: {
+    endpoint: string;
+    region: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    forcePathStyle: boolean;
+  };
   env: string;
   host: string;
   port: number;

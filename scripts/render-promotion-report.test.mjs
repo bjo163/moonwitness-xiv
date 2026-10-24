@@ -68,6 +68,32 @@ test('promotion report binds tasks, checks, version and risk to exact source SHA
   assert.match(report, /Approval required/u);
 });
 
+test('promotion report extracts and links K-series task IDs', () => {
+  const report = renderPromotionReport(
+    input({
+      commits: ['docs(roadmap): register K0-001 and K0-003'],
+      changedFiles: [],
+      tasks: [
+        {
+          id: 'K0-001',
+          title: 'Centralization ADR',
+          detailFile: 'docs/roadmap/12-local-ai-rebuild.md',
+          status: 'open',
+        },
+        {
+          id: 'K0-003',
+          title: 'Domain ownership',
+          detailFile: 'docs/roadmap/12-local-ai-rebuild.md',
+          status: 'open',
+        },
+      ],
+    })
+  );
+  assert.match(report, /Affected task IDs \(2\)/u);
+  assert.match(report, /\[K0-001\]/u);
+  assert.match(report, /\[K0-003\]/u);
+});
+
 test('large promotion ranges keep every task ID while bounding linked detail', () => {
   const tasks = Array.from({ length: 148 }, (_, index) => {
     const id = `M${Math.floor(index / 99)}.${String((index % 99) + 1).padStart(2, '0')}`;

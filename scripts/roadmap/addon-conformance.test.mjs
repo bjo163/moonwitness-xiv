@@ -14,6 +14,7 @@ import * as storage from '../../packages/orm-storage/dist/index.js';
 import * as workflow from '../../packages/orm-workflow/dist/index.js';
 import * as request from '../../packages/orm-request/dist/index.js';
 import * as integration from '../../packages/orm-integration/dist/index.js';
+import * as witness from '../../packages/orm-knowledge/dist/index.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const requireFromApi = createRequire(path.join(root, 'apps/api/package.json'));
@@ -29,6 +30,7 @@ const addonPackages = [
   { directory: 'orm-workflow', module: workflow, manifest: workflow.manifest },
   { directory: 'orm-request', module: request, manifest: request.manifest },
   { directory: 'orm-integration', module: integration, manifest: integration.manifest },
+  { directory: 'orm-knowledge', module: witness, manifest: witness.manifest },
 ];
 const addonManifests = addonPackages.map(({ manifest }) => manifest);
 const modelName = (model) => model.modelName;
@@ -169,17 +171,26 @@ describe('workspace addon conformance', () => {
       { id: 'request.example_laptop', field: 'description' },
       { id: 'orm-integration.endpoint_example_disabled', field: 'name' },
     ];
+    const immutableSeeds = [
+      {
+        id: 'knowledge.synthetic_witness_001_interpretation_001',
+        field: 'interpretation_text',
+        attemptedValue: 'Maintainer edit to an append-only example',
+      },
+    ];
     const dataAddonNames = addonPackages
       .filter(({ manifest }) => (manifest.data?.length ?? 0) > 0)
       .map(({ manifest }) => manifest.name)
       .sort();
     const sampledAddonNames = [
-      ...new Set(editedSeeds.map(({ id }) => id.slice(0, id.lastIndexOf('.')))),
+      ...new Set(
+        [...editedSeeds, ...immutableSeeds].map(({ id }) => id.slice(0, id.lastIndexOf('.')))
+      ),
     ].sort();
     assert.deepEqual(
       sampledAddonNames,
       dataAddonNames,
-      'every addon with seeds must have a representative edit-preservation check'
+      'every addon with seeds must have a representative edit-preservation or immutability check'
     );
     const allSeeds = addonManifests.flatMap((addon) => addon.data ?? []);
     const expectedEdits = new Map();
@@ -195,6 +206,18 @@ describe('workspace addon conformance', () => {
         .update({ [field]: value });
       expectedEdits.set(id, { model: record.model, recordId: identity.record_id, field, value });
     }
+    for (const { id, field, attemptedValue } of immutableSeeds) {
+      const record = allSeeds.find((candidate) => candidate.id === id);
+      assert.ok(record, `missing immutable representative seed ${id}`);
+      const identity = await db('_orm_data').where({ id }).first();
+      assert.ok(identity, `installer must track immutable seed ${id}`);
+      await assert.rejects(
+        db(record.model.tableName)
+          .where({ id: identity.record_id })
+          .update({ [field]: attemptedValue }),
+        /append-only/
+      );
+    }
     await installAddons(db, addonManifests);
 
     assert.equal(
@@ -205,6 +228,20 @@ describe('workspace addon conformance', () => {
     for (const { model, recordId, field, value } of expectedEdits.values()) {
       const persisted = await db(model.tableName).where({ id: recordId }).first(field);
       assert.equal(persisted?.[field], value, `${model.modelName}.${field} must preserve edits`);
+    }
+    for (const { id, field } of immutableSeeds) {
+      const record = allSeeds.find((candidate) => candidate.id === id);
+      assert.ok(record);
+      const identity = await db('_orm_data').where({ id }).first();
+      assert.ok(identity);
+      const persisted = await db(record.model.tableName)
+        .where({ id: identity.record_id })
+        .first(field);
+      assert.equal(
+        persisted?.[field],
+        record.values[field],
+        `${record.model.modelName}.${field} must remain append-only`
+      );
     }
     assert.equal(
       Number((await db('_orm_addons').count({ count: '*' }).first())?.count),

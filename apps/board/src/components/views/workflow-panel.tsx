@@ -1,3 +1,5 @@
+import { Textarea } from '@moonwitness/ui/components/textarea';
+import { AccentMarker } from '@moonwitness/ui/components/effects';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@moonwitness/ui/components/button';
@@ -166,7 +168,7 @@ export function WorkflowPanel({ model, recordId }: { model: string; recordId: nu
     <section aria-labelledby="workflow-panel-title" className="ink-panel space-y-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="marker">Review and approval</p>
+          <AccentMarker>Review and approval</AccentMarker>
           <h2 id="workflow-panel-title" className="font-display text-xl">
             Approval workflow
           </h2>
@@ -204,7 +206,7 @@ export function WorkflowPanel({ model, recordId }: { model: string; recordId: nu
             <div className="space-y-3">
               <label className="grid gap-1 text-sm font-semibold">
                 Review comment
-                <textarea
+                <Textarea
                   value={comment}
                   onChange={(event) => setComment(event.target.value)}
                   maxLength={2000}

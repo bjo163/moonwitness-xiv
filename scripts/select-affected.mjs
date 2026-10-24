@@ -5,6 +5,7 @@ import { argv, cwd, env, stderr, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const requiredProjects = ['quality', 'integration', 'browser', 'containers', 'automation', 'ui'];
+const automationSuites = ['workflow', 'release', 'roadmap', 'platform'];
 const fullScopeFiles = new Set([
   '.github',
   'scripts',
@@ -15,20 +16,23 @@ const fullScopeFiles = new Set([
   '.gitleaks.toml',
   'package.json',
   '.gitignore',
-  '.node-version',
-  '.npmrc',
+  '.gitattributes',
+  '.githooks',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
   'tsconfig.base.json',
   'eslint.config.js',
-  'prettier.config.js',
   '.prettierignore',
   '.prettierrc',
-  '.prettierrc.json',
-  'vitest.config.ts',
   'Dockerfile',
+  'docker-compose.yml',
+  'docker-compose.development.yml',
+  'docker-compose.smoke.yml',
   'docker-compose.production.yml',
+  'deploy',
 ]);
+
+export { fullScopeFiles };
 
 export function hasFullScopeChange(changedFiles) {
   return changedFiles.some((path) =>
@@ -93,13 +97,30 @@ export function ciProjectsForAffectedPackages(affectedPackages, changedFiles = [
   return [...projects];
 }
 
+export function requiresQualityLane(changedFiles, unclassifiedChanges = false) {
+  return (
+    unclassifiedChanges ||
+    changedFiles.some(
+      (path) =>
+        (path.startsWith('docs/') || path === 'README.md') && !path.startsWith('docs/roadmap/')
+    )
+  );
+}
+
+export function automationSuitesForPlan(projects, mode) {
+  if (!projects.includes('automation')) return [];
+  return mode === 'full' ? automationSuites : ['roadmap'];
+}
+
 async function writePlan(result, jsonOutput) {
   const projects = result.projects;
+  const selectedAutomationSuites = automationSuitesForPlan(projects, result.mode);
+  result.automationSuites = selectedAutomationSuites;
   if (env.GITHUB_OUTPUT) {
     const { appendFile } = await import('node:fs/promises');
     await appendFile(
       env.GITHUB_OUTPUT,
-      `projects=${JSON.stringify(projects)}\nplan=${JSON.stringify(result)}\n`
+      `projects=${JSON.stringify(projects)}\nautomation-suites=${JSON.stringify(selectedAutomationSuites)}\nplan=${JSON.stringify(result)}\n`
     );
   }
   stdout.write(jsonOutput ? JSON.stringify(result) : projects.join('\n'));
@@ -136,7 +157,12 @@ export async function readWorkspaceProjects(root = cwd()) {
       try {
         manifest = JSON.parse(await readFile(join(packagePath, 'package.json'), 'utf8'));
       } catch (error) {
-        if (error?.code === 'ENOENT') continue;
+        if (error?.code === 'ENOENT') {
+          throw new Error(
+            `Workspace directory without a package.json: ${relative(root, packagePath).replaceAll('\\', '/')}`,
+            { cause: error }
+          );
+        }
         throw error;
       }
       if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
@@ -209,10 +235,7 @@ async function main() {
       !path.startsWith('docs/') &&
       path !== 'README.md'
   );
-  if (
-    changedFiles.some((path) => path.startsWith('docs/') || path === 'README.md') ||
-    unclassifiedChanges
-  ) {
+  if (requiresQualityLane(changedFiles, unclassifiedChanges)) {
     if (!ciProjects.includes('quality')) ciProjects.push('quality');
   }
 

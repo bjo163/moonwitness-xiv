@@ -41,8 +41,14 @@ export function validateFlakyPolicy(policy, today = new Date().toISOString().sli
         }
       }
     }
-    if (typeof entry.owner !== 'string' || !/^@[a-zd-]+$/iu.test(entry.owner)) {
-      errors.push(`${prefix}.owner must be a GitHub username prefixed with @.`);
+    // GitHub logins are letters, digits and hyphens, starting with an alphanumeric.
+    // The previous class rejected every numeric login, including this repository's
+    // own maintainer, so a quarantine could never name the person who owns it.
+    if (
+      typeof entry.owner !== 'string' ||
+      !/^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u.test(entry.owner)
+    ) {
+      errors.push(`${prefix}.owner must be an @-prefixed GitHub login.`);
     }
     if (typeof entry.issue !== 'string' || !githubIssueUrlPattern.test(entry.issue)) {
       errors.push(`${prefix}.issue must link to a GitHub issue.`);

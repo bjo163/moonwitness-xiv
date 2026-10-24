@@ -64,3 +64,20 @@ test('selects task index edits and fails closed when a task is removed', () => {
 test('returns no tasks for unrelated changes', () => {
   assert.deepEqual(fixture(), []);
 });
+
+test('selects changed K-series checkbox and card sections without changing M selection', () => {
+  const task = {
+    id: 'K0-001',
+    detailFile: 'docs/roadmap/12-local-ai-rebuild.md',
+    evidence: 'docs/roadmap/evidence/K0-001.md',
+  };
+  const result = selectChangedTaskIds({
+    beforeRoadmap: '- [ ] K0-001 Baseline\n',
+    afterRoadmap: '- [x] K0-001 Baseline\n',
+    beforeIndex: { tasks: [task] },
+    afterIndex: { tasks: [task] },
+    beforeDocuments: new Map([[task.detailFile, '## K0-001 — Baseline\n\nOld.']]),
+    afterDocuments: new Map([[task.detailFile, '## K0-001 — Baseline\n\nNew.']]),
+  });
+  assert.deepEqual(result, ['K0-001']);
+});

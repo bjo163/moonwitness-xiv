@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/concept-profile.schema.json",
+  "title": "MoonWitness scoped concept interpretation profiles",
+  "description": "A profile records a situated, fallible human interpretation of a concept. It does not define revelation, settle doctrine, or collapse divergent traditions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "profiles"],
+  "properties": {
+    "format": { "const": "moonwitness-concept-profiles/v1" },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "concept_id",
+        "tradition",
+        "interpretive_scope",
+        "epistemic_status",
+        "uncertainty",
+        "interpretations"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^mw:concept-profile:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "concept_id": { "type": "string", "pattern": "^mw:concept:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "tradition": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "community_or_school": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "language": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "interpretive_scope": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "epistemic_status": { "enum": ["provisional", "contested", "well_attested", "unknown"] },
+        "uncertainty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "note"],
+          "properties": {
+            "level": { "enum": ["low", "moderate", "high", "unassessed"] },
+            "note": { "type": "string", "minLength": 1, "maxLength": 2000 }
+          }
+        },
+        "interpretations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claim_type", "text", "status", "evidence_ids"],
+            "properties": {
+              "claim_type": { "const": "human_interpretation" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+              "status": { "enum": ["candidate", "accepted", "rejected"] },
+              "evidence_ids": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$" }
+              }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "accepted" } } },
+                "then": { "properties": { "evidence_ids": { "type": "array", "minItems": 1 } } }
+              }
+            ]
+          }
+        },
+        "textual_observations": {
+          "description": "Exact source-bound text spans without a gloss, semantic mapping, or doctrinal interpretation.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/textualObservation" }
+        }
+      }
+    },
+    "textualObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source_id",
+        "edition_id",
+        "locator",
+        "content_sha256",
+        "range",
+        "selected_text_sha256",
+        "review_status"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^mw:text-observation:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "source_id": { "type": "string", "pattern": "^mw:source:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "edition_id": { "type": "string", "pattern": "^mw:edition:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "locator": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "start", "end"],
+          "properties": {
+            "unit": { "const": "unicode_scalar" },
+            "start": { "type": "integer", "minimum": 0 },
+            "end": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "selected_text_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "review_status": { "const": "unreviewed" }
+      }
+    }
+  }
+}

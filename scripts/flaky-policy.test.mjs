@@ -6,7 +6,7 @@ const validEntry = {
   id: 'MW-123',
   test: 'board list filter renders consistently',
   owner: '@maintainer',
-  issue: 'https://github.com/bjo163/moonwitness-xi/issues/123',
+  issue: 'https://github.com/bjo163/moonwitness-xiv/issues/123',
   reason: 'Intermittent browser timing under investigation.',
   expiresOn: '2026-10-10',
 };
@@ -62,4 +62,16 @@ test('caps retries at one and rejects duplicate quarantine IDs', () => {
   ).join('\n');
   assert.match(errors, /maxRetries/u);
   assert.match(errors, /unique/u);
+});
+
+test('accepts the GitHub login shapes an owner can actually have', () => {
+  for (const owner of ['@bjo163', '@Maintainer-2', '@a']) {
+    assert.deepEqual(validateFlakyPolicy(policy([{ ...validEntry, owner }]), '2026-10-04'), []);
+  }
+  for (const owner of ['bjo163', '@_leading', '@trailing-hyphen-', '@a'.padEnd(45, 'b')]) {
+    assert.match(
+      validateFlakyPolicy(policy([{ ...validEntry, owner }]), '2026-10-04').join('\n'),
+      /GitHub login/u
+    );
+  }
 });

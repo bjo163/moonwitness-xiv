@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "source_id": "mw:source:synthetic-cleared",
+  "edition_id": "mw:edition:synthetic-cleared-v1",
+  "locale": "en-US",
+  "artifact": {
+    "representation": "source_bytes",
+    "media_type": "text/plain",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "byte_length": 128,
+    "retrieved_at": "2026-10-15T10:00:00Z"
+  },
+  "rights": {
+    "state": "permitted",
+    "allowed_uses": ["read_analyze", "store", "redistribute_full"],
+    "reviewer": "synthetic-reviewer",
+    "decision_date": "2026-10-15",
+    "evidence_ref": "synthetic:rights-decision:1",
+    "scope": "synthetic edition v1, release bundle"
+  },
+  "attribution": { "text": "Synthetic source attribution", "display_locations": ["catalog"] },
+  "complaint_process_owner": "synthetic-rights-steward",
+  "publication": { "mode": "source_bytes", "release_ref": "synthetic:release:1" }
+}

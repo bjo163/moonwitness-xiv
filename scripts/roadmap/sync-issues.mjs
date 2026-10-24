@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { taskIdCaptureSource } from './task-ids.mjs';
 import { assertLifecycleSnapshotFresh, projectLifecycleSnapshot } from './lifecycle-snapshot.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -123,9 +124,24 @@ function subsection(markdown, heading) {
 
 export function renderTaskCardDetails(markdown, taskId) {
   const card = taskCardSection(markdown, taskId);
+  const field = (name) => {
+    const line = card.split(/\r?\n/u).find((entry) => entry.startsWith(`- ${name}:`));
+    return line?.slice(name.length + 3).trim() ?? '';
+  };
+  const deliverable = field('Deliverable');
+  const fileScope = field('File scope');
+  const verification = field('Verification target');
   return {
-    steps: subsection(card, 'Langkah pelaksanaan'),
-    acceptance: subsection(card, 'Verifikasi dan syarat selesai'),
+    steps:
+      subsection(card, 'Langkah pelaksanaan') ||
+      [
+        deliverable && `Deliver: ${deliverable}`,
+        fileScope && `Stay within file scope: ${fileScope}`,
+        verification && `Verify with: ${verification}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    acceptance: subsection(card, 'Verifikasi dan syarat selesai') || field('Acceptance'),
   };
 }
 
@@ -211,7 +227,7 @@ export function planIssueSync({
     if (issue.pull_request || (issue.state !== 'open' && issue.state !== 'closed')) continue;
     const markers = [
       ...issue.body.matchAll(
-        /^<!-- moonwitness-task: ([1-9][0-9]*):(M(?:0|[1-9][0-9]*)\.[0-9]{2}) -->$/gmu
+        new RegExp(`^<!-- moonwitness-task: ([1-9][0-9]*):${taskIdCaptureSource} -->$`, 'gmu')
       ),
     ];
     for (const [, repoId, taskId] of markers) {
@@ -396,6 +412,7 @@ export function createGitHubIssuesClient({
   sleepImpl = sleep,
   now = Date.now,
   maxRetryDelayMs = 60_000,
+  assertSourceCurrent,
 }) {
   const base = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues`;
   function assertWritable() {
@@ -403,7 +420,10 @@ export function createGitHubIssuesClient({
   }
   async function request(url, init = {}) {
     const method = init.method ?? 'GET';
-    if (method !== 'GET') assertWritable();
+    if (method !== 'GET') {
+      assertWritable();
+      await assertSourceCurrent?.();
+    }
     const canRetry = method === 'GET';
     for (let attempt = 0; ; attempt += 1) {
       let response;
@@ -593,19 +613,29 @@ export async function applyIssuePlan({
   cardDetailsByTask,
   lifecycleByTask,
   lifecycleSnapshotGeneratedAt,
+  assertSourceCurrent,
 }) {
-  const freshIssues = await client.listAll();
-  const fresh = planIssueSync({
-    tasks,
-    issues: freshIssues,
-    repositoryId,
-    sourceSha,
-    repositoryUrl,
-    cardDetailsByTask,
-    lifecycleByTask,
-  });
-  if (fresh.inputHash !== plan.inputHash)
-    throw new Error('Remote issues changed after planning; refresh the plan before applying.');
+  if (plan.repositoryId !== repositoryId || plan.sourceSha !== sourceSha)
+    throw new Error('Issue plan repository or source SHA does not match the requested apply.');
+  const replan = (issues) =>
+    planIssueSync({
+      tasks,
+      issues,
+      repositoryId,
+      sourceSha,
+      repositoryUrl,
+      cardDetailsByTask,
+      lifecycleByTask,
+    });
+  let fresh = replan(await client.listAll());
+  if (fresh.inputHash !== plan.inputHash) {
+    const confirmed = replan(await client.listAll());
+    if (confirmed.inputHash !== fresh.inputHash)
+      throw new Error(
+        'Remote issues kept changing during one bounded refresh; no issue write attempted.'
+      );
+    fresh = confirmed;
+  }
   const conflict = fresh.operations.find((operation) => operation.operation === 'conflict');
   if (conflict) throw new Error(`Cannot apply ${conflict.taskId}: ${conflict.reason}`);
   const hasWrites = fresh.operations.some(
@@ -615,6 +645,7 @@ export async function applyIssuePlan({
   if (lifecycleByTask && lifecycleSnapshotGeneratedAt)
     assertLifecycleSnapshotFresh(lifecycleSnapshotGeneratedAt);
   client.assertWritable?.();
+  await assertSourceCurrent?.();
   const milestoneNumbers = client.ensureMetadata ? await client.ensureMetadata(tasks) : new Map();
   const operations = fresh.operations.map((operation) => ({
     ...operation,
@@ -625,6 +656,7 @@ export async function applyIssuePlan({
     if (operation.operation === 'create') {
       // On ambiguous create failure, re-read the stable marker before retrying.
       try {
+        await assertSourceCurrent?.();
         results.push({ taskId: operation.taskId, issue: await client.create(operation) });
       } catch (error) {
         const retryPlan = planIssueSync({
@@ -704,6 +736,7 @@ export async function applyIssuePlan({
         labels: [...mergedLabels.values()].sort(),
         assignees: [...mergedAssignees].sort(),
       };
+      await assertSourceCurrent?.();
       results.push({ taskId: operation.taskId, issue: await client.update(reconciled) });
     }
   }
@@ -774,7 +807,18 @@ async function main() {
     sha ??
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   const token = process.env.GITHUB_TOKEN;
-  const client = createGitHubIssuesClient({ token, owner, repo });
+  const assertSourceCurrent = async () => {
+    const remoteDevSha = execFileSync(
+      'gh',
+      ['api', `repos/${owner}/${repo}/git/ref/heads/dev`, '--jq', '.object.sha'],
+      { cwd: repositoryRoot, encoding: 'utf8', env: process.env }
+    ).trim();
+    if (remoteDevSha !== sourceSha)
+      throw new Error(
+        `The dev source advanced from ${sourceSha} to ${remoteDevSha}; refusing stale issue writes.`
+      );
+  };
+  const client = createGitHubIssuesClient({ token, owner, repo, assertSourceCurrent });
   const issues = await client.listAll();
   const validAssignees = await client.validateAssignees(tasks);
   const repositoryUrl = `https://github.com/${owner}/${repo}`;
@@ -809,6 +853,7 @@ async function main() {
     cardDetailsByTask,
     lifecycleByTask,
     lifecycleSnapshotGeneratedAt: lifecycleSnapshot?.generatedAt,
+    assertSourceCurrent,
   });
   const metadata = await client.listMetadata();
   plan.metadata = {

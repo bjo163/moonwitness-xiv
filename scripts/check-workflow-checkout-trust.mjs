@@ -14,6 +14,29 @@ const repositoryWriteScopes = new Set([
   'pull-requests',
 ]);
 
+const requiredWriteConcurrencyGroups = new Map([
+  ['promote.yml:*', 'promotion-pr-metadata'],
+  ['refresh-promotion-report.yml:*', 'promotion-pr-metadata'],
+  ['sync-main-to-dev.yml:*', 'dev-branch-updates'],
+  ['release-prepare.yml:prepare', 'dev-branch-updates'],
+  ['dependency-candidate.yml:publish', 'dev-branch-updates'],
+  ['roadmap-issue-plan.yml:apply', 'roadmap-issue-sync'],
+  ['release.yml:publish', 'release-asset-updates'],
+  ['release-orchestrate.yml:publish-rc', 'release-asset-updates'],
+  ['release-orchestrate.yml:publish-stable', 'release-asset-updates'],
+  ['pages.yml:store-versioned-docs', 'release-asset-updates'],
+  ['pages.yml:compose-site', 'pages-site-compose'],
+  ['pages.yml:deploy', 'pages-site-deployment'],
+  ['pages.yml:report-failure', 'maintenance-incident-documentation'],
+  ['pages.yml:resolve-failure', 'maintenance-incident-documentation'],
+  ['browser-matrix.yml:report-failure', 'maintenance-incident-browser-regression'],
+  ['browser-matrix.yml:resolve-failure', 'maintenance-incident-browser-regression'],
+  ['deep-regression.yml:report-failure', 'maintenance-incident-deep-regression'],
+  ['deep-regression.yml:resolve-failure', 'maintenance-incident-deep-regression'],
+  ['platform-audit.yml:report-failure', 'maintenance-incident-platform-audit'],
+  ['platform-audit.yml:resolve-failure', 'maintenance-incident-platform-audit'],
+]);
+
 function workflowJobBlocks(source) {
   const jobsIndex = source.search(/^jobs:\s*$/mu);
   if (jobsIndex < 0) return [];
@@ -28,7 +51,9 @@ function workflowJobBlocks(source) {
 
 export function inspectRepositoryWriteCoordination(workflows) {
   const findings = [];
-  for (const { name, source } of workflows) {
+  for (const workflow of workflows) {
+    const name = workflow.name;
+    const source = (workflow.source ?? '').replace(/\r\n/gu, '\n');
     const workflowHeader = source.split(/^jobs:\s*$/mu, 1)[0];
     const workflowWritePermissions = [
       ...workflowHeader.matchAll(/^(?: ){2}(?<scope>[a-z-]+):\s*write\s*$/gmu),
@@ -36,10 +61,16 @@ export function inspectRepositoryWriteCoordination(workflows) {
       .map((match) => match.groups.scope)
       .filter((scope) => repositoryWriteScopes.has(scope));
     const workflowGrantsWriteAll = /^permissions:\s*write-all\s*$/mu.test(workflowHeader);
+    const workflowConcurrency = /^concurrency:\s*\r?\n(?<block>(?:\s+[^\r\n]*\r?\n?)+)/mu.exec(
+      workflowHeader
+    )?.groups?.block;
+    const workflowGroup = /^\s+group:\s*(?<group>[^\s]+)\s*$/mu.exec(workflowConcurrency ?? '')
+      ?.groups?.group;
+    const workflowCancelInProgress = /^\s+cancel-in-progress:\s*(?<value>\S+)\s*$/mu.exec(
+      workflowConcurrency ?? ''
+    )?.groups?.value;
     const workflowCoordinatesWrites =
-      /^concurrency:\s*\r?\n\s+group:\s*repository-write-coordinator\s*\r?\n\s+cancel-in-progress:\s*false\s*$/mu.test(
-        workflowHeader
-      );
+      Boolean(workflowGroup) && workflowCancelInProgress === 'false';
 
     for (const job of workflowJobBlocks(source)) {
       const hasJobPermissions = /^(?: ){4}permissions:(?:\s+write-all)?\s*$/mu.test(job.source);
@@ -61,13 +92,32 @@ export function inspectRepositoryWriteCoordination(workflows) {
       )
         continue;
 
-      const jobCoordinatesWrites =
-        /^(?: ){4}concurrency:\s*\r?\n\s{6}group:\s*repository-write-coordinator\s*\r?\n\s{6}cancel-in-progress:\s*false\s*$/mu.test(
-          job.source
-        );
+      const jobConcurrency =
+        /^(?: ){4}concurrency:\s*\r?\n(?<block>(?:\s{6}[^\r\n]*\r?\n?)+)/mu.exec(job.source)?.groups
+          ?.block;
+      const jobGroup = /^\s{6}group:\s*(?<group>[^\s]+)\s*$/mu.exec(jobConcurrency ?? '')?.groups
+        ?.group;
+      const jobCancelInProgress = /^\s{6}cancel-in-progress:\s*(?<value>\S+)\s*$/mu.exec(
+        jobConcurrency ?? ''
+      )?.groups?.value;
+      const jobCoordinatesWrites = Boolean(jobGroup) && jobCancelInProgress === 'false';
       if (!workflowCoordinatesWrites && !jobCoordinatesWrites) {
         findings.push(
-          `${name} job "${job.name}" can write repository state but does not use the shared non-cancelling write coordinator.`
+          `${name} job "${job.name}" can write repository state but has no non-cancelling concurrency group.`
+        );
+        continue;
+      }
+      const expectedGroup =
+        requiredWriteConcurrencyGroups.get(`${name}:${job.name}`) ??
+        requiredWriteConcurrencyGroups.get(`${name}:*`);
+      const actualGroup = jobCoordinatesWrites ? jobGroup : workflowGroup;
+      if (!expectedGroup) {
+        findings.push(
+          `${name} job "${job.name}" is missing an explicit resource-specific concurrency policy.`
+        );
+      } else if (actualGroup !== expectedGroup) {
+        findings.push(
+          `${name} job "${job.name}" must use the resource concurrency group "${expectedGroup}".`
         );
       }
     }
@@ -111,18 +161,38 @@ function namedWorkflowStep(source, expectedName) {
 
 export function inspectTrustedCheckoutPolicies({
   pages,
+  pagesAssetReconciler = '',
   visualReview,
   release,
   releasePrepare,
   dependencyCandidate,
   releasePlan,
+  releaseOrchestrate,
   promote,
   promotionReportRefresh,
   issueIntake,
   issueIntakeRunner,
+  issueSync,
   browserMatrix,
   deepRegression,
 }) {
+  const normalize = (source) => (source ?? '').replace(/\r\n/gu, '\n');
+  pages = normalize(pages);
+  pagesAssetReconciler = normalize(pagesAssetReconciler);
+  visualReview = normalize(visualReview);
+  release = normalize(release);
+  releasePrepare = normalize(releasePrepare);
+  dependencyCandidate = normalize(dependencyCandidate);
+  releasePlan = normalize(releasePlan);
+  releaseOrchestrate = normalize(releaseOrchestrate);
+  promote = normalize(promote);
+  promotionReportRefresh = normalize(promotionReportRefresh);
+  issueIntake = normalize(issueIntake);
+  issueIntakeRunner = normalize(issueIntakeRunner);
+  issueSync = normalize(issueSync);
+  browserMatrix = normalize(browserMatrix);
+  deepRegression = normalize(deepRegression);
+
   const findings = [];
   for (const [name, source] of [
     ['pages.yml', pages],
@@ -260,16 +330,196 @@ export function inspectTrustedCheckoutPolicies({
       );
   }
 
-  if (pages.includes('compose-site:')) {
-    if (!pages.includes('docs-site-$TAG.tar.gz'))
+  if (releaseOrchestrate) {
+    const sourceStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Resolve and verify the trusted main source'
+    );
+    const gateStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Verify the exact main ci-gate for the source SHA'
+    );
+    const decisionStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Decide the next idempotent release action'
+    );
+    const prepareStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Dispatch release preparation on dev'
+    );
+    const rcTagStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Revalidate main and create the immutable release tag'
+    );
+    const rcDispatchStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Dispatch the trusted release workflow for the new tag'
+    );
+    const stableTagStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Revalidate main, stable confirmation, and the release tag'
+    );
+    const stableDispatchStep = namedWorkflowStep(
+      releaseOrchestrate,
+      'Dispatch the confirmed stable release workflow'
+    );
+
+    if (
+      !releaseOrchestrate.includes('workflow_run:') ||
+      !releaseOrchestrate.includes('workflows:\n      - CI') ||
+      !releaseOrchestrate.includes('types: [completed]') ||
+      !releaseOrchestrate.includes('branches: [main]')
+    )
       findings.push(
-        'Versioned Pages snapshots must use stable-tagged immutable release asset names.'
+        'Release orchestration must start only from a completed main CI run or an explicit dispatch.'
+      );
+    for (const fragment of [
+      "github.event.workflow_run.event == 'push'",
+      "github.event.workflow_run.conclusion == 'success'",
+      "github.event.workflow_run.head_branch == 'main'",
+      'github.event.workflow_run.head_repository.full_name == github.repository',
+    ]) {
+      if (!releaseOrchestrate.includes(fragment))
+        findings.push(
+          'Release orchestration must verify same-repository main push CI provenance before writes.'
+        );
+    }
+    if (
+      !sourceStep?.includes('[[ "$DISPATCH_REF" == "refs/heads/main" ]]') ||
+      !sourceStep.includes('[[ "$source" =~ ^[a-f0-9]{40}$ ]]') ||
+      !sourceStep.includes('gh api "repos/$GH_REPO/git/ref/heads/main"') ||
+      !sourceStep.includes('if [[ "$current" != "$source" ]]')
+    )
+      findings.push(
+        'Release orchestration must restrict manual dispatch to main and require the source to be current main.'
       );
     if (
-      !pages.includes('jq -r \'.digest // empty\' <<< "$asset"') ||
-      !pages.includes('jq -r \'.size\' <<< "$asset"')
+      !sourceStep?.includes('source="$RUN_SHA"') ||
+      !sourceStep.includes('source="$DISPATCH_SHA"') ||
+      !sourceStep.includes('source="$INPUT_SHA"')
     )
-      findings.push('Versioned Pages assets must be reconciled by digest and size before reuse.');
+      findings.push(
+        'Release orchestration must resolve an immutable commit SHA, never a branch ref.'
+      );
+
+    const orchestrateCheckouts = checkoutSteps(releaseOrchestrate);
+    if (
+      orchestrateCheckouts.length !== 3 ||
+      !orchestrateCheckouts[0]?.includes('ref: ${{ steps.source.outputs.source }}') ||
+      !orchestrateCheckouts[1]?.includes('ref: ${{ needs.decide.outputs.source_sha }}') ||
+      !orchestrateCheckouts[2]?.includes('ref: ${{ needs.decide.outputs.source_sha }}')
+    )
+      findings.push(
+        'Release orchestration jobs must check out the validated source SHA instead of a dispatch ref.'
+      );
+    if (orchestrateCheckouts.some((checkout) => checkout.includes('${{ inputs.')))
+      findings.push('Release orchestration checkouts must never interpolate a workflow input ref.');
+    if (releaseOrchestrate.includes('download-artifact@'))
+      findings.push(
+        'Release orchestration must not execute artifacts from an earlier workflow run.'
+      );
+
+    if (
+      !gateStep?.includes('head_sha=$SOURCE_SHA&event=push') ||
+      !gateStep.includes('sort_by(.created_at, .run_attempt) | last') ||
+      !gateStep.includes('EVENT_RUN_ID') ||
+      !gateStep.includes('.name == "ci-gate" and .conclusion == "success"')
+    )
+      findings.push(
+        'Release orchestration must require the newest successful exact-SHA main ci-gate before writes.'
+      );
+    if (
+      !decisionStep?.includes('scripts/release-orchestrator.mjs') ||
+      !decisionStep.includes('--releases-file') ||
+      !decisionStep.includes('--remote-tags-file') ||
+      !decisionStep.includes('if [[ "$status" == "blocked" ]]') ||
+      !decisionStep.includes('version" != *-rc.*')
+    )
+      findings.push(
+        'Release orchestration must fail closed on blocked plans and reserve stable publication for explicit dispatch.'
+      );
+    if (
+      !prepareStep?.includes('[[ "$EXPECTED_DEV_SHA" =~ ^[a-f0-9]{40}$ ]]') ||
+      !prepareStep.includes('gh workflow run release-prepare.yml --repo "$GH_REPO" --ref dev') ||
+      !prepareStep.includes('-f expected_dev_sha="$EXPECTED_DEV_SHA" -f channel="$CHANNEL"') ||
+      !releaseOrchestrate.includes("if: needs.decide.outputs.action == 'prepare'")
+    )
+      findings.push(
+        'Release orchestration must dispatch preparation only for a prepared action on dev with the expected SHA and channel.'
+      );
+    for (const [name, step] of [
+      ['release candidate tag', rcTagStep],
+      ['stable tag', stableTagStep],
+    ]) {
+      if (
+        !step?.includes('test "$(git rev-parse HEAD)" = "$SOURCE_SHA"') ||
+        !step.includes(
+          'test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_SHA"'
+        ) ||
+        !step.includes('node scripts/create-release-tag.mjs "$TAG" "$SOURCE_SHA"')
+      )
+        findings.push(
+          `Release orchestration must create the ${name} only after revalidating the exact current main source.`
+        );
+    }
+    if (!stableTagStep?.includes('test "$CONFIRM_STABLE" = "$TAG"'))
+      findings.push('Stable orchestration must require confirm_version to equal the released tag.');
+    if (
+      !rcDispatchStep?.includes('gh workflow run release.yml --repo "$GH_REPO" --ref "$TAG"') ||
+      !rcDispatchStep.includes('-f version="$TAG" -f publish=true')
+    )
+      findings.push(
+        'Release orchestration must explicitly dispatch publication for the exact release tag.'
+      );
+    if (!stableDispatchStep?.includes('-f confirm_stable="$TAG"'))
+      findings.push(
+        'Stable orchestration must forward the exact confirmation to the trusted release workflow.'
+      );
+    if (
+      !releaseOrchestrate.includes(
+        "if: needs.decide.outputs.action == 'release' && needs.decide.outputs.confirm_stable == ''"
+      ) ||
+      !releaseOrchestrate.includes(
+        "if: needs.decide.outputs.action == 'release' && needs.decide.outputs.confirm_stable != ''"
+      ) ||
+      !releaseOrchestrate.includes('environment: release')
+    )
+      findings.push(
+        'Stable publication must be isolated behind the release environment and its confirmation.'
+      );
+    const orchestrateHeader = releaseOrchestrate.split(/^jobs:\s*$/mu, 1)[0];
+    if (
+      !orchestrateHeader.includes('permissions:\n  contents: read') ||
+      /^\s{2}contents:\s+write\s*$/mu.test(orchestrateHeader)
+    )
+      findings.push('Release orchestration must keep workflow-level permissions read-only.');
+    if (/\bgit push\b|gh release create|docker push|packages:\s+write/u.test(releaseOrchestrate))
+      findings.push(
+        'Release orchestration must delegate tag and package publication to the reviewed helpers.'
+      );
+  }
+
+  if (pages.includes('compose-site:')) {
+    if (
+      !pages.includes('scripts/docs/reconcile-versioned-docs-asset.mjs') ||
+      !pages.includes(
+        'DOCS_ARCHIVE_PATH: versioned-docs/docs-site-${{ needs.build.outputs.selected_ref }}.tar.gz'
+      ) ||
+      !pages.includes('refs/tags/$TAG:refs/tags/$TAG') ||
+      !pages.includes('if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)')
+    )
+      findings.push(
+        'Versioned Pages snapshots must fetch only a validated stable tag before using the dedicated immutable asset reconciler.'
+      );
+    if (
+      !pagesAssetReconciler.includes('allowPublishedAdditions: true') ||
+      !pagesAssetReconciler.includes('resolveTagCommit(tag)') ||
+      !pagesAssetReconciler.includes('release.tag_name !== tag') ||
+      !pagesAssetReconciler.includes('STABLE_TAG')
+    )
+      findings.push(
+        'Versioned Pages assets must verify a published stable tag and its exact source before reconciliation.'
+      );
     if (!pages.includes('name: Upload stable documentation archive'))
       findings.push('Stable docs archive must be available to the immutable release-asset job.');
     if (!pages.includes('versioned-site.mjs compose'))
@@ -449,6 +699,15 @@ export function inspectTrustedCheckoutPolicies({
       findings.push('Issue intake must process only newly created issue comments.');
     if (!issueIntake.includes('permissions:\n  contents: read'))
       findings.push('Issue intake must grant the workflow token contents: read only.');
+    const intakeProposalJob = workflowJobBlocks(issueIntake).find((job) => job.name === 'proposal');
+    if (
+      !issueIntake.includes('run-name: Roadmap intake comment ${{ github.event.comment.id }}') ||
+      !intakeProposalJob?.source.includes('      actions: read') ||
+      !intakeProposalJob.source.includes('      contents: read')
+    )
+      findings.push(
+        'Issue intake deduplication must use comment-bound run names and Actions read permission only.'
+      );
     if (/^\s+(?:issues|contents|pull-requests|checks|actions):\s+write\s*$/mu.test(issueIntake))
       findings.push('Issue intake must not grant write permissions to workflow tokens.');
     const intakeCheckouts = checkoutSteps(issueIntake);
@@ -464,17 +723,33 @@ export function inspectTrustedCheckoutPolicies({
       issueIntake,
       'Require the least-privilege GitHub App permission verifier'
     );
+    const dedupe = namedWorkflowStep(issueIntake, 'Skip previously reported issue comment');
     const mintToken = namedWorkflowStep(issueIntake, 'Mint repository-scoped metadata-read token');
     const runIntake = namedWorkflowStep(
       issueIntake,
       'Verify actor and report a read-only proposal'
     );
+    const reportDuplicate = namedWorkflowStep(issueIntake, 'Report already processed comment');
     if (
       !requireToken?.includes('ROADMAP_INTAKE_APP_CLIENT_ID') ||
       !requireToken.includes('ROADMAP_INTAKE_APP_PRIVATE_KEY') ||
       !requireToken.includes('exit 2')
     )
       findings.push('Issue intake must fail clearly when its GitHub App credentials are missing.');
+    if (
+      !dedupe?.includes('issue-intake-dedupe.mjs') ||
+      !dedupe.includes('GITHUB_COMMENT_ID') ||
+      !dedupe.includes('GITHUB_COMMENT_CREATED_AT') ||
+      !dedupe.includes('GITHUB_RUN_ID') ||
+      !dedupe.includes('github.token') ||
+      !requireToken?.includes("steps.dedupe.outputs.skip != 'true'") ||
+      !mintToken?.includes("steps.dedupe.outputs.skip != 'true'") ||
+      !runIntake?.includes("steps.dedupe.outputs.skip != 'true'") ||
+      !reportDuplicate?.includes("steps.dedupe.outputs.skip == 'true'")
+    )
+      findings.push(
+        'Issue intake must check durable successful-run history before minting its verifier token.'
+      );
     if (
       !mintToken?.includes('actions/create-github-app-token@') ||
       !mintToken.includes('permission-metadata: read') ||
@@ -494,9 +769,11 @@ export function inspectTrustedCheckoutPolicies({
       );
     if (
       requireToken &&
+      dedupe &&
       mintToken &&
       runIntake &&
-      (issueIntake.indexOf(requireToken) > issueIntake.indexOf(mintToken) ||
+      (issueIntake.indexOf(dedupe) > issueIntake.indexOf(requireToken) ||
+        issueIntake.indexOf(requireToken) > issueIntake.indexOf(mintToken) ||
         issueIntake.indexOf(mintToken) > issueIntake.indexOf(runIntake))
     )
       findings.push(
@@ -514,6 +791,29 @@ export function inspectTrustedCheckoutPolicies({
       );
   }
 
+  if (issueSync) {
+    const issueSyncJobs = workflowJobBlocks(issueSync);
+    const planJob = issueSyncJobs.find((job) => job.name === 'plan');
+    const applyJob = issueSyncJobs.find((job) => job.name === 'apply');
+    const resumeCalls = issueSync.match(
+      /node scripts\/roadmap\/resume-stale-issue-sync\.mjs/gu
+    )?.length;
+    if (
+      !planJob?.source.includes('      actions: read') ||
+      /actions:\s+write/u.test(planJob.source)
+    )
+      findings.push('Roadmap issue planning must keep Actions permission read-only.');
+    if (
+      !applyJob?.source.includes('      actions: write') ||
+      !applyJob.source.includes('STALE_SYNC_RETRY_COUNT:') ||
+      !issueSync.includes('stale_sync_retry_count:') ||
+      resumeCalls !== 3
+    )
+      findings.push(
+        'Stale roadmap issue applies must use a bounded dev workflow-dispatch resume from all three stale guards.'
+      );
+  }
+
   for (const [name, source, dependency, category] of [
     ['browser-matrix.yml', browserMatrix, 'browsers', 'browser-regression'],
     ['deep-regression.yml', deepRegression, 'postgres-recovery', 'deep-regression'],
@@ -524,11 +824,11 @@ export function inspectTrustedCheckoutPolicies({
     if (!source.includes(expectedFailure) || !source.includes(expectedRecovery))
       findings.push(`${name} incident reporting and recovery must be limited to main runs.`);
     if (
-      (source.match(/group: repository-write-coordinator/gu) ?? []).length !== 2 ||
+      (source.match(/group: maintenance-incident-/gu) ?? []).length !== 2 ||
       (source.match(/issues: write/gu) ?? []).length !== 2
     )
       findings.push(
-        `${name} incident writes must use the shared coordinator and issues-only write scope.`
+        `${name} incident writes must use a category-specific coordinator and issues-only write scope.`
       );
     const checkouts = checkoutSteps(source);
     if (
@@ -565,10 +865,12 @@ async function main() {
     releasePrepare,
     dependencyCandidate,
     releasePlan,
+    releaseOrchestrate,
     promote,
     promotionReportRefresh,
     issueIntake,
     issueIntakeRunner,
+    issueSync,
     browserMatrix,
     deepRegression,
   ] = await Promise.all([
@@ -578,24 +880,33 @@ async function main() {
     readFile(path.join(repositoryRoot, '.github/workflows/release-prepare.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/dependency-candidate.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/release-plan.yml'), 'utf8'),
+    readFile(path.join(repositoryRoot, '.github/workflows/release-orchestrate.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/promote.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/refresh-promotion-report.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/roadmap-issue-intake.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, 'scripts/roadmap/run-issue-intake.mjs'), 'utf8'),
+    readFile(path.join(repositoryRoot, '.github/workflows/roadmap-issue-plan.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/browser-matrix.yml'), 'utf8'),
     readFile(path.join(repositoryRoot, '.github/workflows/deep-regression.yml'), 'utf8'),
   ]);
+  const pagesAssetReconciler = await readFile(
+    path.join(repositoryRoot, 'scripts/docs/reconcile-versioned-docs-asset.mjs'),
+    'utf8'
+  );
   const findings = inspectTrustedCheckoutPolicies({
     pages,
+    pagesAssetReconciler,
     visualReview,
     release,
     releasePrepare,
     dependencyCandidate,
     releasePlan,
+    releaseOrchestrate,
     promote,
     promotionReportRefresh,
     issueIntake,
     issueIntakeRunner,
+    issueSync,
     browserMatrix,
     deepRegression,
   });

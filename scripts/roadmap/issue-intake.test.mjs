@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { URL } from 'node:url';
 import { planMaintainerIssueIntake } from './issue-intake.mjs';
+import { hasReportedIssueIntakeDelivery } from './issue-intake-dedupe.mjs';
 import {
   normalizeGitHubIssueComment,
   planAuthorizedGitHubIssueComment,
@@ -22,6 +24,141 @@ const input = {
   maintainerLogins: new Set(['trusted-maintainer']),
   botLogins: new Set(['roadmap-sync[bot]']),
 };
+
+const intakeRun = (overrides = {}) => ({
+  id: 100,
+  event: 'issue_comment',
+  display_title: 'Roadmap intake comment 7001',
+  status: 'completed',
+  conclusion: 'success',
+  ...overrides,
+});
+
+function runResponse(runs, link, totalCount = runs.length) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name) => (name === 'link' ? link : null) },
+    json: async () => ({ total_count: totalCount, workflow_runs: runs }),
+  };
+}
+
+const dedupeInput = {
+  repository: 'owner/repo',
+  commentId: '7001',
+  commentCreatedAt: new Date(Date.now() - 60_000).toISOString(),
+  currentRunId: '200',
+  token: 'test-token',
+};
+
+test('issue intake suppresses only a prior successful run for the exact comment', async () => {
+  const fetchImpl = async () =>
+    runResponse([
+      intakeRun({ id: 200, status: 'in_progress', conclusion: null }),
+      intakeRun({ id: 99, conclusion: 'failure' }),
+      intakeRun({ id: 98, display_title: 'Roadmap intake comment 7002' }),
+      intakeRun({ id: 97, event: 'push' }),
+    ]);
+  assert.equal(await hasReportedIssueIntakeDelivery({ ...dedupeInput, fetchImpl }), false);
+  assert.equal(
+    await hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async () => runResponse([intakeRun({ id: 96 })]),
+    }),
+    true
+  );
+});
+
+test('issue intake deduplication searches later run-history pages before reporting new work', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) {
+      const nextPage = new URL(String(url));
+      nextPage.searchParams.set('page', '2');
+      return runResponse([], `<${nextPage}>; rel="next"`, 1);
+    }
+    return runResponse([intakeRun({ id: 88 })], undefined, 1);
+  };
+  assert.equal(await hasReportedIssueIntakeDelivery({ ...dedupeInput, fetchImpl }), true);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].url, /page=2/u);
+  const firstRequest = new URL(requests[0].url);
+  assert.equal(firstRequest.searchParams.get('event'), 'issue_comment');
+  assert.equal(firstRequest.searchParams.get('per_page'), '100');
+  assert.match(firstRequest.searchParams.get('created'), /\.\./u);
+  assert.equal(requests[0].options.headers.authorization, 'Bearer test-token');
+});
+
+test('issue intake deduplication fails closed on API, response, pagination, or history-limit errors', async () => {
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async () => ({ ok: false, status: 403 }),
+    }),
+    /lookup failed \(403\)/u
+  );
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) }),
+    }),
+    /invalid response/u
+  );
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      commentCreatedAt: 'not-a-time',
+      fetchImpl: async () => runResponse([]),
+    }),
+    /creation time is invalid/u
+  );
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      commentCreatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+      fetchImpl: async () => runResponse([]),
+    }),
+    /outside the seven-day/u
+  );
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          total_count: 1000,
+          workflow_runs: [intakeRun({ display_title: 'another issue comment' })],
+        }),
+      }),
+    }),
+    /history is truncated/u
+  );
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async () =>
+        runResponse([], '<https://attacker.invalid/steal?event=issue_comment>; rel="next"'),
+    }),
+    /unexpected workflow-run pagination/u
+  );
+  let page = 0;
+  await assert.rejects(
+    hasReportedIssueIntakeDelivery({
+      ...dedupeInput,
+      fetchImpl: async (url) => {
+        page += 1;
+        const nextPage = new URL(String(url));
+        nextPage.searchParams.set('page', String(page + 1));
+        return runResponse([], `<${nextPage}>; rel="next"`, 1001);
+      },
+    }),
+    /100-page safety limit/u
+  );
+  assert.equal(page, 100);
+});
 
 const webhookPayload = {
   action: 'created',
@@ -67,6 +204,19 @@ test('normalizes only managed maintainer comments into a bounded, redelivery-sta
   });
   assert.equal(planned.disposition, 'proposal');
   assert.equal(planned.proposal.deliveryId, 'issue_comment_7001');
+});
+
+test('normalizes a K-series task marker without changing the M-series contract', () => {
+  const payload = {
+    ...webhookPayload,
+    issue: {
+      ...webhookPayload.issue,
+      body: '<!-- moonwitness-task: 123456789:K0-001 -->\nManaged K-series task.',
+    },
+  };
+  const normalized = normalizeGitHubIssueComment({ payload, expectedRepositoryId: '123456789' });
+  assert.equal(normalized.disposition, 'event');
+  assert.equal(normalized.event.taskId, 'K0-001');
 });
 
 test('normalizer ignores unrelated, bot, pull-request, wrong-repository and non-managed events', () => {

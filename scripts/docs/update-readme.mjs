@@ -39,7 +39,8 @@ export function replaceGeneratedReadmeBlock(readme, generatedBlock) {
   if (endLineStart < contentStart)
     throw new Error('README generated-block markers are out of order');
   const newline = readme.includes('\r\n') ? '\r\n' : '\n';
-  const replacement = `${newline}${generatedBlock.trimEnd()}${newline}${newline}`;
+  const block = generatedBlock.trimEnd().replace(/\r?\n/gu, newline);
+  const replacement = `${newline}${block}${newline}${newline}`;
   return `${readme.slice(0, contentStart)}${replacement}${readme.slice(endLineStart)}`;
 }
 

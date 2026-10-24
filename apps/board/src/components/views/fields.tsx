@@ -1,6 +1,7 @@
+import { Button } from '@moonwitness/ui/components/button';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
+import { CheckIcon, ChevronRightIcon, CloseIcon } from '@moonwitness/ui/icons';
 import type { Domain, FieldMeta } from '@moonwitness/client';
 import { displayName, relationKey, type Row } from './field-utils';
 import { client } from '@/lib/client';
@@ -47,9 +48,9 @@ export function FieldCell({ field, row }: { field: FieldMeta; row: Row }) {
         );
       }
       return value ? (
-        <Check className="size-4" strokeWidth={3} />
+        <CheckIcon className="size-4" strokeWidth={3} />
       ) : (
-        <X className="size-4 text-ink-faint" />
+        <CloseIcon className="size-4 text-ink-faint" />
       );
     case 'selection': {
       const label =
@@ -233,7 +234,7 @@ function Many2oneWidget({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           id={id}
           type="button"
           disabled={disabled}
@@ -245,7 +246,7 @@ function Many2oneWidget({
         >
           <span className="truncate">{label || `Pick a ${field.label.toLowerCase()}…`}</span>
           {value && !disabled && (
-            <X
+            <CloseIcon
               className="ml-auto size-4 shrink-0 hover:text-pink"
               onClick={(e) => {
                 e.stopPropagation();
@@ -253,8 +254,8 @@ function Many2oneWidget({
               }}
             />
           )}
-          <ChevronsUpDown className={cn('size-4 shrink-0', !value && 'ml-auto')} />
-        </button>
+          <ChevronRightIcon className={cn('size-4 shrink-0 rotate-90', !value && 'ml-auto')} />
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
@@ -278,7 +279,7 @@ function Many2oneWidget({
                     setOpen(false);
                   }}
                 >
-                  <Check
+                  <CheckIcon
                     className={cn('size-4', record.id === value ? 'opacity-100' : 'opacity-0')}
                   />
                   {displayName(record)}

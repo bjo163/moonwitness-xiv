@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/research-suggestion-envelope.schema.json",
+  "title": "MoonWitness local AI suggestion envelope",
+  "description": "Closed, immutable-intent suggestions whose textual claims are extractive and bound to exact local evidence spans.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "suggestions"],
+  "properties": {
+    "format": { "const": "mw-local-ai-suggestion-envelope/v1" },
+    "suggestions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/summary" },
+          { "$ref": "#/$defs/term" },
+          { "$ref": "#/$defs/duplicate" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "canonicalEvidenceId": {
+      "type": "string",
+      "pattern": "^mw:evidence:[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "canonicalAssertionId": {
+      "type": "string",
+      "pattern": "^mw:assertion:[a-z0-9][a-z0-9._-]{0,179}$"
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "assertion_id", "selector"],
+      "properties": {
+        "evidence_id": { "$ref": "#/$defs/canonicalEvidenceId" },
+        "assertion_id": { "$ref": "#/$defs/canonicalAssertionId" },
+        "selector": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source_id",
+            "edition_id",
+            "locator",
+            "content_sha256",
+            "range",
+            "selected_span_sha256"
+          ],
+          "properties": {
+            "source_id": { "type": "string", "pattern": "^mw:source:[a-z0-9][a-z0-9._-]{0,99}$" },
+            "edition_id": { "type": "string", "pattern": "^mw:edition:[a-z0-9][a-z0-9._-]{0,99}$" },
+            "locator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[^\\u0000-\\u001f]+$"
+            },
+            "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "range": { "$ref": "#/$defs/range" },
+            "selected_span_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "start", "end"],
+      "properties": {
+        "unit": { "const": "unicode_scalar" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "base": {
+      "type": "object",
+      "required": ["id", "status", "visibility", "kind", "citations"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^mw:suggestion:[a-z0-9][a-z0-9._-]{0,179}$" },
+        "status": { "const": "unreviewed" },
+        "visibility": { "const": "INTERNAL" },
+        "kind": { "enum": ["summary", "term", "duplicate"] },
+        "citations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/citation" }
+        }
+      }
+    },
+    "summary": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "status", "visibility", "kind", "citations", "text"],
+          "properties": {
+            "id": { "$ref": "#/$defs/base/properties/id" },
+            "status": { "const": "unreviewed" },
+            "visibility": { "const": "INTERNAL" },
+            "kind": { "const": "summary" },
+            "citations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "items": { "$ref": "#/$defs/citation" }
+            },
+            "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+          }
+        }
+      ]
+    },
+    "term": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "status", "visibility", "kind", "citations", "text"],
+          "properties": {
+            "id": { "$ref": "#/$defs/base/properties/id" },
+            "status": { "const": "unreviewed" },
+            "visibility": { "const": "INTERNAL" },
+            "kind": { "const": "term" },
+            "citations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "$ref": "#/$defs/citation" }
+            },
+            "text": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
+      ]
+    },
+    "duplicate": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "status", "visibility", "kind", "citations", "assertion_ids"],
+          "properties": {
+            "id": { "$ref": "#/$defs/base/properties/id" },
+            "status": { "const": "unreviewed" },
+            "visibility": { "const": "INTERNAL" },
+            "kind": { "const": "duplicate" },
+            "citations": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 8,
+              "items": { "$ref": "#/$defs/citation" }
+            },
+            "assertion_ids": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "$ref": "#/$defs/canonicalAssertionId" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

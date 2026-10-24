@@ -2,6 +2,7 @@ import { readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { milestonePattern, parseTaskId, taskIdPattern, taskIdSource } from './task-ids.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const allowedTaskKeys = new Set([
@@ -18,8 +19,6 @@ const allowedTaskKeys = new Set([
   'evidence',
 ]);
 const allowedRootKeys = new Set(['schemaVersion', 'description', 'tasks']);
-const taskIdPattern = /^M(?:0|[1-9][0-9]*)\.[0-9]{2}$/u;
-const milestonePattern = /^M(?:0|[1-9][0-9]*)$/u;
 
 /** @typedef {'todo' | 'in_progress' | 'blocked' | 'complete'} TaskStatus */
 /** @typedef {'p0' | 'p1' | 'p2' | 'p3'} TaskPriority */
@@ -42,6 +41,41 @@ function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Return duplicate property names, scoped to each JSON object rather than globally. */
+export function findDuplicateJsonObjectKeys(source) {
+  const containers = [];
+  const duplicates = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      const start = index;
+      let escaped = false;
+      for (index += 1; index < source.length; index += 1) {
+        const current = source[index];
+        if (escaped) escaped = false;
+        else if (current === '\\') escaped = true;
+        else if (current === '"') break;
+      }
+      const container = containers.at(-1);
+      if (container?.kind === 'object' && container.expectingKey) {
+        const key = JSON.parse(source.slice(start, index + 1));
+        if (container.keys.has(key)) duplicates.push(key);
+        container.keys.add(key);
+        container.expectingKey = false;
+      }
+    } else if (character === '{') {
+      containers.push({ kind: 'object', expectingKey: true, keys: new Set() });
+    } else if (character === '[') {
+      containers.push({ kind: 'array' });
+    } else if (character === '}' || character === ']') {
+      containers.pop();
+    } else if (character === ',' && containers.at(-1)?.kind === 'object') {
+      containers.at(-1).expectingKey = true;
+    }
+  }
+  return duplicates;
+}
+
 function isSafeRoadmapPath(value, prefix) {
   if (typeof value !== 'string' || value.includes('\\') || path.posix.isAbsolute(value))
     return false;
@@ -57,15 +91,16 @@ function evidenceLinksFromLine(line) {
 
 function evidenceLabelCoversTask(label, id) {
   if (label.includes(id)) return true;
-  const range = /^(M(?:0|[1-9][0-9]*)\.([0-9]{2}))[–-](M(?:0|[1-9][0-9]*)\.([0-9]{2}))$/u.exec(
-    label
-  );
-  if (!range || range[1].split('.')[0] !== range[3].split('.')[0]) return false;
-  const taskNumber = Number(id.split('.')[1]);
+  const range = new RegExp(`^(${taskIdSource})[–-](${taskIdSource})$`, 'u').exec(label);
+  if (!range) return false;
+  const start = parseTaskId(range[1]);
+  const end = parseTaskId(range[2]);
+  const task = parseTaskId(id);
+  if (!start || !end || !task || start.milestone !== end.milestone) return false;
   return (
-    id.split('.')[0] === range[1].split('.')[0] &&
-    taskNumber >= Number(range[2]) &&
-    taskNumber <= Number(range[4])
+    task.milestone === start.milestone &&
+    task.ordinal >= start.ordinal &&
+    task.ordinal <= end.ordinal
   );
 }
 
@@ -110,7 +145,9 @@ export function validateRoadmapIndex(input, roadmap, documents) {
     }
     const id = candidate.id;
     if (typeof id !== 'string' || !taskIdPattern.test(id)) {
-      problems.push(`${prefix}.id must use the stable M<n>.<two-digit task> format.`);
+      problems.push(
+        `${prefix}.id must use a stable M<n>.<two-digit> or K<n>-<three-digit> task ID.`
+      );
       continue;
     }
     if (seenIds.has(id)) problems.push(`${id} is duplicated in tasks.json.`);
@@ -119,8 +156,8 @@ export function validateRoadmapIndex(input, roadmap, documents) {
       problems.push(`${id}.title must be a non-empty string.`);
     }
     if (typeof candidate.milestone !== 'string' || !milestonePattern.test(candidate.milestone)) {
-      problems.push(`${id}.milestone must use the M<n> format.`);
-    } else if (id.split('.')[0] !== candidate.milestone) {
+      problems.push(`${id}.milestone must use the M<n> or K<n> format.`);
+    } else if (parseTaskId(id)?.milestone !== candidate.milestone) {
       problems.push(`${id}.milestone must match its task ID prefix.`);
     }
     if (
@@ -228,7 +265,7 @@ export function validateRoadmapIndex(input, roadmap, documents) {
 
   const roadmapEntries = new Map();
   for (const [index, line] of roadmap.split(/\r?\n/u).entries()) {
-    const match = /^\s*-\s*\[([ xX])\]\s+(M(?:0|[1-9][0-9]*)\.[0-9]{2})\b/u.exec(line);
+    const match = new RegExp(`^\\s*-\\s*\\[([ xX])\\]\\s+(${taskIdSource})\\b`, 'u').exec(line);
     if (!match) continue;
     const [, checked, id] = match;
     const existing = roadmapEntries.get(id) ?? [];
@@ -267,13 +304,45 @@ export function validateRoadmapIndex(input, roadmap, documents) {
     if (!taskById.has(id))
       problems.push(`${id} appears in ROADMAP.md but is missing from tasks.json.`);
   }
+  const openCards = [...roadmapEntries.entries()]
+    .filter(([, entries]) => entries.some((entry) => !entry.checked))
+    .map(([id]) => id);
+  const proseCounts = [
+    { label: '', pattern: /(\d+) kartu terbuka/gu, actual: openCards.length },
+    {
+      label: 'M-series',
+      pattern: /(\d+) kartu M-series terbuka/gu,
+      actual: openCards.filter((id) => id.startsWith('M')).length,
+    },
+    {
+      label: 'K-series',
+      pattern: /(\d+) kartu K-series terbuka/gu,
+      actual: openCards.filter((id) => id.startsWith('K')).length,
+    },
+  ];
+  for (const { label, pattern, actual } of proseCounts) {
+    for (const match of roadmap.matchAll(pattern)) {
+      if (Number(match[1]) === actual) continue;
+      const scope = label === '' ? 'open' : `open ${label}`;
+      problems.push(
+        `ROADMAP.md prose claims ${match[1]} ${scope} cards but the checklist holds ${actual}.`
+      );
+    }
+  }
   return [...new Set(problems)];
 }
 
 async function loadRepository() {
   const indexPath = path.join(repositoryRoot, 'docs/roadmap/tasks.json');
   const roadmapPath = path.join(repositoryRoot, 'ROADMAP.md');
-  const index = JSON.parse(await readFile(indexPath, 'utf8'));
+  const indexSource = await readFile(indexPath, 'utf8');
+  const duplicateKeys = findDuplicateJsonObjectKeys(indexSource);
+  if (duplicateKeys.length > 0) {
+    throw new Error(
+      `tasks.json contains duplicate object keys: ${[...new Set(duplicateKeys)].join(', ')}`
+    );
+  }
+  const index = JSON.parse(indexSource);
   const roadmap = await readFile(roadmapPath, 'utf8');
   /** @type {Map<string, string>} */
   const documents = new Map();

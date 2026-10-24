@@ -18,4 +18,4 @@ Use a matching theme variant, set an explicit rendered size or a responsive widt
 
 The SVG has its own accessible title for direct viewing. When used beside equivalent text, use empty `alt` so assistive technology does not announce the same state twice. Theme choice and user-facing copy remain application responsibilities.
 
-The generated light/dark contact sheet is [illustration-contact-sheet.png](./assets/illustration-contact-sheet.png).
+The generated light/dark contact sheet is [illustration-contact-sheet-current.png](./assets/illustration-contact-sheet-current.png).

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createHash, randomUUID } from 'node:crypto';
 import knex, { type Knex } from 'knex';
 import { Model } from 'objection';
 import type { QueryContext } from 'objection';
@@ -138,6 +139,221 @@ describe('Enterprise BaseModel & Fastify Integration', () => {
 
   it('should register models in Registry', () => {
     expect(Registry.has('test.item')).toBe(true);
+  });
+
+  it('blocks generic attachments for witness records excluded from generic access', async () => {
+    const witness = await testDb('knowledge_witness_testimonies')
+      .where({ external_key: 'synthetic-witness-scoped-001' })
+      .first('id');
+    const superadmin = await testDb('users').where({ login: 'superadmin' }).first('id');
+    if (!witness || !superadmin) throw new Error('Synthetic witness fixture is required');
+
+    const key = randomUUID();
+    const content = Buffer.from('SYNTHETIC-WITNESS-ATTACHMENT-CANARY');
+    await new LocalFileAttachmentStorage(attachmentStorageDirectory).put(key, content);
+    await testDb('attachments').insert({
+      name: 'synthetic-witness-attachment-canary.txt',
+      resource_model: 'knowledge.witness_testimony',
+      resource_id: Number(witness.id),
+      mimetype: 'text/plain',
+      size_bytes: content.length,
+      storage_key: key,
+      checksum: 'a'.repeat(64),
+      create_uid: Number(superadmin.id),
+    });
+    const attachment = await testDb('attachments')
+      .where({ name: 'synthetic-witness-attachment-canary.txt' })
+      .first('id');
+    if (!attachment) throw new Error('Synthetic witness attachment fixture is required');
+
+    attachmentStorageOperations.splice(0, attachmentStorageOperations.length);
+    const download = await send({
+      method: 'GET',
+      url: `/api/base.attachment/${attachment.id}/download`,
+    });
+    expect(download.statusCode).toBe(404);
+    expect(download.payload).not.toContain('SYNTHETIC-WITNESS-ATTACHMENT-CANARY');
+    expect(attachmentStorageOperations).not.toContain('get');
+
+    const upload = await send({
+      method: 'POST',
+      url: `/api/base.attachment/upload?resource_model=knowledge.witness_testimony&resource_id=${witness.id}&name=blocked.txt`,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-file-mime': 'text/plain',
+      },
+      payload: Buffer.from('SHOULD-NOT-BE-STORED'),
+    });
+    expect(upload.statusCode).toBe(404);
+    expect(attachmentStorageOperations).not.toContain('put');
+    expect(
+      await testDb('attachments').where({ name: 'blocked.txt', resource_id: witness.id })
+    ).toHaveLength(0);
+    await testDb('attachments').where({ id: attachment.id }).delete();
+    await new LocalFileAttachmentStorage(attachmentStorageDirectory).delete(key);
+  });
+
+  it('keeps synthetic privacy projections out of generic REST and JSON-RPC', async () => {
+    const witness = await testDb('knowledge_witness_testimonies')
+      .where({ external_key: 'synthetic-witness-scoped-001' })
+      .first('company_id');
+    if (!witness) throw new Error('Synthetic witness fixture is required');
+
+    const projectionKey = `generic-api-canary-${randomUUID()}`;
+    const canary = `SYNTHETIC-PRIVACY-GENERIC-CANARY-${randomUUID()}`;
+    const projection = JSON.stringify({ excerpt: canary });
+    await testDb('knowledge_privacy_projections').insert({
+      company_id: witness.company_id,
+      projection_key: projectionKey,
+      subject_ref_sha256: 'a'.repeat(64),
+      projection_json: projection,
+      projection_digest: createHash('sha256').update(projection, 'utf8').digest('hex'),
+      synthetic: true,
+      visibility: 'RESTRICTED',
+      state: 'active',
+    });
+
+    try {
+      const rest = await send({
+        method: 'GET',
+        url: '/api/knowledge.privacy_projection',
+      });
+      expect(rest.statusCode).toBe(403);
+      expect(rest.payload).not.toContain(canary);
+      expect(rest.payload).not.toContain(projectionKey);
+
+      const rpc = await send({
+        method: 'POST',
+        url: '/jsonrpc',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'privacy-projection-canary',
+          method: 'call',
+          params: {
+            service: 'object',
+            method: 'execute_kw',
+            args: ['knowledge.privacy_projection', 'search_read', [[]], {}],
+          },
+        },
+      });
+      expect(rpc.statusCode, rpc.payload).toBe(403);
+      expect(rpc.json<{ error: { code: number; message: string } }>().error).toMatchObject({
+        code: -32003,
+        message: 'Forbidden',
+      });
+      expect(rpc.payload).not.toContain(canary);
+      expect(rpc.payload).not.toContain(projectionKey);
+    } finally {
+      await testDb('knowledge_privacy_projections')
+        .where({ projection_key: projectionKey })
+        .delete();
+    }
+  });
+
+  it('keeps INTERNAL story pages out of generic REST and JSON-RPC', async () => {
+    const superadmin = await testDb('users').where({ login: 'superadmin' }).first('id');
+    const company = await testDb('companies').first('id');
+    if (!superadmin || !company) throw new Error('Synthetic story actor is required');
+    const storyId = `mw:story:api-canary-${randomUUID()}`;
+    const pageId = `mw:story-page:api-canary-${randomUUID()}`;
+    const canary = `SYNTHETIC-INTERNAL-STORY-CANARY-${randomUUID()}`;
+    const story = {
+      schema_version: 1,
+      story_id: storyId,
+      version: 1,
+      title: 'Synthetic API canary',
+      visibility: 'INTERNAL',
+      pages: [{ page_id: pageId, page_order: 1, original_text: canary }],
+    };
+    const storyJson = JSON.stringify(story);
+    await testDb('knowledge_story_versions').insert({
+      company_id: company.id,
+      story_id: storyId,
+      version: 1,
+      visibility: 'INTERNAL',
+      title: story.title,
+      story_json: storyJson,
+      story_digest: createHash('sha256').update(storyJson, 'utf8').digest('hex'),
+      page_count: 1,
+      recorded_by_id: superadmin.id,
+    });
+    const version = await testDb('knowledge_story_versions')
+      .where({ story_id: storyId })
+      .first('id');
+    if (!version) throw new Error('Synthetic story canary fixture is required');
+    await testDb('knowledge_story_page_versions').insert({
+      story_version_id: version.id,
+      page_id: pageId,
+      page_order: 1,
+      original_text: canary,
+      original_text_digest: createHash('sha256').update(canary, 'utf8').digest('hex'),
+    });
+
+    const rest = await send({ method: 'GET', url: '/api/knowledge.story_version' });
+    expect(rest.statusCode).toBe(403);
+    expect(rest.payload).not.toContain(canary);
+    expect(rest.payload).not.toContain(storyId);
+    const rpc = await send({
+      method: 'POST',
+      url: '/jsonrpc',
+      payload: {
+        jsonrpc: '2.0',
+        id: 'story-canary',
+        method: 'call',
+        params: {
+          service: 'object',
+          method: 'execute_kw',
+          args: ['knowledge.story_page_version', 'search_read', [[]], {}],
+        },
+      },
+    });
+    expect(rpc.statusCode).toBe(403);
+    expect(rpc.payload).not.toContain(canary);
+    expect(rpc.payload).not.toContain(storyId);
+  });
+
+  it('keeps INTERNAL local-AI suggestions out of generic REST and JSON-RPC', async () => {
+    const superadmin = await testDb('users').where({ login: 'superadmin' }).first('id');
+    const company = await testDb('companies').first('id');
+    if (!superadmin || !company) throw new Error('Synthetic suggestion actor is required');
+    const suggestionId = `mw:suggestion:api-canary-${randomUUID()}`;
+    const canary = `SYNTHETIC-INTERNAL-SUGGESTION-CANARY-${randomUUID()}`;
+    const suggestionJson = JSON.stringify({ id: suggestionId, kind: 'claim', text: canary });
+    await testDb('knowledge_research_suggestion_versions').insert({
+      company_id: company.id,
+      suggestion_id: suggestionId,
+      version: 1,
+      visibility: 'INTERNAL',
+      status: 'unreviewed',
+      suggestion_json: suggestionJson,
+      suggestion_digest: createHash('sha256').update(suggestionJson, 'utf8').digest('hex'),
+      recorded_by_id: superadmin.id,
+    });
+
+    const rest = await send({
+      method: 'GET',
+      url: '/api/knowledge.research_suggestion_version',
+    });
+    expect(rest.statusCode).toBe(403);
+    expect(rest.payload).not.toContain(canary);
+    expect(rest.payload).not.toContain(suggestionId);
+    const rpc = await send({
+      method: 'POST',
+      url: '/jsonrpc',
+      payload: {
+        jsonrpc: '2.0',
+        id: 'suggestion-canary',
+        method: 'call',
+        params: {
+          service: 'object',
+          method: 'execute_kw',
+          args: ['knowledge.research_suggestion_version', 'search_read', [[]], {}],
+        },
+      },
+    });
+    expect(rpc.statusCode).toBe(403);
+    expect(rpc.payload).not.toContain(canary);
+    expect(rpc.payload).not.toContain(suggestionId);
   });
 
   it('does not expose password hashes in database error responses', async () => {

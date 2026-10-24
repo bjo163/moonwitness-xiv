@@ -113,6 +113,22 @@
       "types": "./dist/components/panel.d.ts",
       "import": "./dist/components/panel.js"
     },
+    "./components/section-ribbon": {
+      "types": "./dist/components/section-ribbon.d.ts",
+      "import": "./dist/components/section-ribbon.js"
+    },
+    "./components/paper-note": {
+      "types": "./dist/components/paper-note.d.ts",
+      "import": "./dist/components/paper-note.js"
+    },
+    "./components/artwork-frame": {
+      "types": "./dist/components/artwork-frame.d.ts",
+      "import": "./dist/components/artwork-frame.js"
+    },
+    "./components/metric-tile": {
+      "types": "./dist/components/metric-tile.d.ts",
+      "import": "./dist/components/metric-tile.js"
+    },
     "./components/toolbar": {
       "types": "./dist/components/toolbar.d.ts",
       "import": "./dist/components/toolbar.js"
@@ -128,6 +144,14 @@
     "./components/chart": {
       "types": "./dist/components/chart.d.ts",
       "import": "./dist/components/chart.js"
+    },
+    "./components/effects": {
+      "types": "./dist/components/effects.d.ts",
+      "import": "./dist/components/effects.js"
+    },
+    "./components/audio": {
+      "types": "./dist/components/audio.d.ts",
+      "import": "./dist/components/audio.js"
     },
     "./icons": {
       "types": "./dist/icons/index.d.ts",

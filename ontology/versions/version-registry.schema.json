@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/schemas/version-registry.schema.json",
+  "title": "MoonWitness knowledge schema version registry",
+  "description": "Pins immutable ontology and corpus schema sets independently from application releases. Baseline entries are not claims of historical production releases.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_version", "components"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "registry_version": { "const": 1 },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ontology", "corpus"],
+      "properties": {
+        "ontology": { "$ref": "#/$defs/component" },
+        "corpus": { "$ref": "#/$defs/component" }
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "releases"],
+      "properties": {
+        "current": { "$ref": "#/$defs/releaseVersion" },
+        "releases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/release" }
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "status", "document_schema_versions", "schemas"],
+      "properties": {
+        "version": { "$ref": "#/$defs/releaseVersion" },
+        "status": { "enum": ["baseline", "released"] },
+        "document_schema_versions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "schemas": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "releaseVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    }
+  }
+}

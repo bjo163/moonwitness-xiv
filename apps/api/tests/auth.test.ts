@@ -125,6 +125,12 @@ describe('authentication and authorization', () => {
     system = (await login('system', 'system-test-password')).json<TokenBody>().data;
   }, 30000);
 
+  it('starts with AI disabled and makes no provider call', async () => {
+    expect(await app.localAi.generate({ prompt: 'synthetic startup probe' })).toEqual({
+      status: 'disabled',
+    });
+  });
+
   afterAll(async () => {
     await app.close();
   });

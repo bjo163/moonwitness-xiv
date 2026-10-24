@@ -20,6 +20,22 @@ export interface CreateLoggerOptions {
   }>;
 }
 
+function serializeRequest(value: object): Record<string, unknown> {
+  const request = value as Record<string, unknown>;
+  const routeOptions = request.routeOptions;
+  const routeTemplate =
+    typeof routeOptions === 'object' &&
+    routeOptions !== null &&
+    !Array.isArray(routeOptions) &&
+    typeof (routeOptions as Record<string, unknown>).url === 'string'
+      ? (routeOptions as Record<string, string>).url
+      : undefined;
+  return {
+    method: typeof request.method === 'string' ? request.method : undefined,
+    url: routeTemplate ?? '[unmatched]',
+  };
+}
+
 export function createLogger(options: CreateLoggerOptions = {}): Logger {
   const isTest = process.env.NODE_ENV === 'test';
   const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
@@ -88,6 +104,7 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
     name,
     level,
     timestamp: pino.stdTimeFunctions.isoTime,
+    serializers: { req: serializeRequest },
     redact: {
       paths: [
         'req.headers.authorization',
