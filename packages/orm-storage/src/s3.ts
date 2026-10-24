@@ -12,7 +12,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { createHash } from 'node:crypto';
 import { Readable, Transform, type Readable as NodeReadable } from 'node:stream';
 import { Upload } from '@aws-sdk/lib-storage';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
 import type { AttachmentStorage, StoredObjectMetadata } from './index.js';
 
@@ -35,8 +35,10 @@ export interface S3AttachmentStorageOptions {
 
 export interface PresignedAttachmentUpload {
   readonly url: string;
-  readonly method: 'PUT';
-  readonly headers: Readonly<Record<string, string>>;
+  readonly method: 'POST';
+  readonly fields: Readonly<Record<string, string>>;
+  readonly minSizeBytes: 1;
+  readonly maxSizeBytes: number;
   readonly expiresInSeconds: number;
 }
 
@@ -111,27 +113,42 @@ export class S3AttachmentStorage implements AttachmentStorage {
     await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
-  async createPresignedPutUrl(
+  async createPresignedUpload(
     key: string,
     contentType: string,
+    maxSizeBytes = this.maxObjectBytes,
     expiresInSeconds = 300
   ): Promise<PresignedAttachmentUpload> {
     const safeKey = validateKey(key);
     if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/iu.test(contentType)) {
       throw new Error('Invalid attachment content type');
     }
+    if (!Number.isSafeInteger(maxSizeBytes) || maxSizeBytes < 1 || maxSizeBytes > this.maxObjectBytes) {
+      throw new Error('Presigned upload size exceeds the configured storage size limit');
+    }
     if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds < 30 || expiresInSeconds > 900) {
       throw new Error('Presigned upload expiry must be between 30 and 900 seconds');
     }
-    const url = await getSignedUrl(
+    const post = await createPresignedPost(
       this.client,
-      new PutObjectCommand({ Bucket: this.bucket, Key: safeKey, ContentType: contentType }),
-      { expiresIn: expiresInSeconds, signableHeaders: new Set(['content-type']) }
+      {
+        Bucket: this.bucket,
+        Key: safeKey,
+        Expires: expiresInSeconds,
+        Fields: { 'Content-Type': contentType },
+        Conditions: [
+          ['eq', '$key', safeKey],
+          ['eq', '$Content-Type', contentType],
+          ['content-length-range', 1, maxSizeBytes],
+        ],
+      }
     );
     return {
-      url,
-      method: 'PUT',
-      headers: { 'content-type': contentType },
+      url: post.url,
+      method: 'POST',
+      fields: post.fields,
+      minSizeBytes: 1,
+      maxSizeBytes,
       expiresInSeconds,
     };
   }

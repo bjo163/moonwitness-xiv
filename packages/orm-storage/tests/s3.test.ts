@@ -39,7 +39,7 @@ function provider(send: (command: unknown) => Promise<unknown>) {
 }
 
 describe('S3AttachmentStorage', () => {
-  it('creates short-lived presigned PUT URLs bound to the validated key and media type', async () => {
+  it('creates short-lived presigned POST policies bound to key, media type, and size', async () => {
     const storage = new S3AttachmentStorage({
       endpoint: 'https://s3.example.test',
       region: 'garage',
@@ -49,26 +49,32 @@ describe('S3AttachmentStorage', () => {
       forcePathStyle: true,
     });
     try {
-      const upload = await storage.createPresignedPutUrl(keyA, 'image/png', 300);
+      const upload = await storage.createPresignedUpload(keyA, 'image/png', 1024, 300);
       const url = new URL(upload.url);
+      const policy = JSON.parse(Buffer.from(upload.fields.Policy, 'base64').toString('utf8')) as {
+        conditions: unknown[];
+      };
       expect(upload).toMatchObject({
-        method: 'PUT',
+        method: 'POST',
+        minSizeBytes: 1,
+        maxSizeBytes: 1024,
         expiresInSeconds: 300,
-        headers: { 'content-type': 'image/png' },
       });
-      expect(url.pathname).toBe('/private-attachments/11111111-1111-4111-8111-111111111111');
-      expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
-      expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/u);
-      expect(url.searchParams.get('X-Amz-SignedHeaders')).toContain('content-type');
-      await expect(storage.createPresignedPutUrl('../unsafe', 'image/png')).rejects.toThrow(
+      expect(url.pathname).toBe('/private-attachments');
+      expect(upload.fields['Content-Type']).toBe('image/png');
+      expect(upload.fields.key).toBe(keyA);
+      expect(upload.fields['X-Amz-Signature']).toMatch(/^[a-f0-9]{64}$/u);
+      expect(policy.conditions).toContainEqual(['content-length-range', 1, 1024]);
+      expect(policy.conditions).toContainEqual(['eq', '$Content-Type', 'image/png']);
+      expect(policy.conditions).toContainEqual(['eq', '$key', keyA]);
+      await expect(storage.createPresignedUpload('../unsafe', 'image/png')).rejects.toThrow(
         'Invalid attachment storage key'
       );
-      await expect(storage.createPresignedPutUrl(keyA, 'text/html')).resolves.toHaveProperty(
-        'headers.content-type',
-        'text/html'
-      );
-      await expect(storage.createPresignedPutUrl(keyA, 'image/png', 10)).rejects.toThrow(
+      await expect(storage.createPresignedUpload(keyA, 'image/png', 1024, 10)).rejects.toThrow(
         'between 30 and 900 seconds'
+      );
+      await expect(storage.createPresignedUpload(keyA, 'image/png', MAX_ATTACHMENT_BYTES + 1)).rejects.toThrow(
+        'configured storage size limit'
       );
     } finally {
       await closeS3AttachmentStorage(storage);
