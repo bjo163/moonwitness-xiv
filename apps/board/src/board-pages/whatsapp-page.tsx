@@ -249,6 +249,10 @@ const providerTypeLabels: Record<string, string> = {
   call: 'Call event',
   event: 'Event',
   protocol: 'System message',
+  group_event_join: 'Group update',
+  group_event_leave: 'Group update',
+  group_event_promote: 'Group update',
+  group_event_demote: 'Group update',
   view_once: 'View-once media',
 };
 
@@ -2717,7 +2721,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                     tabIndex={-1}
                     className={`group relative max-w-[85%] border-2 border-ink p-3 ${message.direction === 'outbound' ? 'ml-auto bg-pink/30' : 'mr-auto bg-white'}`}
                   >
-                    {activeConversation?.is_group && (
+                    {activeConversation?.is_group && !message.provider_type?.startsWith('group_event_') && (
                       <p className="mb-1 font-mono text-[10px] text-ink-faint">
                         {message.direction === 'outbound'
                           ? 'You'
@@ -2731,6 +2735,8 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                     >
                       {message.is_deleted
                         ? 'This message was deleted'
+                        : message.provider_type?.startsWith('group_event_')
+                          ? message.content || messageFallbackLabel(message.provider_type)
                         : message.provider_type
                           ? messageFallbackLabel(message.provider_type)
                           : message.content}

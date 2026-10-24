@@ -4020,10 +4020,15 @@ describe('WhatsApp API GoWA bridge', () => {
         media_file_name: 'secret.png',
       })
       .returning(['id']);
-    const postEvent = async (event: string, payload: Record<string, unknown>) => {
+    const postEvent = async (
+      event: string,
+      payload: Record<string, unknown>,
+      timestamp?: string
+    ) => {
       const raw = JSON.stringify({
         event,
         session_id: `moonwitness-company-${companyId}`,
+        ...(timestamp ? { timestamp } : {}),
         payload,
       });
       return app.inject({
@@ -4056,15 +4061,34 @@ describe('WhatsApp API GoWA bridge', () => {
         group_metadata_synced_at: new Date().toISOString(),
       })
       .returning(['id']);
+    const groupEvent = {
+      chat_id: '120363000000777@g.us',
+      type: 'join',
+      jids: ['628222222222@s.whatsapp.net'],
+    };
+    const groupEventTimestamp = '2026-10-25T10:30:00.000Z';
     expect(
       (
-        await postEvent('group.participants', {
-          chat_id: '120363000000777@g.us',
-          type: 'join',
-          jids: ['628222222222@s.whatsapp.net'],
-        })
+        await postEvent('group.participants', groupEvent, groupEventTimestamp)
       ).statusCode
     ).toBe(204);
+    expect(
+      (
+        await postEvent('group.participants', groupEvent, groupEventTimestamp)
+      ).statusCode
+    ).toBe(204);
+    const storedGroupEvents = await db('whatsapp_messages').where({
+      company_id: companyId,
+      account_id: accountId,
+      conversation_id: group.id,
+      provider_type: 'group_event_join',
+    });
+    expect(storedGroupEvents).toHaveLength(1);
+    expect(storedGroupEvents[0]).toMatchObject({
+      content: '628222222222@s.whatsapp.net joined the group',
+      status: 'received',
+    });
+    expect(new Date(storedGroupEvents[0].create_date).toISOString()).toBe(groupEventTimestamp);
     const invalidatedGroup = await db('whatsapp_conversations').where({ id: group.id }).first();
     expect(invalidatedGroup.group_metadata_synced_at).toBeNull();
     expect(JSON.parse(invalidatedGroup.group_participants_json)).toHaveLength(1);

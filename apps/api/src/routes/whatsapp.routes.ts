@@ -866,7 +866,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           )
         )
           return reply.code(204).send();
-        await app
+        const conversation = await app
           .db('whatsapp_conversations')
           .where({
             company_id: account.company_id,
@@ -874,7 +874,67 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             jid: groupJid,
             is_group: true,
           })
-          .update({ group_metadata_synced_at: null, write_date: new Date().toISOString() });
+          .first('id');
+        if (conversation) {
+          const eventTimestamp =
+            typeof (body as { timestamp?: unknown }).timestamp === 'string' &&
+            Number.isFinite(Date.parse((body as { timestamp: string }).timestamp))
+              ? new Date((body as { timestamp: string }).timestamp).toISOString()
+              : new Date().toISOString();
+          const participants = [...new Set(jids as string[])].sort();
+          const actionLabels: Record<string, string> = {
+            join: 'joined the group',
+            leave: 'left the group',
+            promote: 'became an admin',
+            demote: 'is no longer an admin',
+          };
+          const eventContent = `${participants.join(', ')} ${actionLabels[String(type)]}`.slice(
+            0,
+            8_000
+          );
+          const externalId = `group-event:${createHash('sha256')
+            .update(`${groupJid}\n${String(type)}\n${eventTimestamp}\n${participants.join('\n')}`)
+            .digest('hex')}`;
+          await app.db.transaction(async (trx) => {
+            await trx('whatsapp_conversations')
+              .where({ id: conversation.id, company_id: account.company_id })
+              .update({
+                group_metadata_synced_at: null,
+                write_date: new Date().toISOString(),
+              });
+            const inserted = await trx('whatsapp_messages')
+              .insert({
+                company_id: account.company_id,
+                account_id: account.id,
+                conversation_id: conversation.id,
+                external_id: externalId,
+                direction: 'inbound',
+                message_type: 'text',
+                provider_type: `group_event_${String(type)}`,
+                content: eventContent,
+                status: 'received',
+                create_date: eventTimestamp,
+                write_date: eventTimestamp,
+              })
+              .onConflict(['company_id', 'external_id'])
+              .ignore()
+              .returning(['id']);
+            if (inserted.length) {
+              await trx('whatsapp_conversations')
+                .where({ id: conversation.id, company_id: account.company_id })
+                .where((query) =>
+                  query
+                    .whereNull('last_message_at')
+                    .orWhere('last_message_at', '<=', eventTimestamp)
+                )
+                .update({
+                  last_message: eventContent,
+                  last_message_at: eventTimestamp,
+                  write_date: new Date().toISOString(),
+                });
+            }
+          });
+        }
         return reply.code(204).send();
       }
       if (body?.event === 'message.edited') {
