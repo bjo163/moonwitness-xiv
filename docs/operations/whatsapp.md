@@ -85,6 +85,17 @@ enforce the 10 MiB attachment limit, and API route tests verify streaming storag
 for provider downloads and cached reads. Compatibility storage adapters without stream methods
 continue to use the bounded Buffer path.
 
+With an S3-compatible attachment driver, the WhatsApp Board receives a user/company/conversation-
+scoped upload ticket and a five-minute presigned POST policy. The policy locks one UUID object key,
+the normalized content type, and a 1-byte to declared-size range (at most 10 MiB). After direct
+upload, the API checks the stored size/type, reads the object through a bounded stream, validates
+the file signature, and scans it before queueing a message. It copies the verified bytes to a new
+server-generated key before queueing so replaying an unexpired upload policy cannot change media
+already queued for delivery. Expired staging objects are eligible for the attachment reconciliation
+command after its configured grace period. Configure the S3 endpoint CORS policy to allow the Board
+origin and `POST`; the browser sends no API credentials to the storage host. Local attachment
+storage continues to use authenticated multipart uploads through the API.
+
 After GoWA confirms an outbound send, the worker first records the provider message ID in the
 outbox payload, then marks the message sent and updates the conversation preview. A retry can use
 that durable acknowledgement to repair either database projection without sending again. If
@@ -125,9 +136,10 @@ JIDs/phone numbers, and message text within the active company inbox. Board wait
 typing before querying. API merges GoWA documented `/chats?search=` name results with the normal chat page, then matches cached message content locally. Message text is searchable after its conversation has been synchronized. The hosted v9.6.0 version and health endpoints are live-tested; the search parameter is documented in the [GoWA OpenAPI contract](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) but not yet exercised on the hosted device.
 
 GoWA introduced multi-device support in v8. On 24 October 2026, authenticated requests to the
-hosted gateway returned version `v9.6.0` from `/app/info` and `OK` from `/health`; the live
-contract test passed. This verifies the gateway contract only, not a linked device or actual
-message delivery. One stable slot is created per Moonwitness company. See the [GoWA OpenAPI contract](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml)
+hosted gateway returned version `v9.6.0` from `/app/info` and `OK` from `/health`; on 25 October,
+the credentials configured in the primary checkout returned HTTP 200 from `/app/info`. The live
+contract test passed. This verifies gateway authentication and contract only, not a linked device
+or actual message delivery. One stable slot is created per Moonwitness company. See the [GoWA OpenAPI contract](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml)
 and [GoWA release notes](https://github.com/aldinokemal/go-whatsapp-web-multidevice).
 
 ## Production

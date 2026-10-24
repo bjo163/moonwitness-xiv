@@ -26,6 +26,7 @@ import { MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
 type Account = {
   id?: number;
   status: string;
+  direct_uploads?: boolean;
   phone_number?: string | null;
   qr_code?: string | null;
   last_error?: string | null;
@@ -2452,6 +2453,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
               <MessageComposer
                 key={activeConversation.id}
                 conversationId={activeConversation.id}
+                directUploads={account?.direct_uploads === true}
                 replyTo={replyingTo}
                 onCancelReply={() => setReplyingTo(null)}
                 sendOnEnter={inboxPreferences.sendOnEnter}
@@ -2482,12 +2484,14 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
 
 function MessageComposer({
   conversationId,
+  directUploads,
   replyTo,
   onCancelReply,
   sendOnEnter,
   onSendOnEnterChange,
 }: {
   conversationId: number;
+  directUploads: boolean;
   replyTo: Message | null;
   onCancelReply: () => void;
   sendOnEnter: boolean;
@@ -2536,25 +2540,53 @@ function MessageComposer({
         headers: { 'Idempotency-Key': idempotencyKey.current },
         body,
       } as const;
-      if (body instanceof FormData && abortController) {
+      const reportUploadProgress = (progress: { loadedBytes: number; percent: number | null }) => {
+        const sampledAt = performance.now();
+        const previous = previousUploadProgress.current;
+        const durationMs = Math.max(1, sampledAt - previous.sampledAt);
+        const bytesPerSecond =
+          Math.max(0, progress.loadedBytes - previous.loadedBytes) * (1000 / durationMs);
+        previousUploadProgress.current = { loadedBytes: progress.loadedBytes, sampledAt };
+        setUploadProgress({ percent: progress.percent, bytesPerSecond });
+      };
+      if (file && directUploads && abortController) {
+        const ticket = (
+          await client.request<{
+            data: {
+              upload_id: number;
+              url: string;
+              fields: Record<string, string>;
+            };
+          }>(`/whatsapp/conversations/${conversationId}/uploads`, {
+            method: 'POST',
+            body: {
+              file_name: file.name,
+              content_type: file.type || 'application/octet-stream',
+              size_bytes: file.size,
+            },
+          })
+        ).data;
+        await client.uploadPresignedPost(ticket.url, ticket.fields, file, {
+          signal: abortController.signal,
+          onUploadProgress: reportUploadProgress,
+        });
+        await client.request(`/whatsapp/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey.current },
+          body: {
+            content: draft.trim(),
+            upload_ticket_id: ticket.upload_id,
+            ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
+          },
+        });
+      } else if (body instanceof FormData && abortController) {
         await client.requestWithUploadProgress(
           `/whatsapp/conversations/${conversationId}/messages`,
           {
             ...requestOptions,
             body,
             signal: abortController.signal,
-            onUploadProgress: (progress) => {
-              const sampledAt = performance.now();
-              const previous = previousUploadProgress.current;
-              const durationMs = Math.max(1, sampledAt - previous.sampledAt);
-              const bytesPerSecond =
-                Math.max(0, progress.loadedBytes - previous.loadedBytes) * (1000 / durationMs);
-              previousUploadProgress.current = {
-                loadedBytes: progress.loadedBytes,
-                sampledAt,
-              };
-              setUploadProgress({ percent: progress.percent, bytesPerSecond });
-            },
+            onUploadProgress: reportUploadProgress,
           }
         );
       } else {

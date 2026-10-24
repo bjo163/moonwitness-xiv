@@ -51,9 +51,22 @@ export async function reconcileAttachments(options: AttachmentReconcileOptions) 
         if (typeof row.contact_avatar_key === 'string')
           yield { storageKey: row.contact_avatar_key };
       }
+      const now = new Date().toISOString();
+      const pendingUploadRows = await db('whatsapp_upload_tickets')
+        .where('expires_at', '>', now)
+        .select('storage_key');
+      for (const row of pendingUploadRows) {
+        if (typeof row.storage_key === 'string') yield { storageKey: row.storage_key };
+      }
     }
     try {
-      return await reconcileAttachmentStorage(storage, references(), options);
+      const result = await reconcileAttachmentStorage(storage, references(), options);
+      if (options.apply) {
+        await db('whatsapp_upload_tickets')
+          .where('expires_at', '<=', options.olderThan.toISOString())
+          .delete();
+      }
+      return result;
     } finally {
       if (storage instanceof S3AttachmentStorage) await closeS3AttachmentStorage(storage);
     }

@@ -102,6 +102,23 @@ export const WhatsappMessage = defineModel('whatsapp.message', {
   },
 });
 
+export const WhatsappUploadTicket = defineModel('whatsapp.upload.ticket', {
+  table: 'whatsapp_upload_tickets',
+  order: 'id asc',
+  unique: [['storage_key']],
+  fields: {
+    company: fields.belongsTo(Company, { required: true }),
+    conversation: fields.belongsTo(WhatsappConversation, { required: true }),
+    user_id: fields.integer({ required: true }),
+    storage_key: fields.string({ required: true, hidden: true, sensitive: true }),
+    file_name: fields.string({ required: true }),
+    content_type: fields.string({ required: true }),
+    size_bytes: fields.integer({ required: true }),
+    expires_at: fields.string({ required: true }),
+    consumed_message_id: fields.integer(),
+  },
+});
+
 export const WhatsappConversationRead = defineModel('whatsapp.conversation.read', {
   table: 'whatsapp_conversation_reads',
   order: 'id asc',

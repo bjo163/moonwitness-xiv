@@ -111,6 +111,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerDownloadBytes = Buffer.alloc(0);
   let providerDownloadDeclaredLength: number | null = null;
   let providerDownloadFileName = 'incoming.png';
+  const directUploadTypes = new Map<string, string>();
   let streamPutCount = 0;
   let streamGetCount = 0;
   let videoPosterCallCount = 0;
@@ -185,7 +186,26 @@ describe('WhatsApp API GoWA bridge', () => {
     },
   };
   let activeStorage: AttachmentStorage = memoryStorage;
-  const storage: AttachmentStorage = {
+  const storage: AttachmentStorage & {
+    createPresignedUpload: (
+      key: string,
+      contentType: string,
+      maxSizeBytes: number,
+      expiresInSeconds?: number
+    ) => Promise<{
+      url: string;
+      method: 'POST';
+      fields: Record<string, string>;
+      minSizeBytes: 1;
+      maxSizeBytes: number;
+      expiresInSeconds: number;
+    }>;
+    head: (key: string) => Promise<{
+      sizeBytes: number;
+      contentType: string | null;
+      checksum: string | null;
+    } | null>;
+  } = {
     async put(key, content) {
       if (failAttachmentPut) throw new Error('attachment storage unavailable');
       return activeStorage.put(key, content);
@@ -201,6 +221,32 @@ describe('WhatsApp API GoWA bridge', () => {
       activeStorage.getStream
         ? activeStorage.getStream(key)
         : activeStorage.get(key).then((content) => (content ? Readable.from([content]) : null)),
+    async createPresignedUpload(key, contentType, maxSizeBytes, expiresInSeconds = 300) {
+      directUploadTypes.set(key, contentType);
+      return {
+        url: 'https://storage.test/private-attachments',
+        method: 'POST',
+        fields: {
+          key,
+          'Content-Type': contentType,
+          Policy: 'test-policy',
+          'X-Amz-Signature': 'test-signature',
+        },
+        minSizeBytes: 1,
+        maxSizeBytes,
+        expiresInSeconds,
+      };
+    },
+    async head(key) {
+      const content = stored.get(key);
+      return content
+        ? {
+            sizeBytes: content.byteLength,
+            contentType: directUploadTypes.get(key) ?? null,
+            checksum: null,
+          }
+        : null;
+    },
     delete: (key) => activeStorage.delete(key),
     list: () => activeStorage.list(),
   };
@@ -298,6 +344,7 @@ describe('WhatsApp API GoWA bridge', () => {
     phoneCheckRequests = [];
     bufferGetCount = 0;
     stored.clear();
+    directUploadTypes.clear();
     activeStorage = memoryStorage;
     const mockFetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
@@ -522,6 +569,7 @@ describe('WhatsApp API GoWA bridge', () => {
     await app.close();
     for (const table of [
       'outbox_events',
+      'whatsapp_upload_tickets',
       'whatsapp_conversation_labels',
       'whatsapp_conversation_aliases',
       'whatsapp_conversation_reads',
@@ -4516,6 +4564,187 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(providerImageSendCount).toBe(0);
     const count = await db('whatsapp_messages').count({ count: '*' }).first();
     expect(Number(count?.count)).toBe(0);
+  });
+
+  it('issues conversation-scoped direct upload tickets and scans S3 objects before queueing', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Direct upload test',
+        is_group: false,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const headers = { authorization: 'Bearer test' };
+    const ticketResponse = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/uploads`,
+      headers,
+      payload: { file_name: 'direct.png', content_type: 'image/png', size_bytes: pngFixture().length },
+    });
+    expect(ticketResponse.statusCode).toBe(201);
+    const ticket = ticketResponse.json().data as {
+      upload_id: number;
+      url: string;
+      method: string;
+      fields: Record<string, string>;
+      size_bytes: number;
+    };
+    expect(ticket).toMatchObject({ method: 'POST', size_bytes: pngFixture().length });
+    expect(ticket.url).toBe('https://storage.test/private-attachments');
+
+    const uploadedKey = ticket.fields.key!;
+    stored.set(uploadedKey, pngFixture());
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/messages`,
+      headers: { ...headers, 'idempotency-key': `direct-upload-${randomUUID()}` },
+      payload: { content: 'captured directly', upload_ticket_id: ticket.upload_id },
+    });
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json().data).toMatchObject({
+      message_type: 'image',
+      media_scan_status: 'clean',
+      media_size_bytes: pngFixture().length,
+    });
+    const storedMessage = await db('whatsapp_messages')
+      .where({ id: sent.json().data.id })
+      .first('media_key');
+    expect(storedMessage.media_key).not.toBe(uploadedKey);
+    expect(stored.get(storedMessage.media_key)).toEqual(pngFixture());
+    const reused = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/messages`,
+      headers: { ...headers, 'idempotency-key': `direct-reuse-${randomUUID()}` },
+      payload: { content: 'second message', upload_ticket_id: ticket.upload_id },
+    });
+    expect(reused.statusCode).toBe(409);
+    stored.set(uploadedKey, Buffer.from('overwritten after signed URL replay'));
+    expect(stored.get(storedMessage.media_key)).toEqual(pngFixture());
+    expect(
+      await db('whatsapp_upload_tickets')
+        .where({ id: ticket.upload_id, company_id: companyId })
+        .first('consumed_message_id')
+    ).toMatchObject({ consumed_message_id: sent.json().data.id });
+    expect(providerImageSendCount).toBe(0);
+  });
+
+  it('prevents direct upload tickets from crossing companies, users, conversations, or expiry', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Direct upload scope test',
+        is_group: false,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const ticketResponse = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/uploads`,
+      headers: { authorization: 'Bearer test' },
+      payload: { file_name: 'direct.png', content_type: 'image/png', size_bytes: pngFixture().length },
+    });
+    const ticket = ticketResponse.json().data as { upload_id: number; fields: Record<string, string> };
+    stored.set(ticket.fields.key!, pngFixture());
+    const base = {
+      method: 'POST' as const,
+      url: `/whatsapp/conversations/${conversation.id}/messages`,
+      payload: { content: 'caption', upload_ticket_id: ticket.upload_id },
+    };
+    expect(
+      (await app.inject({
+        ...base,
+        headers: {
+          authorization: 'Bearer test',
+          'x-test-company': 'foreign',
+          'idempotency-key': `direct-tenant-${randomUUID()}`,
+        },
+      })).statusCode
+    ).toBe(404);
+    expect(
+      (await app.inject({
+        ...base,
+        headers: {
+          authorization: 'Bearer test',
+          'x-test-user-id': '2',
+          'idempotency-key': `direct-user-${randomUUID()}`,
+        },
+      })).statusCode
+    ).toBe(404);
+    await db('whatsapp_upload_tickets')
+      .where({ id: ticket.upload_id })
+      .update({ expires_at: new Date(Date.now() - 1000).toISOString() });
+    const expired = await app.inject({
+      ...base,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': `direct-expired-${randomUUID()}`,
+      },
+    });
+    expect(expired.statusCode).toBe(410);
+    expect(stored.has(ticket.fields.key!)).toBe(false);
+  });
+
+  it('rejects direct uploads with mismatched signatures or infected contents', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Direct upload scan test',
+        is_group: false,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const headers = { authorization: 'Bearer test' };
+    const createTicket = (contentType: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/whatsapp/conversations/${conversation.id}/uploads`,
+        headers,
+        payload: {
+          file_name: 'direct.png',
+          content_type: contentType,
+          size_bytes: pngFixture().length,
+        },
+      });
+    const mismatch = (await createTicket('image/jpeg')).json().data as {
+      upload_id: number;
+      fields: Record<string, string>;
+    };
+    stored.set(mismatch.fields.key!, pngFixture());
+    const mismatched = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/messages`,
+      headers: { ...headers, 'idempotency-key': `direct-mime-${randomUUID()}` },
+      payload: { content: '', upload_ticket_id: mismatch.upload_id },
+    });
+    expect(mismatched.statusCode).toBe(422);
+    expect(stored.has(mismatch.fields.key!)).toBe(false);
+
+    const infected = (await createTicket('image/png')).json().data as {
+      upload_id: number;
+      fields: Record<string, string>;
+    };
+    stored.set(infected.fields.key!, pngFixture());
+    scanAsInfected = true;
+    const infectedResponse = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${conversation.id}/messages`,
+      headers: { ...headers, 'idempotency-key': `direct-infected-${randomUUID()}` },
+      payload: { content: '', upload_ticket_id: infected.upload_id },
+    });
+    expect(infectedResponse.statusCode).toBe(422);
+    expect(infectedResponse.json().error).toContain('malware');
+    expect(stored.has(infected.fields.key!)).toBe(false);
+    expect(await db('whatsapp_messages').where({ conversation_id: conversation.id })).toHaveLength(0);
   });
 
   it('rejects uploaded content when its bytes do not match the declared MIME type', async () => {

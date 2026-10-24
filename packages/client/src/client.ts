@@ -12,6 +12,7 @@ import {
   type RequestOptions,
   type DownloadProgressOptions,
   type UploadProgressOptions,
+  type UploadProgress,
 } from './repository.js';
 import type {
   AuthTokens,
@@ -497,6 +498,72 @@ export class MoonWitnessClient implements HttpClient {
   async requestWithUploadProgress<T>(path: string, options: UploadProgressOptions): Promise<T> {
     await this.hydrated;
     return this.uploadWithProgress<T>(path, options, false);
+  }
+
+  /** Sends a browser FormData POST directly to a short-lived storage policy without API credentials. */
+  async uploadPresignedPost(
+    target: string,
+    fields: Readonly<Record<string, string>>,
+    file: File,
+    options: { signal?: AbortSignal; onUploadProgress: (progress: UploadProgress) => void }
+  ): Promise<void> {
+    if (typeof XMLHttpRequest === 'undefined' || typeof FormData === 'undefined') {
+      throw new ApiError('Direct upload is unavailable in this environment', 0, 'UploadError');
+    }
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' });
+    }
+    let url: URL;
+    try {
+      url = new URL(target);
+    } catch {
+      throw new ApiError('Storage upload URL is invalid', 0, 'UploadError');
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new ApiError('Storage upload URL is invalid', 0, 'UploadError');
+    }
+    const body = new FormData();
+    for (const [name, value] of Object.entries(fields)) body.append(name, value);
+    body.append('file', file, file.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url.toString());
+    xhr.upload.addEventListener('progress', (event) => {
+      options.onUploadProgress({
+        loadedBytes: event.loaded,
+        totalBytes: event.lengthComputable ? event.total : null,
+        percent: event.lengthComputable
+          ? Math.min(100, Math.round((event.loaded / Math.max(event.total, 1)) * 100))
+          : null,
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+      const onAbort = () => xhr.abort();
+      xhr.onload = () => {
+        cleanup();
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new ApiError('Storage rejected the media upload', xhr.status, 'UploadError'));
+      };
+      xhr.onerror = () => {
+        cleanup();
+        reject(new ApiError('Storage upload failed. Check the storage CORS settings.', 0, 'NetworkError'));
+      };
+      xhr.onabort = () => {
+        cleanup();
+        reject(Object.assign(new Error('Upload was cancelled'), { name: 'AbortError' }));
+      };
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        xhr.send(body);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
   }
 
   /** Authenticated blob download with browser progress and cancellation support. */

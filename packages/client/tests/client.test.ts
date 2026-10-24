@@ -38,6 +38,65 @@ function makeClient(
 }
 
 describe('MoonWitnessClient', () => {
+  it('uploads presigned POSTs directly to storage without API authentication headers', async () => {
+    const requests: Array<{ method: string; url: string; headers: Record<string, string>; body: FormData }> = [];
+    class FakeXMLHttpRequest extends EventTarget {
+      upload = new EventTarget();
+      status = 204;
+      headers: Record<string, string> = {};
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      method = '';
+      url = '';
+      open(method: string, url: string) {
+        this.method = method;
+        this.url = url;
+      }
+      setRequestHeader(name: string, value: string) {
+        this.headers[name] = value;
+      }
+      send(body: FormData) {
+        requests.push({ method: this.method, url: this.url, headers: this.headers, body });
+        const progress = new Event('progress');
+        Object.defineProperties(progress, {
+          loaded: { value: 5 },
+          total: { value: 10 },
+          lengthComputable: { value: true },
+        });
+        this.upload.dispatchEvent(progress);
+        this.onload?.();
+      }
+      abort() {
+        this.onabort?.();
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest);
+    try {
+      const { client } = makeClient((url) =>
+        url.pathname === '/auth/login' ? json(tokens('private-api-token')) : json({})
+      );
+      await client.login({ login: 'alice', password: 'pw' });
+      const progress: number[] = [];
+      await client.uploadPresignedPost(
+        'https://s3.test/private-attachments',
+        { key: 'ticket-key', Policy: 'short-lived-policy', 'X-Amz-Signature': 'signature' },
+        new File(['image'], 'image.png', { type: 'image/png' }),
+        { onUploadProgress: (event) => progress.push(event.percent ?? 0) }
+      );
+      expect(requests[0]).toMatchObject({
+        method: 'POST',
+        url: 'https://s3.test/private-attachments',
+        headers: {},
+      });
+      expect(requests[0]?.body.get('key')).toBe('ticket-key');
+      expect(requests[0]?.body.get('file')).toBeInstanceOf(File);
+      expect(progress).toEqual([50]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('reports authenticated multipart upload progress without overriding its boundary', async () => {
     const requests: Array<{ headers: Record<string, string>; body: FormData }> = [];
     class FakeXMLHttpRequest extends EventTarget {

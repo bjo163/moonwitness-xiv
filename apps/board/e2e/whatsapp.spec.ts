@@ -1124,19 +1124,25 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page).toHaveURL(/\/board$/u);
+  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
+  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
   let status = 'disconnected';
-  await page.route('**/whatsapp/account', (route) =>
-    route.fulfill({
+  let directUploads = false;
+  let accountRequests = 0;
+  await page.route('**/whatsapp/account', (route) => {
+    accountRequests++;
+    return route.fulfill({
       json: {
         success: true,
         data: {
           status,
+          direct_uploads: directUploads,
           qr_code: status === 'qr' ? 'mock-qr-for-test' : null,
           permissions: { manage: true, createConversation: true, send: true, manageMessages: true },
         },
       },
-    })
-  );
+    });
+  });
   await page.route('**/whatsapp/connect', (route) => {
     status = 'qr';
     return route.fulfill({ status: 202, json: { success: true } });
@@ -1145,6 +1151,11 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     status = 'disconnected';
     return route.fulfill({ json: { success: true } });
   });
+  await page.route('**/whatsapp/contacts/check', (route) =>
+    route.fulfill({
+      json: { success: true, data: { phone: '+6281234567890', is_on_whatsapp: true } },
+    })
+  );
   let createdChat = false;
   const contact = {
     id: 12,
@@ -1155,11 +1166,49 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   };
   await page.route('**/whatsapp/conversations*', (route) => {
     if (route.request().method() === 'POST') {
-      expect(route.request().postDataJSON()).toEqual({ phone: '6281234567890' });
+      expect(route.request().postDataJSON()).toEqual({ phone: '+6281234567890' });
       createdChat = true;
       return route.fulfill({ status: 201, json: { success: true, data: contact } });
     }
     return route.fulfill({ json: { success: true, data: createdChat ? [contact] : [] } });
+  });
+  await page.route('**/whatsapp/conversations/12/uploads**', (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        success: true,
+        data: {
+          upload_id: 34,
+          url: 'https://storage.test/private-attachments',
+          method: 'POST',
+          fields: { key: 'signed-key', Policy: 'signed-policy', 'X-Amz-Signature': 'signed' },
+        },
+      },
+    })
+  );
+  let signedStorageUpload = 0;
+  await page.route('https://storage.test/**', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          'access-control-allow-origin': 'http://127.0.0.1:5175',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        },
+      });
+    }
+    signedStorageUpload++;
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().headers().authorization).toBeUndefined();
+    const payload = route.request().postDataBuffer();
+    expect(payload?.toString('latin1')).toContain('name="key"');
+    expect(payload?.toString('latin1')).toContain('signed-key');
+    expect(payload?.includes(Buffer.from('test attachment'))).toBe(true);
+    await route.fulfill({
+      status: 204,
+      headers: { 'access-control-allow-origin': 'http://127.0.0.1:5175' },
+    });
   });
   let fail = false,
     queued = false,
@@ -1174,13 +1223,19 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
         });
       uploadAttempts += 1;
       const contentType = route.request().headers()['content-type'] ?? '';
-      const payload = route.request().postDataBuffer();
       expect(route.request().headers()['idempotency-key']).toBeTruthy();
-      expect(contentType).toContain('multipart/form-data; boundary=');
-      expect(payload?.toString('latin1')).toContain('name="content"');
-      expect(payload?.toString('latin1')).toContain('Test caption');
-      expect(payload?.toString('latin1')).toContain('filename="sample.txt"');
-      expect(payload?.includes(Buffer.from('test attachment'))).toBe(true);
+      if (contentType.includes('multipart/form-data')) {
+        const payload = route.request().postDataBuffer();
+        expect(payload?.toString('latin1')).toContain('name="content"');
+        expect(payload?.toString('latin1')).toContain('Test caption');
+        expect(payload?.toString('latin1')).toContain('filename="sample.txt"');
+        expect(payload?.includes(Buffer.from('test attachment'))).toBe(true);
+      } else {
+        expect(route.request().postDataJSON()).toMatchObject({
+          content: 'Direct caption',
+          upload_ticket_id: 34,
+        });
+      }
       uploadKeys.push(route.request().headers()['idempotency-key'] ?? '');
       if (uploadAttempts === 1) await new Promise((resolve) => setTimeout(resolve, 1_500));
       else await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1224,9 +1279,12 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await expect(page.getByText('QR code expired')).toBeVisible();
   await page.getByRole('button', { name: 'Refresh QR code' }).click();
   await expect(page.getByAltText('WhatsApp connection QR code')).toBeVisible();
+  const accountPollBeforeConnect = accountRequests;
   status = 'connected';
-  await page.reload();
+  await expect.poll(() => accountRequests).toBeGreaterThan(accountPollBeforeConnect);
   await page.getByLabel('Phone number with country code').fill('6281234567890');
+  await page.getByRole('button', { name: 'Check number', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'is on WhatsApp' })).toBeVisible();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await page.getByPlaceholder('Write a message…').fill('Test caption');
   await page.getByLabel('Attach media', { exact: true }).setInputFiles({
@@ -1250,6 +1308,18 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   expect(uploadKeys).toHaveLength(2);
   expect(uploadKeys[1]).toBe(uploadKeys[0]);
   await expect(page.locator('article').getByText('sent')).toBeVisible();
+  const accountPollBeforeDirectUpload = accountRequests;
+  directUploads = true;
+  await expect.poll(() => accountRequests).toBeGreaterThan(accountPollBeforeDirectUpload);
+  await page.getByPlaceholder('Write a message…').fill('Direct caption');
+  await page.getByLabel('Attach media', { exact: true }).setInputFiles({
+    name: 'sample.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('test attachment'),
+  });
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByPlaceholder('Write a message…')).toHaveValue('');
+  expect(signedStorageUpload).toBe(1);
   fail = true;
   await page.getByPlaceholder('Write a message…').fill('Keep this draft');
   await page.getByRole('button', { name: 'Send message' }).click();
