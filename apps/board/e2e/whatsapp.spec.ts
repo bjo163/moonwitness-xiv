@@ -138,6 +138,8 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
   let editedMessageContent = 'A sent reply';
   let messageDeleted = false;
+  let holdMessageResponse = false;
+  let releaseMessageResponse: (() => void) | null = null;
   const forwardDestinationQueries: Array<{ archived: string | null; offset: string | null }> = [];
   await page.route('**/whatsapp/conversations*', (route) => {
     const url = new URL(route.request().url());
@@ -388,6 +390,12 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
         json: { success: true, data: { id: 50 + sentMessages.length, status: 'queued' } },
       });
       return;
+    }
+    if (holdMessageResponse) {
+      holdMessageResponse = false;
+      await new Promise<void>((resolve) => {
+        releaseMessageResponse = resolve;
+      });
     }
     const url = new URL(route.request().url());
     if (Number(url.searchParams.get('offset')) >= 50) {
@@ -682,12 +690,16 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   );
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  holdMessageResponse = true;
   await page.goto('/board/whatsapp');
   await expect(
     page.getByRole('status').filter({ hasText: 'Live callbacks are not configured.' })
   ).toBeVisible();
   await expect(page.getByText('+6281234567890')).toBeVisible();
   await page.getByRole('button', { name: /Project group/u }).click();
+  await expect(page.getByLabel('Loading messages')).toBeVisible();
+  releaseMessageResponse?.();
+  releaseMessageResponse = null;
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
