@@ -40,10 +40,23 @@ instance. The account endpoint exposes only a boolean `webhook_configured`; the 
 callbacks are disabled and the inbox relies on periodic refresh. It never returns the webhook
 secret.
 
-GoWA owns WhatsApp credentials and chat history in its own storage on the hosted deployment. The
-Moonwitness database stores the company-to-device mapping and a company-scoped inbox cache. API
-media downloads are cached in `whatsapp_attachments`. Do not delete that volume while cached
-attachments are still needed.
+GoWA owns WhatsApp credentials and provider chat history in its own storage on the hosted
+deployment. The Moonwitness database stores the company-to-device mapping and a company-scoped
+inbox cache. Message media, contact avatars, and Status media use the shared attachment storage
+configured by `ATTACHMENT_STORAGE_DRIVER`; their object keys are referenced from PostgreSQL, while
+the bytes are not stored in the database.
+
+With `ATTACHMENT_STORAGE_DRIVER=local`, bytes live under `ATTACHMENT_STORAGE_DIR`. Compose
+development defaults to this driver and mounts the persistent `whatsapp_dev_attachments` volume at
+`/var/lib/moonwitness/attachments`, shared by the API and outbox worker. With
+`ATTACHMENT_STORAGE_DRIVER=s3`, bytes live in the configured private S3-compatible bucket;
+production Compose defaults to Garage at `s3.moonwitness.biz.id`. The production
+`whatsapp_attachments` volume is a read-only legacy local store for rollback or unmigrated objects;
+new S3 objects are not written there, and the API does not automatically fall back between stores.
+Do not remove either the active bucket or any local volume that still contains referenced objects.
+RustFS has passed generic S3 adapter tests, but it is not the configured production endpoint. See
+the [attachment storage operations guide](./attachment-storage.md) for cutover, retention, backup,
+and restore procedures.
 
 `GET /whatsapp/readyz` probes the GoWA `/health` endpoint with a five-second timeout and returns
 200 when reachable or 503 when unavailable. This check is separate from `/readyz`, so a GoWA

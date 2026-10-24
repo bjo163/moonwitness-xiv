@@ -194,7 +194,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-36** Compatibility matrix versi GoWA/API dan prosedur rollback.
 - [ ] **P4-37** Backup sebelum upgrade GoWA dan tes bahwa upgrade tidak merusak linked session.
 - [ ] **P4-38** Runbook QR tidak tampil, 401 Basic Auth, device hilang, storage penuh, dan logout.
-- [ ] **P4-39** Samakan dokumentasi cache media dengan pilihan ATTACHMENT_STORAGE_DRIVER local/S3-RustFS.
+- [x] **P4-39** Runbook WhatsApp menjelaskan bytes media/avatar/Status berada di attachment storage terpisah dari metadata PostgreSQL; mencatat volume lokal `whatsapp_dev_attachments` pada development, bucket Garage S3 sebagai default production, volume `whatsapp_attachments` hanya untuk data local legacy/rollback, dan tidak ada fallback otomatis antar-driver. RustFS disebut sebagai adapter S3-compatible yang pernah diuji, bukan endpoint production aktif. Prosedur rinci ditautkan ke `docs/operations/attachment-storage.md`.
 - [ ] **P4-40** Release gate berisi mock test, PostgreSQL test, E2E Board, GoWA contract test, QR, reconnect, dan pesan nyata.
 
 ## Gate penyelesaian
