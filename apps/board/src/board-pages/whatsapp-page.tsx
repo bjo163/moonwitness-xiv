@@ -2324,7 +2324,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       </span>
                     )}
                   </span>
-                  <span className="truncate text-sm text-ink-faint">
+                  <span
+                    className={`truncate text-sm ${activeConversation?.id === conversation.id ? 'text-ink' : 'text-ink-faint'}`}
+                  >
                     {conversation.last_message}
                   </span>
                   {conversation.labels?.length ? (
@@ -2811,7 +2813,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                   >
                     {activeConversation?.is_group &&
                       !message.provider_type?.startsWith('group_event_') && (
-                        <p className="mb-1 font-mono text-[10px] text-ink-faint">
+                        <p
+                          className={`mb-1 font-mono text-[10px] ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                        >
                           {message.direction === 'outbound'
                             ? 'You'
                             : message.sender_display_name?.trim() ||
@@ -2820,7 +2824,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         </p>
                       )}
                     <p
-                      className={`whitespace-pre-wrap break-words text-sm ${message.is_deleted || message.provider_type ? 'italic text-ink-faint' : ''}`}
+                      className={`whitespace-pre-wrap break-words text-sm ${message.is_deleted || message.provider_type ? `italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}` : ''}`}
                     >
                       {message.is_deleted
                         ? 'This message was deleted'
@@ -2831,16 +2835,24 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                             : message.content}
                     </p>
                     {message.is_edited && !message.is_deleted && (
-                      <span className="ml-2 text-[10px] italic text-ink-faint">Edited</span>
+                      <span
+                        className={`ml-2 text-[10px] italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                      >
+                        Edited
+                      </span>
                     )}
                     {message.is_forwarded && (
-                      <p className="mb-1 font-mono text-[10px] italic text-ink-faint">Forwarded</p>
+                      <p
+                        className={`mb-1 font-mono text-[10px] italic ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                      >
+                        Forwarded
+                      </p>
                     )}
                     {message.reply_to && (
                       <Button
                         type="button"
                         variant="link"
-                        className="mb-2 block h-auto w-full border-l-2 border-magenta pl-2 text-left text-xs text-ink-faint hover:text-ink"
+                        className={`mb-2 block h-auto w-full border-l-2 border-magenta pl-2 text-left text-xs ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'} hover:text-ink`}
                         onClick={() => void jumpToQuotedMessage(message)}
                         aria-label="Jump to quoted message"
                       >
@@ -2982,7 +2994,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                           </Button>
                         </>
                       )}
-                    <p className="mt-2 flex flex-wrap justify-end gap-x-2 text-right font-mono text-[10px] text-ink-faint">
+                    <p
+                      className={`mt-2 flex flex-wrap justify-end gap-x-2 text-right font-mono text-[10px] ${message.direction === 'outbound' ? 'text-ink' : 'text-ink-faint'}`}
+                    >
                       <time
                         dateTime={message.create_date}
                         aria-label={`Message time: ${formatDateTime(message.create_date, 'dateTime')}`}
@@ -2992,7 +3006,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       <span>{messageStatusLabel[message.status] ?? 'Status unavailable'}</span>
                     </p>
                     {message.last_error && (
-                      <p role="status" className="mt-1 text-xs text-red-700">
+                      <p role="status" className="mt-1 text-xs text-red-800">
                         {message.last_error}
                       </p>
                     )}

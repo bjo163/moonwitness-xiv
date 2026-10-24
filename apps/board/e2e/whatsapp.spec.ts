@@ -1,3 +1,4 @@
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { E2E_SUPERADMIN_PASSWORD } from './constants.js';
 
@@ -731,6 +732,19 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
+  const accessibility = await new AxeBuilder({ page })
+    .include('main')
+    .exclude('iframe')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(
+    accessibility.violations.map(({ id, impact, help, nodes }) => ({
+      id,
+      impact,
+      help,
+      nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+    }))
+  ).toEqual([]);
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
   await page.getByRole('button', { name: '@Rani Finance' }).click();
