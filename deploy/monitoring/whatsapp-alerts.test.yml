@@ -1,0 +1,109 @@
+rule_files:
+  - whatsapp-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="moonwitness-whatsapp-readyz", instance="api:3000"}'
+        values: '0+0x8'
+      - series: 'probe_success{job="moonwitness-api-readyz", instance="api:3000"}'
+        values: '0+0x8'
+      - series: 'moonwitness_whatsapp_accounts{instance="api:3000", status="disconnected"}'
+        values: '1+0x8'
+      - series: 'moonwitness_whatsapp_accounts{instance="api:3000", status="qr_expired"}'
+        values: '1+0x8'
+      - series: 'moonwitness_whatsapp_outbox_oldest_active_seconds{instance="api:3000", kind="message"}'
+        values: '500+0x8'
+      - series: 'moonwitness_whatsapp_outbox_events{instance="api:3000", kind="message", status="pending"}'
+        values: '1+0x8'
+      - series: 'moonwitness_whatsapp_outbox_events{instance="api:3000", kind="status", status="dead"}'
+        values: '1+0x8'
+      - series: 'moonwitness_whatsapp_database_metrics_available{instance="api:3000"}'
+        values: '0+0x8'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: WhatsAppGatewayUnavailable
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              job: moonwitness-whatsapp-readyz
+              severity: critical
+              component: whatsapp
+            exp_annotations:
+              summary: WhatsApp GoWA gateway is unavailable
+              description: The authenticated GoWA readiness check has failed for at least two minutes.
+      - eval_time: 6m
+        alertname: WhatsAppAccountDisconnected
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              severity: warning
+              component: whatsapp
+            exp_annotations:
+              summary: A company WhatsApp account is disconnected
+              description: At least one configured account has remained disconnected for five minutes.
+      - eval_time: 6m
+        alertname: WhatsAppPairingQrExpired
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              severity: warning
+              component: whatsapp
+            exp_annotations:
+              summary: A WhatsApp pairing QR code expired
+              description: Open the affected company account in Board and request a fresh QR code.
+      - eval_time: 6m
+        alertname: WhatsAppOutboxStalled
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              kind: message
+              severity: critical
+              component: whatsapp
+            exp_annotations:
+              summary: WhatsApp outbox work is stalled
+              description: The oldest active WhatsApp message event has waited over five minutes.
+      - eval_time: 6m
+        alertname: WhatsAppOutboxDeadEvents
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              kind: status
+              severity: warning
+              component: whatsapp
+            exp_annotations:
+              summary: WhatsApp outbox has dead events
+              description: Review failed message or Status delivery records and their safe error reason in Board.
+      - eval_time: 6m
+        alertname: WhatsAppAttachmentReadinessFailed
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              job: moonwitness-api-readyz
+              severity: critical
+              component: whatsapp
+            exp_annotations:
+              summary: API database or attachment storage readiness failed
+              description: The API /readyz dependency check failed; inspect PostgreSQL and the configured attachment store.
+      - eval_time: 6m
+        alertname: WhatsAppMetricsDatabaseUnavailable
+        exp_alerts:
+          - exp_labels:
+              instance: api:3000
+              severity: warning
+              component: whatsapp
+            exp_annotations:
+              summary: WhatsApp operational metrics could not read the database
+              description: The authenticated metrics endpoint is reachable but its database aggregates are unavailable.
+  - interval: 1m
+    input_series:
+      - series: 'moonwitness_whatsapp_outbox_oldest_active_seconds{instance="api:3000", kind="message"}'
+        values: '500+0x8'
+      - series: 'moonwitness_whatsapp_outbox_events{instance="api:3000", kind="message", status="pending"}'
+        values: '0+0x8'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: WhatsAppOutboxStalled
+        exp_alerts: []

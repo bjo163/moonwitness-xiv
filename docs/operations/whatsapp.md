@@ -252,8 +252,16 @@ actual API origin. The WhatsApp readiness probe validates GoWA reachability and 
 The API readiness probe checks PostgreSQL and attachment storage. Local storage readiness writes,
 syncs, and removes a one-byte probe file; S3 readiness checks the configured bucket. A disconnected
 account alert also fires for intentionally disconnected accounts, so silence it during planned
-unpairing. Rule definitions are not active until loaded and notification routing is tested in the
-deployment.
+unpairing. The rules are checked with the pinned Prometheus 2.55.1 `promtool`; the test fixture
+asserts all seven alerts fire on matching metrics and that stale outbox age without active events
+does not page:
+
+```powershell
+docker run --rm --mount "type=bind,source=$($PWD.Path),target=/src,readonly" --entrypoint=/bin/promtool prom/prometheus:v2.55.1 check rules /src/deploy/monitoring/whatsapp-alerts.yml
+docker run --rm --mount "type=bind,source=$($PWD.Path),target=/src,readonly" --entrypoint=/bin/promtool prom/prometheus:v2.55.1 test rules /src/deploy/monitoring/whatsapp-alerts.test.yml
+```
+
+Rule definitions are not active until loaded and notification routing is tested in the deployment.
 
 ## Verification
 
