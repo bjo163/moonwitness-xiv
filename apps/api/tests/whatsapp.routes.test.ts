@@ -1049,6 +1049,57 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(foreign.statusCode).toBe(404);
   });
 
+  it('caps large group snapshots and preserves JID, role, and renamed group metadata', async () => {
+    const [account] = await db('whatsapp_accounts')
+      .insert({
+        company_id: companyId,
+        status: 'connected',
+        gateway_device_id: `moonwitness-company-${companyId}`,
+      })
+      .returning(['id']);
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '120363000000019@g.us',
+        name: 'Old group identity',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    providerGroupInfo = {
+      name: 'Renamed large group',
+      topic: 'Large group topic',
+      participant_count: 2401,
+    };
+    providerGroupParticipants = Array.from({ length: 2401 }, (_, index) => ({
+      jid: index === 1 ? '99112233@lid' : `${628000000000 + index}@s.whatsapp.net`,
+      phone_number: index === 1 ? undefined : `${628000000000 + index}@s.whatsapp.net`,
+      display_name: `Member ${index + 1}`,
+      is_admin: index === 0,
+      is_super_admin: index === 0,
+    }));
+    const response = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/conversations/${group.id}/group`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      name: 'Renamed large group',
+      participant_count: 2401,
+      stale: false,
+    });
+    expect(response.json().data.participants.slice(0, 2)).toMatchObject([
+      { jid: '628000000000@s.whatsapp.net', is_admin: true, is_super_admin: true },
+      { jid: '99112233@lid', phone_number: null, is_admin: false },
+    ]);
+    expect(response.json().data.participants).toHaveLength(2000);
+    const saved = await db('whatsapp_conversations').where({ id: group.id }).first();
+    expect(saved.name).toBe('Renamed large group');
+    expect(JSON.parse(saved.group_participants_json)).toHaveLength(2000);
+  });
+
   it('exposes only supported group settings and updates them within the active company', async () => {
     const [account] = await db('whatsapp_accounts')
       .insert({
@@ -5103,6 +5154,27 @@ describe('WhatsApp API GoWA bridge', () => {
       .first();
     expect(Number(groupConversation.is_group)).toBe(1);
     expect(groupConversation.unread_count).toBe(1);
+    await db('whatsapp_conversations')
+      .where({ company_id: companyId, id: groupConversation.id })
+      .update({
+        group_participants_json: JSON.stringify([
+          {
+            jid: '628222222222@s.whatsapp.net',
+            phone_number: '628222222222@s.whatsapp.net',
+            display_name: 'Group admin',
+            is_admin: true,
+            is_super_admin: true,
+          },
+          {
+            jid: '99112233@lid',
+            phone_number: null,
+            display_name: 'Group member',
+            is_admin: false,
+            is_super_admin: false,
+          },
+        ]),
+        group_metadata_synced_at: new Date().toISOString(),
+      });
     expect(groupMessage).toMatchObject({
       account_id: accountId,
       conversation_id: groupConversation.id,
@@ -5128,6 +5200,69 @@ describe('WhatsApp API GoWA bridge', () => {
         sender_display_name: 'Group sender',
         sender_jid: '628222222222@s.whatsapp.net',
       })
+    );
+    expect(
+      (
+        await postMessage({
+          id: 'webhook-group-lid-sender-1',
+          chat_id: '120363123456789@g.us',
+          from: '99112233@lid',
+          from_lid: '99112233@lid',
+          sender_display_name: 'LID group participant',
+          timestamp: '2026-10-24T10:01:10Z',
+          is_from_me: false,
+          body: 'Message from a participant using LID identity',
+        })
+      ).statusCode
+    ).toBe(204);
+    const lidGroupMessage = await db('whatsapp_messages')
+      .where({ company_id: companyId, external_id: 'webhook-group-lid-sender-1' })
+      .first();
+    expect(lidGroupMessage).toMatchObject({
+      conversation_id: groupConversation.id,
+      sender_jid: '99112233@lid',
+      sender_display_name: 'LID group participant',
+      content: 'Message from a participant using LID identity',
+      status: 'received',
+    });
+    const adminAndMemberMessages = await Promise.all([
+      postMessage({
+        id: 'webhook-group-admin-message',
+        chat_id: '120363123456789@g.us',
+        from: '628222222222@s.whatsapp.net',
+        sender_display_name: 'Group admin',
+        timestamp: '2026-10-24T10:01:20Z',
+        is_from_me: false,
+        body: 'Message from group admin',
+      }),
+      postMessage({
+        id: 'webhook-group-member-message',
+        chat_id: '120363123456789@g.us',
+        from: '99112233@lid',
+        from_lid: '99112233@lid',
+        sender_display_name: 'Group member',
+        timestamp: '2026-10-24T10:01:21Z',
+        is_from_me: false,
+        body: 'Message from non-admin group member',
+      }),
+    ]);
+    expect(adminAndMemberMessages.map((response) => response.statusCode)).toEqual([204, 204]);
+    const storedRoleMessages = await db('whatsapp_messages')
+      .where({ company_id: companyId })
+      .whereIn('external_id', ['webhook-group-admin-message', 'webhook-group-member-message']);
+    expect(storedRoleMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sender_jid: '628222222222@s.whatsapp.net',
+          sender_display_name: 'Group admin',
+          content: 'Message from group admin',
+        }),
+        expect.objectContaining({
+          sender_jid: '99112233@lid',
+          sender_display_name: 'Group member',
+          content: 'Message from non-admin group member',
+        }),
+      ])
     );
     expect(
       await db('whatsapp_conversation_aliases').where({
