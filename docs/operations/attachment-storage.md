@@ -141,6 +141,7 @@ pnpm attachments:reconcile -- --apply --older-than=2026-10-01T00:00:00.000Z --li
 - Cadangkan bucket dan database. Pemulihan yang konsisten memerlukan snapshot metadata serta objek yang saling cocok.
 - Jadwalkan backup pada jendela maintenance atau gunakan snapshot konsisten: ekspor PostgreSQL (`pg_dump --format=custom`) dan salin bucket ke lokasi/bucket backup terpisah (`aws s3 sync` dengan endpoint S3 aktif). Simpan manifest waktu, ukuran, dan SHA-256 di luar bucket sumber.
 - Lakukan restore drill ke database dan object store terisolasi. Pulihkan database dengan `pg_restore` ke database baru, pulihkan objek ke bucket uji, lalu jalankan `attachments:reconcile` dan cocokkan checksum sampel. Jangan menguji pemulihan dengan menimpa database/bucket aktif.
+- Adapter acceptance menguji restore byte local dari salinan filesystem independen. Tes S3 opt-in juga menguji restore key acak pada bucket provider yang dikonfigurasi dan menghapus objek uji setelahnya. Kedua tes ini belum membuktikan satu snapshot database dan bucket dipulihkan bersama; itu tetap wajib dilakukan di lingkungan terisolasi sebelum cutover.
 - Jangan hapus volume lokal sampai cutover diterima, backup tervalidasi, dan jendela rollback berakhir.
 
 ### Bukti penerimaan sebelum cutover

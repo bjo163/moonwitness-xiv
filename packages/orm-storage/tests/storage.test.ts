@@ -1,4 +1,13 @@
-import { mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -47,6 +56,20 @@ describe('LocalFileAttachmentStorage', () => {
     const listed: string[] = [];
     for await (const object of storage.list()) listed.push(object.key);
     expect(listed).toEqual([keyA]);
+  });
+
+  it('restores local attachment bytes from an independent backup copy', async () => {
+    const storage = await storageFixture();
+    const backupDirectory = await mkdtemp(path.join(tmpdir(), 'moonwitness-storage-backup-'));
+    directories.push(backupDirectory);
+    const content = Buffer.from('local attachment backup acceptance');
+    await storage.put(keyA, content);
+    await copyFile(path.join(storage.directory, keyA), path.join(backupDirectory, keyA));
+
+    await storage.delete(keyA);
+    await expect(storage.get(keyA)).resolves.toBeNull();
+    await copyFile(path.join(backupDirectory, keyA), path.join(storage.directory, keyA));
+    await expect(storage.get(keyA)).resolves.toEqual(content);
   });
 
   it('stores and reads bounded attachment streams without materializing a Buffer', async () => {

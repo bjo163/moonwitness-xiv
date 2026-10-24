@@ -73,9 +73,9 @@ describe('S3AttachmentStorage', () => {
       await expect(storage.createPresignedUpload(keyA, 'image/png', 1024, 10)).rejects.toThrow(
         'between 30 and 900 seconds'
       );
-      await expect(storage.createPresignedUpload(keyA, 'image/png', MAX_ATTACHMENT_BYTES + 1)).rejects.toThrow(
-        'configured storage size limit'
-      );
+      await expect(
+        storage.createPresignedUpload(keyA, 'image/png', MAX_ATTACHMENT_BYTES + 1)
+      ).rejects.toThrow('configured storage size limit');
     } finally {
       await closeS3AttachmentStorage(storage);
     }
@@ -84,7 +84,11 @@ describe('S3AttachmentStorage', () => {
   it('reads uploaded object metadata without downloading the body', async () => {
     const { storage, sendMock } = provider(async (command) => {
       if (command instanceof HeadObjectCommand)
-        return { ContentLength: 68, ContentType: 'image/png', Metadata: { sha256: 'a'.repeat(64) } };
+        return {
+          ContentLength: 68,
+          ContentType: 'image/png',
+          Metadata: { sha256: 'a'.repeat(64) },
+        };
       throw new Error('Unexpected S3 command');
     });
     await expect(storage.head(keyA)).resolves.toEqual({
@@ -113,7 +117,9 @@ describe('S3AttachmentStorage', () => {
       try {
         await storage.checkReady();
         await storage.put(key, bytes);
-        await storage.put(backupKey, bytes);
+        const originalBytes = await storage.get(key);
+        if (!originalBytes) throw new Error('Expected the uploaded attachment to exist');
+        await storage.put(backupKey, originalBytes);
 
         await storage.delete(key);
         await expect(storage.get(key)).resolves.toBeNull();
@@ -122,9 +128,14 @@ describe('S3AttachmentStorage', () => {
         await storage.put(key, backedUpBytes!);
         await expect(storage.get(key)).resolves.toEqual(bytes);
       } finally {
-        await storage.delete(key).catch(() => undefined);
-        await storage.delete(backupKey).catch(() => undefined);
-        await closeS3AttachmentStorage(storage);
+        try {
+          await storage.delete(key);
+          await storage.delete(backupKey);
+          await expect(storage.get(key)).resolves.toBeNull();
+          await expect(storage.get(backupKey)).resolves.toBeNull();
+        } finally {
+          await closeS3AttachmentStorage(storage);
+        }
       }
     },
     30_000
