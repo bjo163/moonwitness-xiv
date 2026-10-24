@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_SUPERADMIN_PASSWORD } from './constants.js';
 
 test('company WhatsApp inbox displays chats and sends a reply', async ({ page }) => {
+  test.setTimeout(90_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -126,6 +127,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     await route.fulfill({ json: { success: true, data: body } });
   });
   let failSearchConversationLoad = false;
+  let failInboxRefresh = false;
   let createdGroup: Record<string, unknown> | null = null;
   const groupCreateRequests: Array<{ key: string; body: Record<string, unknown> }> = [];
   const groupParticipantActions: Array<{
@@ -150,6 +152,13 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       });
     }
     if (failSearchConversationLoad && url.searchParams.get('search') === 'trigger-error') {
+      return route.fulfill({ status: 503, json: { success: false, error: 'temporary failure' } });
+    }
+    if (
+      failInboxRefresh &&
+      url.pathname === '/whatsapp/conversations' &&
+      !url.searchParams.has('search')
+    ) {
       return route.fulfill({ status: 503, json: { success: false, error: 'temporary failure' } });
     }
     if (url.searchParams.get('search')?.toLocaleLowerCase() === 'older destination') {
@@ -701,6 +710,27 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   releaseMessageResponse?.();
   releaseMessageResponse = null;
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  const inboxRefreshError = page
+    .getByRole('alert')
+    .filter({ hasText: 'WhatsApp data could not be refreshed.' });
+  failInboxRefresh = true;
+  await expect(inboxRefreshError).toContainText('Showing inbox data last updated at', {
+    timeout: 20_000,
+  });
+  await expect(page.getByRole('button', { name: /Project group/u })).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  const retryInboxButton = inboxRefreshError.getByRole('button', { name: 'Retry' });
+  await expect(retryInboxButton).toBeEnabled();
+  failInboxRefresh = false;
+  await retryInboxButton.click();
+  await expect(inboxRefreshError).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
   await page.getByRole('button', { name: '@Rani Finance' }).click();
@@ -1648,7 +1678,11 @@ test('assigns conversations to agents and teams and closes or reopens queue item
   await page.getByRole('button', { name: /Unassigned conversation/u }).click();
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await page.getByRole('button', { name: 'Assign to agent-b' }).click();
+  await expect.poll(() => assignmentRequestCount).toBe(2);
   await expect.poll(() => conversations[1]?.assigned_user_id).toBe(3);
+  await expect(page.getByRole('button', { name: /Unassigned conversation/u })).toContainText(
+    'Assigned to agent-b'
+  );
   await page.getByRole('button', { name: 'Assign chat' }).click();
   await expect(
     page.getByRole('region', { name: 'Assign conversation' }).getByText('Assigned to agent-b')
