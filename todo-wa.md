@@ -184,7 +184,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-26** Alarm gateway mati, akun logout, QR kedaluwarsa, antrean macet, storage penuh.
 - [ ] **P4-27** Tampilan admin status per perusahaan tanpa membuka isi pesan yang tidak diperlukan.
 - [x] **P4-28** `GET /whatsapp/readyz` memanggil `gowaRequest('/health')` dengan Basic Auth, timeout 5 detik, tanpa operasi mutasi; status gateway dipisahkan dari readiness API. Tes route memastikan gateway tak tersedia tidak membuat API umum gagal ready, dan live contract test terautentikasi memverifikasi GET `/health` menjawab `OK` pada 24 Oktober 2026; tetap tercakup sebagai gate P4-40 untuk pemeriksaan berkala.
-- [ ] **P4-29** Graceful shutdown/backpressure supaya deploy tidak memotong pengiriman berjalan.
+- [x] **P4-29** Outbox worker memproses satu event pada satu waktu dan menunggu handler event yang sudah diklaim selesai sebelum keluar saat shutdown; event pending berikutnya tidak ikut diklaim. Test `packages/jobs/tests/runtime.test.ts` membuktikan drain, status `published` untuk event berjalan, dan event berikutnya tetap pending. GoWA request memiliki timeout terkonfigurasi dan event yang tidak terkonfirmasi tetap mengikuti retry/reconciliation yang ada. API juga menunggu Fastify menutup request aktif dengan batas waktu graceful shutdown; validasi lifecycle ada di `apps/api/tests/lifecycle.test.ts`.
 - [ ] **P4-30** Load test polling untuk banyak perusahaan dan percakapan.
 - [ ] **P4-31** Retensi pesan/media/log/audit dan purge data sesuai lifecycle perusahaan.
 - [ ] **P4-32** Penghapusan/ekspor data perusahaan meliputi mapping DB, cache, media, dan sesi GoWA.

@@ -807,6 +807,64 @@ describe('durable job runtime', () => {
     await expect(loops).resolves.toEqual([undefined, undefined, undefined]);
   });
 
+  it('drains the claimed outbox event and does not claim another after shutdown', async () => {
+    let announceStarted: () => void = () => undefined;
+    let finishDelivery: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      announceStarted = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      finishDelivery = resolve;
+    });
+    let deliveries = 0;
+    const unregister = registerOutboxConsumer('test.shutdown-drain', async () => {
+      deliveries += 1;
+      announceStarted();
+      await hold;
+    });
+    try {
+      const first = await OutboxEvent.query().insertAndFetch({
+        event_type: 'test.shutdown-drain',
+        aggregate_model: 'base.partner',
+        aggregate_id: 1,
+        payload: '{}',
+        available_at: new Date().toISOString(),
+      });
+      const second = await OutboxEvent.query().insertAndFetch({
+        event_type: 'test.shutdown-drain',
+        aggregate_model: 'base.partner',
+        aggregate_id: 2,
+        payload: '{}',
+        available_at: new Date().toISOString(),
+      });
+      const stop = new AbortController();
+      const loop = runOutboxLoop('draining-outbox', stop.signal, 60_000);
+      await started;
+      stop.abort();
+
+      let loopFinished = false;
+      void loop.then(() => {
+        loopFinished = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(loopFinished).toBe(false);
+
+      finishDelivery();
+      await loop;
+      expect(deliveries).toBe(1);
+      await expect(OutboxEvent.query().findById(first.id)).resolves.toMatchObject({
+        status: 'published',
+      });
+      await expect(OutboxEvent.query().findById(second.id)).resolves.toMatchObject({
+        status: 'pending',
+        attempts: 0,
+      });
+    } finally {
+      finishDelivery();
+      unregister();
+    }
+  });
+
   it('drains the currently claimed job before a worker loop exits', async () => {
     let announceStarted: () => void = () => undefined;
     let finishHandler: () => void = () => undefined;
