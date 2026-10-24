@@ -54,6 +54,14 @@ type Conversation = {
   last_message_at?: string | null;
   labels?: ConversationLabel[];
 };
+type ContactProfile = {
+  name: string;
+  phone_number: string | null;
+  verified_name: string | null;
+  status: string | null;
+  avatar_available?: boolean;
+  picture_id?: string | null;
+};
 type ConversationLabel = { id: number; name: string; color: string };
 type ConversationAgent = {
   id: number;
@@ -550,6 +558,21 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   });
   const activeConversation =
     filteredConversations.find((item) => item.id === selected) ?? filteredConversations[0];
+  const contactProfileQuery = useQuery({
+    queryKey: scopedQueryKey(['whatsapp', 'contact', activeConversation?.id]),
+    queryFn: async () =>
+      (
+        await client.request<{ data: ContactProfile }>(
+          `/whatsapp/conversations/${activeConversation!.id}/contact`
+        )
+      ).data,
+    enabled:
+      accountQuery.data?.status === 'connected' &&
+      Boolean(activeConversation && !activeConversation.is_group),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: false,
+  });
   useEffect(() => {
     activeConversationIdRef.current = activeConversation?.id;
   }, [activeConversation?.id]);
@@ -1746,6 +1769,16 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         {formatConversationAddress(activeConversation)}
                       </p>
                     )}
+                    {activeConversation && !activeConversation.is_group && (
+                      <ContactProfileSummary
+                        conversationId={activeConversation.id}
+                        profile={contactProfileQuery.data}
+                        loading={contactProfileQuery.isLoading}
+                        failed={contactProfileQuery.isError}
+                        refreshing={contactProfileQuery.isFetching}
+                        onRefresh={() => void contactProfileQuery.refetch()}
+                      />
+                    )}
                   </div>
                 </div>
                 {activeConversation && (
@@ -2593,6 +2626,91 @@ function MessageComposer({
         </div>
       )}
     </form>
+  );
+}
+
+function ContactProfileSummary({
+  conversationId,
+  profile,
+  loading,
+  failed,
+  refreshing,
+  onRefresh,
+}: {
+  conversationId: number;
+  profile?: ContactProfile;
+  loading: boolean;
+  failed: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [avatar, setAvatar] = useState<{ conversationId: number; url: string } | null>(null);
+  useEffect(() => {
+    if (!profile?.avatar_available) return;
+    let active = true;
+    let objectUrl: string | null = null;
+    const controller = new AbortController();
+    void client
+      .requestBlobWithDownloadProgress(`/whatsapp/conversations/${conversationId}/contact/avatar`, {
+        signal: controller.signal,
+        onDownloadProgress: () => undefined,
+      })
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setAvatar({ conversationId, url: objectUrl });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [conversationId, profile?.avatar_available, profile?.picture_id]);
+  if (loading) return <p className="mt-1 text-xs text-ink-faint">Loading contact profile…</p>;
+  if (failed)
+    return (
+      <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
+        <span>Contact profile could not be refreshed.</span>
+        <Button type="button" variant="link" className="h-auto p-0" onClick={onRefresh}>
+          Retry
+        </Button>
+      </div>
+    );
+  if (!profile) return null;
+  return (
+    <div className="mt-2 flex max-w-xl items-center gap-2 text-xs text-ink-faint">
+      {avatar?.conversationId === conversationId ? (
+        <img
+          src={avatar.url}
+          alt={`${profile.name} WhatsApp profile photo`}
+          className="size-9 shrink-0 rounded-full border border-ink/30 object-cover"
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-ink/30 bg-paper font-semibold text-ink"
+        >
+          {profile.name.slice(0, 1).toLocaleUpperCase() || '?'}
+        </span>
+      )}
+      <span className="min-w-0">
+        {profile.verified_name && profile.verified_name !== profile.name && (
+          <span className="block truncate text-ink">{profile.verified_name}</span>
+        )}
+        {profile.phone_number && <span className="block">+{profile.phone_number}</span>}
+        {profile.status && <span className="block truncate">About: {profile.status}</span>}
+      </span>
+      <Button
+        type="button"
+        variant="link"
+        className="ml-auto h-auto shrink-0 p-0"
+        disabled={refreshing}
+        onClick={onRefresh}
+      >
+        {refreshing ? 'Refreshing…' : 'Refresh contact'}
+      </Button>
+    </div>
   );
 }
 

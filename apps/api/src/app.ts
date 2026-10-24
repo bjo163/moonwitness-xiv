@@ -88,6 +88,8 @@ export interface BuildAppOptions {
   attachmentScanner?: AttachmentScanner | null;
   /** Overrides video poster generation for isolated tests. */
   createVideoPoster?: typeof createVideoPoster;
+  /** Overrides contact avatar CDN access for isolated tests. */
+  fetchContactAvatar?: typeof fetch;
   /** @deprecated Use attachmentStorage; retained for existing test/app callers. */
   attachmentStorageDirectory?: string;
 }
@@ -316,6 +318,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         ? createAttachmentScanner()
         : options.attachmentScanner,
     createVideoPoster: options.createVideoPoster,
+    fetchContactAvatar: options.fetchContactAvatar,
   });
   await app.register(jobsRoutes);
   await app.register(notificationRoutes);

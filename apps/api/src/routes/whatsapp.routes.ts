@@ -30,8 +30,10 @@ type Options = {
   attachmentStorage: AttachmentStorage;
   attachmentScanner?: AttachmentScanner | null;
   createVideoPoster?: typeof createVideoPoster;
+  fetchContactAvatar?: typeof fetch;
 };
 type Params = { id: string };
+const MAX_CONTACT_AVATAR_BYTES = 2 * 1024 * 1024;
 
 function whatsappRateLimit(max: number) {
   return {
@@ -409,6 +411,50 @@ function providerTimestamp(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const milliseconds = Date.parse(value);
   return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+}
+
+function trustedWhatsAppAvatarUrl(value: unknown): URL | null {
+  if (typeof value !== 'string' || value.length > 4096) return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.hostname !== 'pps.whatsapp.net'
+    )
+      return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+async function readBoundedAvatar(response: Response): Promise<Buffer> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_CONTACT_AVATAR_BYTES) {
+    await response.body?.cancel();
+    throw new Error('Contact avatar exceeds the allowed size');
+  }
+  if (!response.body) throw new Error('Contact avatar response is empty');
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_CONTACT_AVATAR_BYTES) {
+        await reader.cancel();
+        throw new Error('Contact avatar exceeds the allowed size');
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, size);
 }
 
 function providerReplyId(value: unknown): string | null {
@@ -2381,6 +2427,137 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         return { ...created, author_name: author?.login ?? `User ${req.auth!.userId}` };
       });
       return reply.code(201).send({ success: true, data: note });
+    }
+  );
+
+  app.get<{ Params: Params }>(
+    '/whatsapp/conversations/:id/contact',
+    whatsappRateLimit(30),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const conversation = await WhatsappConversation.query().findOne({
+        id: conversationId,
+        company_id: companyId,
+      });
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Conversation not found' });
+      if (conversation.is_group) {
+        return reply.send({
+          success: true,
+          data: { name: conversation.name, phone_number: null, verified_name: null, status: null },
+        });
+      }
+      const phoneMatch = String(conversation.jid).match(/^(\d{5,20})@s\.whatsapp\.net$/u);
+      if (!phoneMatch) {
+        return reply.send({
+          success: true,
+          data: { name: conversation.name, phone_number: null, verified_name: null, status: null },
+        });
+      }
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account?.gateway_device_id)
+        return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
+      const [profileResult, avatarResult] = await Promise.allSettled([
+        gowaRequest<Record<string, unknown>>(
+          `/user/info?phone=${encodeURIComponent(conversation.jid)}`,
+          { deviceId: account.gateway_device_id }
+        ),
+        gowaRequest<{ url?: unknown; id?: unknown }>(
+          `/user/avatar?phone=${encodeURIComponent(conversation.jid)}&is_preview=true`,
+          { deviceId: account.gateway_device_id }
+        ),
+      ]);
+      const profile = profileResult.status === 'fulfilled' ? profileResult.value : {};
+      const avatar = avatarResult.status === 'fulfilled' ? avatarResult.value : {};
+      return reply.send({
+        success: true,
+        data: {
+          name: conversation.name,
+          phone_number: phoneMatch[1],
+          verified_name: typeof profile.verified_name === 'string' ? profile.verified_name : null,
+          status: typeof profile.status === 'string' ? profile.status : null,
+          picture_id: typeof avatar.id === 'string' ? avatar.id : null,
+          avatar_available: trustedWhatsAppAvatarUrl(avatar.url) !== null,
+          synced_at: new Date().toISOString(),
+        },
+      });
+    }
+  );
+
+  app.get<{ Params: Params }>(
+    '/whatsapp/conversations/:id/contact/avatar',
+    whatsappRateLimit(30),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const conversation = await WhatsappConversation.query().findOne({
+        id: conversationId,
+        company_id: companyId,
+      });
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Conversation not found' });
+      const phoneMatch = String(conversation.jid).match(/^(\d{5,20})@s\.whatsapp\.net$/u);
+      if (conversation.is_group || !phoneMatch)
+        return reply.code(404).send({ success: false, error: 'Contact avatar is unavailable' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account?.gateway_device_id)
+        return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
+      try {
+        const avatar = await gowaRequest<{ url?: unknown }>(
+          `/user/avatar?phone=${encodeURIComponent(conversation.jid)}&is_preview=true`,
+          { deviceId: account.gateway_device_id }
+        );
+        const avatarUrl = trustedWhatsAppAvatarUrl(avatar.url);
+        if (!avatarUrl)
+          return reply.code(404).send({ success: false, error: 'Contact avatar is unavailable' });
+        const fetchAvatar = options.fetchContactAvatar ?? globalThis.fetch.bind(globalThis);
+        const response = await fetchAvatar(avatarUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!response.ok) {
+          await response.body?.cancel();
+          return reply.code(response.status === 404 ? 404 : 502).send({
+            success: false,
+            error: 'Contact avatar could not be loaded',
+          });
+        }
+        const bytes = await readBoundedAvatar(response);
+        const mime = sniffMime(bytes);
+        if (!mime || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime))
+          return reply.code(502).send({ success: false, error: 'Contact avatar is invalid' });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          'contact_avatar_access',
+          conversationId,
+          companyId
+        );
+        return reply
+          .header('content-type', mime)
+          .header('content-length', String(bytes.length))
+          .header('content-disposition', 'inline')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-security-policy', "default-src 'none'; sandbox; base-uri 'none'")
+          .header('cache-control', 'private, max-age=300')
+          .header('vary', 'Authorization, X-Company-Id')
+          .send(bytes);
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp contact avatar fetch failed'
+        );
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Contact avatar could not be loaded' });
+      }
     }
   );
 

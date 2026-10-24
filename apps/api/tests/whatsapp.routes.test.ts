@@ -115,6 +115,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let streamGetCount = 0;
   let videoPosterCallCount = 0;
   let bufferGetCount = 0;
+  let providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
+  let avatarCdnFetchCount = 0;
   const previousGateway = process.env.WHATSAPP_GATEWAY_URL;
   const previousWebhookUrl = process.env.WHATSAPP_WEBHOOK_URL;
   const previousWebhookSecret = process.env.WHATSAPP_WEBHOOK_SECRET;
@@ -250,6 +252,8 @@ describe('WhatsApp API GoWA bridge', () => {
     streamPutCount = 0;
     streamGetCount = 0;
     videoPosterCallCount = 0;
+    providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
+    avatarCdnFetchCount = 0;
     bufferGetCount = 0;
     stored.clear();
     activeStorage = memoryStorage;
@@ -304,6 +308,9 @@ describe('WhatsApp API GoWA bridge', () => {
           ),
         });
       }
+      if (url.pathname === '/user/info')
+        return json({ verified_name: 'Verified Contact', status: 'Available for work' });
+      if (url.pathname === '/user/avatar') return json({ url: providerAvatarUrl, id: 'avatar-1' });
       if (/^\/chat\/.+\/(archive|pin)$/u.test(url.pathname) && method === 'POST') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         const path = url.pathname.endsWith('/archive') ? 'archive' : 'pin';
@@ -443,6 +450,10 @@ describe('WhatsApp API GoWA bridge', () => {
           contentType: 'image/jpeg',
         };
       },
+      fetchContactAvatar: async () => {
+        avatarCdnFetchCount++;
+        return new Response(pngFixture(), { headers: { 'content-type': 'image/png' } });
+      },
     });
   });
 
@@ -524,6 +535,66 @@ describe('WhatsApp API GoWA bridge', () => {
     }
     await db.raw(`DROP TRIGGER ${name}`);
   }
+
+  it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111222333@s.whatsapp.net',
+        name: 'Saved Contact',
+        is_group: false,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const path = `/whatsapp/conversations/${conversation.id}/contact`;
+    const profile = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(profile.statusCode).toBe(200);
+    expect(profile.json().data).toMatchObject({
+      name: 'Saved Contact',
+      phone_number: '628111222333',
+      verified_name: 'Verified Contact',
+      status: 'Available for work',
+      picture_id: 'avatar-1',
+      avatar_available: true,
+    });
+
+    const avatar = await app.inject({
+      method: 'GET',
+      url: `${path}/avatar`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(avatar.statusCode).toBe(200);
+    expect(avatar.headers).toMatchObject({
+      'content-type': 'image/png',
+      'x-content-type-options': 'nosniff',
+      'cache-control': 'private, max-age=300',
+    });
+    expect(Buffer.from(avatar.rawPayload)).toEqual(pngFixture());
+    expect(avatarCdnFetchCount).toBe(1);
+    expect(await db('audit_logs').where({ operation: 'contact_avatar_access' })).toHaveLength(1);
+
+    providerAvatarUrl = 'https://pps.whatsapp.net.evil.example/avatar.png';
+    const rejectedAvatar = await app.inject({
+      method: 'GET',
+      url: `${path}/avatar`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(rejectedAvatar.statusCode).toBe(404);
+    expect(avatarCdnFetchCount).toBe(1);
+
+    const foreign = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/conversations/${conversation.id}/contact`,
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+    });
+    expect(foreign.statusCode).toBe(404);
+  });
 
   it('requires an authenticated active company and creates a stable GoWA device with a proxied QR', async () => {
     expect((await app.inject({ method: 'GET', url: '/whatsapp/account' })).statusCode).toBe(401);

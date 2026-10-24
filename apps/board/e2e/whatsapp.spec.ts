@@ -20,6 +20,31 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       },
     })
   );
+  await page.route('**/whatsapp/conversations/*/contact', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          name: 'Rani Putri',
+          phone_number: '628111222333',
+          verified_name: 'Rani Finance',
+          status: 'Ready to help',
+          picture_id: 'profile-1',
+          avatar_available: true,
+        },
+      },
+    })
+  );
+  await page.route('**/whatsapp/conversations/*/contact/avatar', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l5sAAAAASUVORK5CYII=',
+        'base64'
+      ),
+    })
+  );
   let failSearchConversationLoad = false;
   let includeNewInboundMessage = false;
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
@@ -465,6 +490,13 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(videoPreview.getByText(/Original 1\.0 KB/u)).toBeVisible();
   await videoPreview.getByRole('button', { name: 'Load video' }).click();
   await expect(videoPreview.locator('video[controls]')).toBeVisible();
+  await page.getByRole('button', { name: /Rani Putri/u }).click();
+  await expect(page.getByText('Rani Finance', { exact: true })).toBeVisible();
+  await expect(page.locator('span.block').getByText('+628111222333', { exact: true })).toBeVisible();
+  await expect(page.getByText('About: Ready to help')).toBeVisible();
+  await expect(page.getByAltText('Rani Putri WhatsApp profile photo')).toBeVisible();
+  await page.getByRole('button', { name: /Project group/u }).click();
+  await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
   const pdfPreview = page.getByTitle('Sandboxed PDF preview: statement.pdf');
   await expect(pdfPreview).toBeVisible();
   await expect(pdfPreview).toHaveAttribute('sandbox', '');
