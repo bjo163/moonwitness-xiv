@@ -2481,6 +2481,196 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
   );
 
   app.get<{ Params: Params }>(
+    '/whatsapp/conversations/:id/group',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const [conversation] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .select(
+          'id',
+          'account_id',
+          'jid',
+          'name',
+          'group_topic',
+          'group_participant_count',
+          'group_participants_json',
+          'group_metadata_synced_at'
+        );
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Group conversation not found' });
+      const cleanProviderText = (value: string, max: number) =>
+        value
+          .replace(
+            /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
+            ''
+          )
+          .slice(0, max);
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account?.gateway_device_id)
+        return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
+
+      const storedParticipants = (): Array<{
+        jid: string;
+        phone_number: string | null;
+        display_name: string | null;
+        is_admin: boolean;
+        is_super_admin: boolean;
+      }> => {
+        if (typeof conversation.group_participants_json !== 'string') return [];
+        try {
+          const value: unknown = JSON.parse(conversation.group_participants_json);
+          if (!Array.isArray(value)) return [];
+          return value.slice(0, 2000).flatMap((item) => {
+            if (
+              !isRecord(item) ||
+              typeof item.jid !== 'string' ||
+              !/^[^\s@\p{Cc}\p{Cf}]{1,200}@(s\.whatsapp\.net|lid)$/u.test(item.jid)
+            )
+              return [];
+            return [
+              {
+                jid: item.jid,
+                phone_number:
+                  typeof item.phone_number === 'string' &&
+                  /^[^\s@\p{Cc}\p{Cf}]{1,200}@s\.whatsapp\.net$/u.test(item.phone_number)
+                    ? item.phone_number
+                    : null,
+                display_name:
+                  typeof item.display_name === 'string'
+                    ? cleanProviderText(item.display_name.trim(), 255) || null
+                    : null,
+                is_admin: item.is_admin === true,
+                is_super_admin: item.is_super_admin === true,
+              },
+            ];
+          });
+        } catch {
+          return [];
+        }
+      };
+      const fallback = () => ({
+        name: conversation.name,
+        topic: conversation.group_topic ?? null,
+        participant_count:
+          conversation.group_participant_count === null ||
+          conversation.group_participant_count === undefined
+            ? null
+            : Number(conversation.group_participant_count),
+        participants: storedParticipants(),
+        synced_at: conversation.group_metadata_synced_at ?? null,
+        stale: true,
+      });
+
+      try {
+        const groupId = encodeURIComponent(String(conversation.jid));
+        const [info, participantResponse] = await Promise.all([
+          gowaRequest<Record<string, unknown>>(`/group/info?group_id=${groupId}`, {
+            deviceId: account.gateway_device_id,
+          }),
+          gowaRequest<Record<string, unknown>>(`/group/participants?group_id=${groupId}`, {
+            deviceId: account.gateway_device_id,
+          }),
+        ]);
+        const infoResult = isRecord(info.results) ? info.results : info;
+        const participantResult = isRecord(participantResponse.results)
+          ? participantResponse.results
+          : participantResponse;
+        const rawParticipants = Array.isArray(participantResult.participants)
+          ? participantResult.participants
+          : [];
+        const participants = rawParticipants.slice(0, 2000).flatMap((item) => {
+          if (!isRecord(item)) return [];
+          const jid =
+            typeof item.jid === 'string'
+              ? item.jid
+              : typeof item.phone_number === 'string'
+                ? item.phone_number
+                : typeof item.JID === 'string'
+                  ? item.JID
+                  : '';
+          if (!jid || !/^[^\s@\p{Cc}\p{Cf}]{1,200}@(s\.whatsapp\.net|lid)$/u.test(jid)) return [];
+          const phone =
+            typeof item.phone_number === 'string'
+              ? item.phone_number
+              : typeof item.PhoneNumber === 'string'
+                ? item.PhoneNumber
+                : null;
+          const name =
+            typeof item.display_name === 'string'
+              ? item.display_name
+              : typeof item.DisplayName === 'string'
+                ? item.DisplayName
+                : null;
+          return [
+            {
+              jid,
+              phone_number:
+                phone && /^[^\s@\p{Cc}\p{Cf}]{1,200}@s\.whatsapp\.net$/u.test(phone) ? phone : null,
+              display_name: name ? cleanProviderText(name.trim(), 255) || null : null,
+              is_admin: item.is_admin === true || item.IsAdmin === true,
+              is_super_admin: item.is_super_admin === true || item.IsSuperAdmin === true,
+            },
+          ];
+        });
+        const now = new Date().toISOString();
+        const name =
+          typeof infoResult.name === 'string'
+            ? cleanProviderText(infoResult.name.trim(), 255)
+            : typeof participantResult.name === 'string'
+              ? cleanProviderText(participantResult.name.trim(), 255)
+              : conversation.name;
+        const topic =
+          typeof infoResult.topic === 'string'
+            ? cleanProviderText(infoResult.topic, 4000)
+            : typeof infoResult.description === 'string'
+              ? cleanProviderText(infoResult.description, 4000)
+              : null;
+        const reportedCount = Number(infoResult.participant_count);
+        const count =
+          Number.isSafeInteger(reportedCount) && reportedCount >= participants.length
+            ? Math.min(reportedCount, 100_000)
+            : participants.length;
+        await app
+          .db('whatsapp_conversations')
+          .where({ id: conversationId, company_id: companyId, is_group: true })
+          .update({
+            name,
+            group_topic: topic,
+            group_participant_count: count,
+            group_participants_json: JSON.stringify(participants),
+            group_metadata_synced_at: now,
+            write_date: now,
+          });
+        return reply.send({
+          success: true,
+          data: {
+            name,
+            topic,
+            participant_count: count,
+            participants,
+            synced_at: now,
+            stale: false,
+          },
+        });
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group metadata refresh failed'
+        );
+        if (conversation.group_metadata_synced_at)
+          return reply.send({ success: true, data: fallback() });
+        return reply.code(502).send({ success: false, error: 'Group details could not be loaded' });
+      }
+    }
+  );
+
+  app.get<{ Params: Params }>(
     '/whatsapp/conversations/:id/contact',
     whatsappRateLimit(30),
     async (req, reply) => {

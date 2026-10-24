@@ -62,6 +62,20 @@ type ContactProfile = {
   avatar_available?: boolean;
   picture_id?: string | null;
 };
+type GroupProfile = {
+  name: string;
+  topic: string | null;
+  participant_count: number | null;
+  participants: Array<{
+    jid: string;
+    phone_number: string | null;
+    display_name: string | null;
+    is_admin: boolean;
+    is_super_admin: boolean;
+  }>;
+  synced_at: string | null;
+  stale: boolean;
+};
 type ConversationLabel = { id: number; name: string; color: string };
 type ConversationAgent = {
   id: number;
@@ -574,6 +588,19 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
     enabled:
       accountQuery.data?.status === 'connected' &&
       Boolean(activeConversation && !activeConversation.is_group),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: false,
+  });
+  const groupProfileQuery = useQuery({
+    queryKey: scopedQueryKey(['whatsapp', 'group-profile', activeConversation?.id]),
+    queryFn: async () =>
+      (
+        await client.request<{ data: GroupProfile }>(
+          `/whatsapp/conversations/${activeConversation!.id}/group`
+        )
+      ).data,
+    enabled: accountQuery.data?.status === 'connected' && Boolean(activeConversation?.is_group),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: false,
@@ -1836,6 +1863,14 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         onRefresh={() => void contactProfileQuery.refetch()}
                       />
                     )}
+                    {activeConversation?.is_group && (
+                      <GroupProfileSummary
+                        profile={groupProfileQuery.data}
+                        loading={groupProfileQuery.isLoading}
+                        failed={groupProfileQuery.isError}
+                        onRefresh={() => void groupProfileQuery.refetch()}
+                      />
+                    )}
                   </div>
                 </div>
                 {activeConversation && (
@@ -2683,6 +2718,59 @@ function MessageComposer({
         </div>
       )}
     </form>
+  );
+}
+
+function GroupProfileSummary({
+  profile,
+  loading,
+  failed,
+  onRefresh,
+}: {
+  profile?: GroupProfile;
+  loading: boolean;
+  failed: boolean;
+  onRefresh: () => void;
+}) {
+  if (loading) return <p className="mt-1 text-xs text-ink-faint">Loading group details…</p>;
+  if (failed)
+    return (
+      <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
+        <span>Group details could not be loaded.</span>
+        <Button type="button" variant="link" className="h-auto p-0" onClick={onRefresh}>
+          Retry
+        </Button>
+      </div>
+    );
+  if (!profile) return null;
+  return (
+    <div className="mt-2 max-w-xl text-xs text-ink-faint">
+      <p>
+        {profile.participant_count === null
+          ? 'Group participants'
+          : `${profile.participant_count} participants`}
+        {profile.stale ? ' · saved details' : ''}
+      </p>
+      {profile.topic && <p className="mt-1 whitespace-pre-wrap break-words">{profile.topic}</p>}
+      {profile.participants.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer">Show participants</summary>
+          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto pl-4">
+            {profile.participants.map((participant) => (
+              <li key={participant.jid} className="break-all">
+                {participant.display_name || participant.phone_number || participant.jid}
+                {participant.is_super_admin ? ' · owner' : participant.is_admin ? ' · admin' : ''}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {profile.stale && (
+        <Button type="button" variant="link" className="mt-1 h-auto p-0" onClick={onRefresh}>
+          Refresh group details
+        </Button>
+      )}
+    </div>
   );
 }
 

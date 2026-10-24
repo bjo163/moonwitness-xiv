@@ -118,6 +118,23 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
   let providerAvatarId = 'avatar-1';
   let avatarCdnFetchCount = 0;
+  let groupMetadataFails = false;
+  let providerGroupInfo: Record<string, unknown> = {
+    name: 'Project Group',
+    topic: 'Project updates',
+    participant_count: 2,
+  };
+  let providerGroupParticipants: Array<Record<string, unknown>> = [
+    {
+      jid: '628111111111@s.whatsapp.net',
+      phone_number: '628111111111@s.whatsapp.net',
+      display_name: 'Rani\u202E',
+      is_admin: true,
+      is_super_admin: false,
+    },
+    { jid: '987654321@lid', display_name: 'Anonymous member' },
+    { jid: 'bad\u0000jid@lid', display_name: 'Invalid' },
+  ];
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -259,6 +276,23 @@ describe('WhatsApp API GoWA bridge', () => {
     providerAvatarUrl = 'https://pps.whatsapp.net/avatar.png';
     providerAvatarId = 'avatar-1';
     avatarCdnFetchCount = 0;
+    groupMetadataFails = false;
+    providerGroupInfo = {
+      name: 'Project Group',
+      topic: 'Project updates',
+      participant_count: 2,
+    };
+    providerGroupParticipants = [
+      {
+        jid: '628111111111@s.whatsapp.net',
+        phone_number: '628111111111@s.whatsapp.net',
+        display_name: 'Rani\u202E',
+        is_admin: true,
+        is_super_admin: false,
+      },
+      { jid: '987654321@lid', display_name: 'Anonymous member' },
+      { jid: 'bad\u0000jid@lid', display_name: 'Invalid' },
+    ];
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -327,6 +361,17 @@ describe('WhatsApp API GoWA bridge', () => {
         phoneCheckRequests.push(url);
         return json(phoneCheckResult === null ? {} : { is_on_whatsapp: phoneCheckResult });
       }
+      if (url.pathname === '/group/info')
+        return groupMetadataFails
+          ? json({ message: 'provider unavailable' }, 503)
+          : json(providerGroupInfo);
+      if (url.pathname === '/group/participants')
+        return groupMetadataFails
+          ? json({ message: 'provider unavailable' }, 503)
+          : json({
+              group_id: url.searchParams.get('group_id'),
+              participants: providerGroupParticipants,
+            });
       if (/^\/chat\/.+\/(archive|pin)$/u.test(url.pathname) && method === 'POST') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         const path = url.pathname.endsWith('/archive') ? 'archive' : 'pin';
@@ -551,6 +596,68 @@ describe('WhatsApp API GoWA bridge', () => {
     }
     await db.raw(`DROP TRIGGER ${name}`);
   }
+
+  it('syncs group metadata and participants within the active company and serves stale cache on provider failure', async () => {
+    const [account] = await db('whatsapp_accounts')
+      .insert({
+        company_id: companyId,
+        status: 'connected',
+        gateway_device_id: `moonwitness-company-${companyId}`,
+      })
+      .returning(['id']);
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '120363000000001@g.us',
+        name: 'Old group name',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const path = `/whatsapp/conversations/${group.id}/group`;
+    const response = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      name: 'Project Group',
+      topic: 'Project updates',
+      participant_count: 2,
+      stale: false,
+      participants: [
+        { jid: '628111111111@s.whatsapp.net', display_name: 'Rani', is_admin: true },
+        { jid: '987654321@lid', display_name: 'Anonymous member' },
+      ],
+    });
+    const [saved] = await db('whatsapp_conversations')
+      .where({ company_id: companyId, id: group.id })
+      .select('name', 'group_topic', 'group_participant_count', 'group_participants_json');
+    expect(saved).toMatchObject({
+      name: 'Project Group',
+      group_topic: 'Project updates',
+      group_participant_count: 2,
+    });
+    expect(JSON.parse(saved.group_participants_json)).toHaveLength(2);
+
+    groupMetadataFails = true;
+    const stale = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(stale.statusCode).toBe(200);
+    expect(stale.json().data).toMatchObject({ name: 'Project Group', stale: true });
+
+    const foreign = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+    });
+    expect(foreign.statusCode).toBe(404);
+  });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {
     const accountId = await connectAndMarkReady();

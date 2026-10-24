@@ -25,7 +25,7 @@ const userFacingModels = [WhatsappAccount, WhatsappConversation, WhatsappMessage
 export const whatsappManifest = defineAddon({
   // Preserve the installed addon identity and seed IDs used by earlier builds.
   name: 'orm-whatsapp',
-  version: '1.7.0',
+  version: '1.8.0',
   depends: ['base'],
   models: [...models],
   data: userFacingModels.flatMap((model) => [

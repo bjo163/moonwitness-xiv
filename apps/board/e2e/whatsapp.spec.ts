@@ -55,6 +55,36 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       ),
     })
   );
+  await page.route('**/whatsapp/conversations/*/group', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          name: 'Project group',
+          topic: 'Project updates',
+          participant_count: 2,
+          participants: [
+            {
+              jid: '628111222333@s.whatsapp.net',
+              phone_number: '628111222333@s.whatsapp.net',
+              display_name: 'Rani Finance',
+              is_admin: true,
+              is_super_admin: false,
+            },
+            {
+              jid: '888888888@lid',
+              phone_number: null,
+              display_name: 'Anonymous member',
+              is_admin: false,
+              is_super_admin: false,
+            },
+          ],
+          synced_at: new Date().toISOString(),
+          stale: false,
+        },
+      },
+    })
+  );
   let failSearchConversationLoad = false;
   let includeNewInboundMessage = false;
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
@@ -474,7 +504,11 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/board/whatsapp');
   await expect(page.getByText('+6281234567890')).toBeVisible();
+  await page.getByRole('button', { name: /Project group/u }).click();
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
+  await expect(page.getByText('2 participants')).toBeVisible();
+  await page.getByText('Show participants').click();
+  await expect(page.getByText('Rani Finance · admin')).toBeVisible();
   await page.getByLabel('Phone number with country code').fill('+62 (858) 9342-9926');
   await page.getByRole('button', { name: 'Check number' }).click();
   await expect(
