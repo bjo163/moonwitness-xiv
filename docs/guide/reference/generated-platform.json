@@ -423,7 +423,7 @@
       "test:unit:built": "pnpm --filter @moonwitness/types test && pnpm --filter @moonwitness/api exec vitest run --exclude tests/postgres.integration.test.ts --exclude tests/postgres.performance.integration.test.ts && pnpm --filter @moonwitness/auth test && pnpm --filter @moonwitness/client test && pnpm --filter @moonwitness/jobs test && pnpm --filter @moonwitness/logger test && pnpm --filter @moonwitness/orm test && pnpm test:board-csv && pnpm test:addon-conformance && pnpm --filter @moonwitness/orm-base test && pnpm --filter @moonwitness/orm-integration test && pnpm --filter @moonwitness/orm-knowledge test && pnpm --filter @moonwitness/orm-notification test && pnpm --filter @moonwitness/orm-organization test && pnpm --filter @moonwitness/orm-request test && pnpm --filter @moonwitness/orm-storage test && pnpm --filter @moonwitness/orm-workflow test && pnpm --filter @moonwitness/knowledge typecheck && pnpm --filter @moonwitness/knowledge test && pnpm --filter @moonwitness/corpus typecheck && pnpm --filter @moonwitness/corpus test && pnpm --filter @moonwitness/research typecheck && pnpm --filter @moonwitness/research test && pnpm test:knowledge-cli:built && pnpm test:assets && pnpm test:ui && pnpm test:platform-audit && pnpm test:board-budget && pnpm board:budget && pnpm test:release-workflow && pnpm test:release-latest-policy && pnpm test:release-image-publish && pnpm test:release-asset-reconcile && pnpm test:release-dry-run && pnpm test:release-verify-attestations && pnpm test:expected-ref && pnpm test:release-plan && pnpm test:release-orchestration && pnpm test:versioned-docs",
       "test:unit:ci": "node scripts/run-unit-tests.mjs",
       "test:versioned-docs": "node --test scripts/docs/versioned-site.test.mjs",
-      "test:whatsapp": "pnpm --filter @moonwitness/api exec vitest run tests/whatsapp.media.test.ts tests/whatsapp.routes.test.ts",
+      "test:whatsapp": "pnpm --filter @moonwitness/api exec vitest run tests/whatsapp.media.test.ts tests/whatsapp.routes.test.ts tests/whatsapp-attachment-references.test.ts tests/whatsapp.version-guard.test.ts",
       "test:workflow-trust": "node --test scripts/check-workflow-checkout-trust.test.mjs",
       "test:workspace-version-policy": "node --test scripts/workspace-version-policy.test.mjs",
       "typecheck": "pnpm build && pnpm --filter @moonwitness/board typecheck",
@@ -6397,6 +6397,10 @@
       "path": "/whatsapp/connect"
     },
     {
+      "method": "POST",
+      "path": "/whatsapp/contacts/check"
+    },
+    {
       "method": "GET",
       "path": "/whatsapp/conversations"
     },
@@ -6411,6 +6415,42 @@
     {
       "method": "PUT",
       "path": "/whatsapp/conversations/:id/assignment"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/contact"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/contact/avatar"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/group"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/group/avatar"
+    },
+    {
+      "method": "GET",
+      "path": "/whatsapp/conversations/:id/group/invite-link"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/group/invite-link/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/group/leave"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/group/participants/:action"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/conversations/:id/group/settings"
     },
     {
       "method": "PUT",
@@ -6446,11 +6486,27 @@
     },
     {
       "method": "POST",
+      "path": "/whatsapp/conversations/:id/uploads"
+    },
+    {
+      "method": "POST",
       "path": "/whatsapp/disconnect"
     },
     {
       "method": "POST",
       "path": "/whatsapp/gowa/webhook/:deviceId"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/groups"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/groups/invite-preview"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/groups/join"
     },
     {
       "method": "GET",
@@ -6498,6 +6554,14 @@
     },
     {
       "method": "GET",
+      "path": "/whatsapp/statuses"
+    },
+    {
+      "method": "POST",
+      "path": "/whatsapp/statuses"
+    },
+    {
+      "method": "GET",
       "path": "/workflows/definitions"
     },
     {
@@ -6517,5 +6581,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "e74e84553ba256692153d5d389d07d489471bbd546554ba69f1b7c5670c88166"
+  "generatedFromSha256": "7ba6ee0a3bbf59d30ed88267be048a8ee3d87fba1586b377ff872b5c7e8693f8"
 }

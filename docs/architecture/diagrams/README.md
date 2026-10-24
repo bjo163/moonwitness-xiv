@@ -34,7 +34,7 @@ Keep each sequence aligned with the referenced implementation and workflow.
 | [Access and refresh token rotation](auth-refresh.svg)           | [`packages/client/src/client.ts`](../../../packages/client/src/client.ts), [`apps/api/src/routes/auth.routes.ts`](../../../apps/api/src/routes/auth.routes.ts), [`packages/auth`](../../../packages/auth) | [Mermaid](auth-refresh.mmd)      |
 | [Background jobs and transactional outbox](jobs-outbox.svg)     | [`packages/jobs`](../../../packages/jobs), [`packages/orm/src/environment.ts`](../../../packages/orm/src/environment.ts)                                                                                  | [Mermaid](jobs-outbox.mmd)       |
 | [Programmatic addon installation](addon-install.svg)            | [`packages/orm/src/addon.ts`](../../../packages/orm/src/addon.ts), [`packages/orm-base/src/manifest.ts`](../../../packages/orm-base/src/manifest.ts)                                                      | [Mermaid](addon-install.mmd)     |
-| [Validated promotion and tagged release](release-lifecycle.svg) | [`promote.yml`](../../../.github/workflows/promote.yml), [`release.yml`](../../../.github/workflows/release.yml)                                                                                          | [Mermaid](release-lifecycle.mmd) |
+| [Validated promotion and tagged release](release-lifecycle.svg) | `promote.yml` (removed with the gate workflows), [`release.yml`](../../../.github/workflows/release.yml)                                                                                          | [Mermaid](release-lifecycle.mmd) |
 
 ![Access and refresh token rotation](auth-refresh.svg)
 
