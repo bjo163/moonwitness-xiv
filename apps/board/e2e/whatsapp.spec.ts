@@ -1666,6 +1666,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   let directUploads = false;
   let accountRequests = 0;
   let connectRequests = 0;
+  let disconnectRequests = 0;
   await page.route('**/whatsapp/account**', (route) => {
     accountRequests++;
     return route.fulfill({
@@ -1686,6 +1687,7 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     return route.fulfill({ status: 202, json: { success: true } });
   });
   await page.route('**/whatsapp/disconnect', (route) => {
+    disconnectRequests++;
     status = 'disconnected';
     return route.fulfill({ json: { success: true } });
   });
@@ -1830,6 +1832,12 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   );
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Cancel connection' }).click();
+  const cancelPairingDialog = page.getByRole('alertdialog', {
+    name: 'Cancel WhatsApp connection?',
+  });
+  await expect(cancelPairingDialog).toBeVisible();
+  await cancelPairingDialog.getByRole('button', { name: 'Confirm cancellation' }).click();
+  await expect.poll(() => disconnectRequests).toBe(1);
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
   status = 'qr_expired';
   await expect(page.getByText('QR code expired')).toBeVisible();
@@ -1918,7 +1926,20 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByPlaceholder('Write a message…')).toHaveValue('Keep this draft');
   await expect(page.getByText('Service unavailable', { exact: true })).toBeVisible();
+  const disconnectRequestsBeforeLogout = disconnectRequests;
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  const disconnectDialog = page.getByRole('alertdialog', { name: 'Disconnect WhatsApp?' });
+  await expect(disconnectDialog).toBeVisible();
+  expect(disconnectRequests).toBe(disconnectRequestsBeforeLogout);
+  await disconnectDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(disconnectDialog).toHaveCount(0);
+  expect(disconnectRequests).toBe(disconnectRequestsBeforeLogout);
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Disconnect WhatsApp?' })
+    .getByRole('button', { name: 'Confirm disconnect' })
+    .click();
+  await expect.poll(() => disconnectRequests).toBe(disconnectRequestsBeforeLogout + 1);
   await expect.poll(() => status).toBe('disconnected');
   await page.reload();
   const globalScopeSwitcher = page.getByRole('button', {

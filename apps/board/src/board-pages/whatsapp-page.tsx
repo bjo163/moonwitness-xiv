@@ -355,6 +355,11 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   const setShowArchived = (showArchived: boolean) =>
     setInboxPreferences((current) => ({ ...current, showArchived }));
   const [newPhone, setNewPhone] = useState('');
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [disconnectConfirmKind, setDisconnectConfirmKind] = useState<'disconnect' | 'cancel'>(
+    'disconnect'
+  );
+  const [disconnecting, setDisconnecting] = useState(false);
   const [groupCreatorOpen, setGroupCreatorOpen] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupParticipantDraft, setGroupParticipantDraft] = useState('');
@@ -955,11 +960,16 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
     }
   };
   const disconnect = async () => {
+    if (disconnecting) return;
+    setDisconnecting(true);
     try {
       await client.request('/whatsapp/disconnect', { method: 'POST', body: {} });
+      setDisconnectConfirmOpen(false);
       await queryClient.invalidateQueries({ queryKey: scopedQueryKey(['whatsapp']) });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not disconnect WhatsApp');
+    } finally {
+      setDisconnecting(false);
     }
   };
   const startChat = async (event: FormEvent) => {
@@ -1392,6 +1402,46 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-5 p-4 md:p-8">
       <Breadcrumbs items={[{ label: 'WhatsApp' }]} />
+      {disconnectConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4">
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="whatsapp-disconnect-title"
+            className="w-full max-w-md border-2 border-ink bg-cream p-5 shadow-[6px_6px_0_#171717]"
+          >
+            <h2 id="whatsapp-disconnect-title" className="font-display text-xl uppercase">
+              {disconnectConfirmKind === 'disconnect'
+                ? 'Disconnect WhatsApp?'
+                : 'Cancel WhatsApp connection?'}
+            </h2>
+            <p className="mt-2 text-sm">
+              {disconnectConfirmKind === 'disconnect'
+                ? 'This will sign out the linked device. You will need to scan a new QR code to reconnect.'
+                : 'This will stop the current QR pairing attempt. You can start a new connection later.'}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={disconnecting}
+                onClick={() => setDisconnectConfirmOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" disabled={disconnecting} onClick={() => void disconnect()}>
+                {disconnecting
+                  ? disconnectConfirmKind === 'disconnect'
+                    ? 'Disconnecting…'
+                    : 'Cancelling…'
+                  : disconnectConfirmKind === 'disconnect'
+                    ? 'Confirm disconnect'
+                    : 'Confirm cancellation'}
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
       {forwardingMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4">
           <section
@@ -1645,12 +1695,26 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
             <Button asChild variant="outline">
               <Link href="/board/whatsapp/status">Create Status</Link>
             </Button>
-            <Button type="button" variant="outline" onClick={disconnect}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDisconnectConfirmKind('disconnect');
+                setDisconnectConfirmOpen(true);
+              }}
+            >
               Disconnect
             </Button>
           </div>
         ) : ['connected', 'connecting', 'qr', 'reconnecting'].includes(status) ? (
-          <Button type="button" variant="outline" onClick={disconnect}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDisconnectConfirmKind(status === 'reconnecting' ? 'disconnect' : 'cancel');
+              setDisconnectConfirmOpen(true);
+            }}
+          >
             {connected ? 'Disconnect' : 'Cancel connection'}
           </Button>
         ) : (
