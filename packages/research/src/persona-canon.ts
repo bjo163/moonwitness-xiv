@@ -1,10 +1,13 @@
 import { createJsonSchemaValidator, type JsonSchemaContract } from '@moonwitness/knowledge';
 import narrativePersonaSchema from '../../../ontology/mappings/narrative-persona.schema.json' with { type: 'json' };
-import type {
-  IdentityReconciliationCandidate,
-  IdentityReconciliationDecision,
+import {
+  isAttestedIdentityDecision,
+  validateIdentityCandidate,
+  validateIdentityDecision,
+  type IdentityDecisionAuthority,
+  type IdentityReconciliationCandidate,
+  type IdentityReconciliationDecision,
 } from './identity-reconciliation.js';
-import { validateIdentityCandidate, validateIdentityDecision } from './identity-reconciliation.js';
 
 export interface NarrativePersonaAlias {
   label: string;
@@ -38,15 +41,18 @@ const validateSchema = createJsonSchemaValidator(
 /**
  * Validate the shape and internal references of a persona draft.
  *
- * `acceptedDecision` and `candidate` are caller-supplied evidence for structural checking only.
- * Production persistence must resolve the canonical review decision and candidate from trusted
- * storage, verify company scope and review history, and must not use this function to authorize
- * identity merging or persistence.
+ * `acceptedDecision`, `candidate` and `authority` are caller-supplied inputs for structural
+ * checking. An association is refused unless its decision was minted by `recordIdentityDecision`
+ * for exactly that company and reviewer, so a hand-built or serialized decision cannot authorize
+ * conflating a narrative persona with a historical identity. Production persistence must still
+ * resolve the canonical decision from trusted storage inside the K3-005 authenticated review
+ * workflow; this function does not create that authorization.
  */
 export function validateNarrativePersona(
   value: unknown,
   acceptedDecision?: IdentityReconciliationDecision | readonly IdentityReconciliationDecision[],
-  candidate?: IdentityReconciliationCandidate
+  candidate?: IdentityReconciliationCandidate,
+  authority?: IdentityDecisionAuthority
 ) {
   const result = validateSchema(value);
   if (!result.valid) return result;
@@ -106,6 +112,18 @@ export function validateNarrativePersona(
     };
   }
   const decision = decisions[0]!;
+  if (!authority || !isAttestedIdentityDecision(decision, authority)) {
+    return {
+      valid: false as const,
+      issues: [
+        {
+          path: '/historical_identity_association',
+          keyword: 'attested_decision',
+          message: 'association requires a decision minted for this company and reviewer',
+        },
+      ],
+    };
+  }
   const candidateConflictIds = new Set(candidate.conflicts.map((conflict) => conflict.id));
   const preservedConflictIds = new Set(decision.preserved_conflict_ids);
   if (

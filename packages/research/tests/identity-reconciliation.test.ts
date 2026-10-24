@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isAttestedIdentityDecision,
   recordIdentityDecision,
   summarizeIdentityDecisions,
   validateIdentityCandidate,
@@ -54,15 +55,23 @@ function decide(
   outcome: 'accepted' | 'rejected',
   suffix: string
 ) {
-  return recordIdentityDecision(value, {
-    id: `mw:identity-decision:${suffix}`,
-    kind: 'IdentityReconciliationDecision',
-    outcome,
-    evidence_refs: ['mw:evidence:review-1'],
-    reviewer_id: 'mw:agent:reviewer-1',
-    reviewed_at: '2026-10-16T01:00:00Z',
-    preserved_conflict_ids: value.conflicts.map((conflict) => conflict.id),
-  });
+  return recordIdentityDecision(
+    value,
+    {
+      id: `mw:identity-decision:${suffix}`,
+      kind: 'IdentityReconciliationDecision',
+      outcome,
+      evidence_refs: ['mw:evidence:review-1'],
+      reviewer_id: 'mw:agent:reviewer-1',
+      reviewed_at: '2026-10-16T01:00:00Z',
+      preserved_conflict_ids: value.conflicts.map((conflict) => conflict.id),
+    },
+    authority()
+  );
+}
+
+function authority() {
+  return { company_id: 'company-alpha', reviewer_id: 'mw:agent:reviewer-1' };
 }
 
 describe('identity reconciliation records', () => {
@@ -142,15 +151,19 @@ describe('identity reconciliation records', () => {
       })
     ).toMatchObject({ valid: false });
     expect(() =>
-      recordIdentityDecision(value, {
-        id: 'mw:identity-decision:missing-conflict',
-        kind: 'IdentityReconciliationDecision',
-        outcome: 'accepted',
-        evidence_refs: ['mw:evidence:review-1'],
-        reviewer_id: 'mw:agent:reviewer-1',
-        reviewed_at: '2026-10-16T01:00:00Z',
-        preserved_conflict_ids: [],
-      })
+      recordIdentityDecision(
+        value,
+        {
+          id: 'mw:identity-decision:missing-conflict',
+          kind: 'IdentityReconciliationDecision',
+          outcome: 'accepted',
+          evidence_refs: ['mw:evidence:review-1'],
+          reviewer_id: 'mw:agent:reviewer-1',
+          reviewed_at: '2026-10-16T01:00:00Z',
+          preserved_conflict_ids: [],
+        },
+        authority()
+      )
     ).toThrow('preserve every conflict');
 
     const invalid = {
@@ -158,5 +171,60 @@ describe('identity reconciliation records', () => {
       evidence_refs: [],
     };
     expect(validateIdentityDecision(invalid)).toMatchObject({ valid: false });
+  });
+
+  it('binds authority to the minted object and its company, not to its bytes', () => {
+    const value = candidate();
+    const decision = decide(value, 'accepted', 'authority-accepted');
+    expect(isAttestedIdentityDecision(decision, authority())).toBe(true);
+    // Structurally identical copies, including an exact JSON round-trip, are not decisions anyone
+    // reviewed: only the object returned by recordIdentityDecision carries the binding.
+    expect(isAttestedIdentityDecision({ ...decision }, authority())).toBe(false);
+    expect(
+      isAttestedIdentityDecision(
+        JSON.parse(JSON.stringify(decision)) as IdentityReconciliationDecision,
+        authority()
+      )
+    ).toBe(false);
+    expect(
+      isAttestedIdentityDecision(decision, { ...authority(), company_id: 'company-beta' })
+    ).toBe(false);
+    expect(
+      isAttestedIdentityDecision(decision, {
+        ...authority(),
+        reviewer_id: 'mw:agent:reviewer-2',
+      })
+    ).toBe(false);
+    // Minting cannot attribute a review to someone other than the authenticated actor.
+    expect(() =>
+      recordIdentityDecision(
+        value,
+        {
+          id: 'mw:identity-decision:reviewer-spoof',
+          kind: 'IdentityReconciliationDecision',
+          outcome: 'accepted',
+          evidence_refs: ['mw:evidence:review-1'],
+          reviewer_id: 'mw:agent:reviewer-2',
+          reviewed_at: '2026-10-16T01:00:00Z',
+          preserved_conflict_ids: value.conflicts.map((conflict) => conflict.id),
+        },
+        authority()
+      )
+    ).toThrow('reviewing actor');
+    expect(() =>
+      recordIdentityDecision(
+        value,
+        {
+          id: 'mw:identity-decision:blank-company',
+          kind: 'IdentityReconciliationDecision',
+          outcome: 'accepted',
+          evidence_refs: ['mw:evidence:review-1'],
+          reviewer_id: 'mw:agent:reviewer-1',
+          reviewed_at: '2026-10-16T01:00:00Z',
+          preserved_conflict_ids: value.conflicts.map((conflict) => conflict.id),
+        },
+        { ...authority(), company_id: ' ' }
+      )
+    ).toThrow('reviewing actor');
   });
 });

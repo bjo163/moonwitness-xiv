@@ -124,18 +124,55 @@ export function validateIdentityDecision(value: unknown) {
       };
 }
 
-/** Record a deliberate review while requiring every known conflict to stay attached. */
+export interface IdentityDecisionAuthority {
+  company_id: string;
+  reviewer_id: IdentityReconciliationDecision['reviewer_id'];
+}
+
+const decisionAuthorities = new WeakMap<
+  IdentityReconciliationDecision,
+  IdentityDecisionAuthority
+>();
+
+/**
+ * Only decisions minted by `recordIdentityDecision` carry authority, and only for the company and
+ * reviewer bound at mint time. A hand-built or serialized copy is structurally valid but unauthorized.
+ */
+export function isAttestedIdentityDecision(
+  decision: IdentityReconciliationDecision,
+  authority: IdentityDecisionAuthority
+): boolean {
+  const bound = decisionAuthorities.get(decision);
+  return (
+    bound !== undefined &&
+    bound.company_id === authority.company_id &&
+    bound.reviewer_id === authority.reviewer_id
+  );
+}
+
+/**
+ * Record a deliberate review while requiring every known conflict to stay attached, and bind the
+ * minted object to the company and authenticated reviewer that made it.
+ */
 export function recordIdentityDecision(
   candidate: IdentityReconciliationCandidate,
   input: Omit<IdentityReconciliationDecision, 'candidate_id' | 'preserved_conflict_ids'> & {
     candidate_id?: IdentityReconciliationCandidate['id'];
     preserved_conflict_ids: IdentityConflict['id'][];
-  }
+  },
+  authority: IdentityDecisionAuthority
 ): IdentityReconciliationDecision {
   const candidateValidation = validateIdentityCandidate(candidate);
   if (!candidateValidation.valid) throw new TypeError('Identity candidate is invalid');
   if (input.candidate_id !== undefined && input.candidate_id !== candidate.id) {
     throw new TypeError('Decision candidate_id does not match the reviewed candidate');
+  }
+  if (
+    authority.company_id.trim() === '' ||
+    authority.reviewer_id.trim() === '' ||
+    authority.reviewer_id !== input.reviewer_id
+  ) {
+    throw new TypeError('Decision authority must name an active company and the reviewing actor');
   }
   const expected = new Set(candidate.conflicts.map((conflict) => conflict.id));
   const provided = new Set(input.preserved_conflict_ids);
@@ -157,6 +194,10 @@ export function recordIdentityDecision(
   };
   const decisionValidation = validateIdentityDecision(decision);
   if (!decisionValidation.valid) throw new TypeError('Identity decision is invalid');
+  decisionAuthorities.set(decision, {
+    company_id: authority.company_id,
+    reviewer_id: authority.reviewer_id,
+  });
   return decision;
 }
 

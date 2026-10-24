@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   recordIdentityDecision,
   type IdentityReconciliationCandidate,
+  type IdentityReconciliationDecision,
 } from '../src/identity-reconciliation.js';
 import { validateNarrativePersona, type NarrativePersona } from '../src/persona-canon.js';
 
@@ -30,16 +31,24 @@ function candidate(): IdentityReconciliationCandidate {
   };
 }
 
+function authority() {
+  return { company_id: 'company-alpha', reviewer_id: 'mw:agent:reviewer' };
+}
+
 function acceptedDecision(value: IdentityReconciliationCandidate) {
-  return recordIdentityDecision(value, {
-    id: 'mw:identity-decision:persona-review-accepted',
-    kind: 'IdentityReconciliationDecision',
-    outcome: 'accepted',
-    evidence_refs: ['mw:evidence:review'],
-    reviewer_id: 'mw:agent:reviewer',
-    reviewed_at: '2026-10-17T01:00:00Z',
-    preserved_conflict_ids: [],
-  });
+  return recordIdentityDecision(
+    value,
+    {
+      id: 'mw:identity-decision:persona-review-accepted',
+      kind: 'IdentityReconciliationDecision',
+      outcome: 'accepted',
+      evidence_refs: ['mw:evidence:review'],
+      reviewer_id: 'mw:agent:reviewer',
+      reviewed_at: '2026-10-17T01:00:00Z',
+      preserved_conflict_ids: [],
+    },
+    authority()
+  );
 }
 
 describe('narrative persona canon contract', () => {
@@ -85,18 +94,25 @@ describe('narrative persona canon contract', () => {
     });
     const reviewCandidate = candidate();
     const accepted = acceptedDecision(reviewCandidate);
-    expect(validateNarrativePersona(value, accepted, reviewCandidate)).toEqual({
+    expect(validateNarrativePersona(value, accepted, reviewCandidate, authority())).toEqual({
       valid: true,
       issues: [],
     });
     expect(
-      validateNarrativePersona(value, { ...accepted, outcome: 'rejected' }, reviewCandidate)
+      validateNarrativePersona(
+        value,
+        { ...accepted, outcome: 'rejected' } as IdentityReconciliationDecision,
+        reviewCandidate,
+        authority()
+      )
     ).toMatchObject({ valid: false });
     expect(
-      validateNarrativePersona(value, accepted, {
-        ...reviewCandidate,
-        id: 'mw:identity-candidate:other',
-      })
+      validateNarrativePersona(
+        value,
+        accepted,
+        { ...reviewCandidate, id: 'mw:identity-candidate:other' as const },
+        authority()
+      )
     ).toMatchObject({ valid: false });
     expect(
       validateNarrativePersona(
@@ -108,7 +124,8 @@ describe('narrative persona canon contract', () => {
           },
         },
         accepted,
-        reviewCandidate
+        reviewCandidate,
+        authority()
       )
     ).toMatchObject({ valid: false });
     expect(
@@ -121,7 +138,8 @@ describe('narrative persona canon contract', () => {
           },
         },
         accepted,
-        reviewCandidate
+        reviewCandidate,
+        authority()
       )
     ).toMatchObject({ valid: false });
     expect(
@@ -134,24 +152,60 @@ describe('narrative persona canon contract', () => {
           },
         },
         accepted,
-        reviewCandidate
+        reviewCandidate,
+        authority()
       )
     ).toMatchObject({ valid: false });
-    const rejected = recordIdentityDecision(reviewCandidate, {
-      id: 'mw:identity-decision:persona-review-rejected',
-      kind: 'IdentityReconciliationDecision',
-      outcome: 'rejected',
-      evidence_refs: ['mw:evidence:review'],
-      reviewer_id: 'mw:agent:reviewer',
-      reviewed_at: '2026-10-17T02:00:00Z',
-      preserved_conflict_ids: [],
-    });
-    expect(validateNarrativePersona(value, [accepted, rejected], reviewCandidate)).toMatchObject({
-      valid: false,
-    });
+    const rejected = recordIdentityDecision(
+      reviewCandidate,
+      {
+        id: 'mw:identity-decision:persona-review-rejected',
+        kind: 'IdentityReconciliationDecision',
+        outcome: 'rejected',
+        evidence_refs: ['mw:evidence:review'],
+        reviewer_id: 'mw:agent:reviewer',
+        reviewed_at: '2026-10-17T02:00:00Z',
+        preserved_conflict_ids: [],
+      },
+      authority()
+    );
+    expect(
+      validateNarrativePersona(value, [accepted, rejected], reviewCandidate, authority())
+    ).toMatchObject({ valid: false });
   });
 
-  it('rejects an accepted decision that drops a candidate conflict', () => {
+  it('refuses an association whose decision was never minted for this company and reviewer', () => {
+    const value = {
+      ...persona(),
+      historical_identity_association: {
+        identity_id: 'mw:entity:historical-person-a',
+        decision_id: 'mw:identity-decision:persona-review-accepted',
+      },
+    };
+    const reviewCandidate = candidate();
+    const accepted = acceptedDecision(reviewCandidate);
+    const expected = { valid: false, issues: [{ keyword: 'attested_decision' }] };
+    // A caller that cannot name the reviewing context gets no association, even with the real object.
+    expect(validateNarrativePersona(value, accepted, reviewCandidate)).toMatchObject(expected);
+    // A hand-built literal with the accepted decision's exact fields is not a review.
+    expect(
+      validateNarrativePersona(
+        value,
+        JSON.parse(JSON.stringify(accepted)) as IdentityReconciliationDecision,
+        reviewCandidate,
+        authority()
+      )
+    ).toMatchObject(expected);
+    // Neither is the same decision presented under another company.
+    expect(
+      validateNarrativePersona(value, accepted, reviewCandidate, {
+        ...authority(),
+        company_id: 'company-beta',
+      })
+    ).toMatchObject(expected);
+  });
+
+  it('refuses a decision whose candidate snapshot gained a conflict', () => {
     const conflictedCandidate = {
       ...candidate(),
       conflicts: [
@@ -163,13 +217,10 @@ describe('narrative persona canon contract', () => {
         },
       ],
     };
-    // Simulate a schema-valid stored decision from before the conflict was attached to this
-    // candidate snapshot; it must not authorize association once the conflict is present.
+    // Minted against the conflict-free snapshot, then presented against the same candidate ID after
+    // a conflict was attached to it. The decision is genuinely attested, so this reaches the
+    // conflict-preservation comparison rather than the attestation gate.
     const completeDecision = acceptedDecision(candidate());
-    const droppedConflictDecision = {
-      ...completeDecision,
-      preserved_conflict_ids: [],
-    };
     const value = {
       ...persona(),
       historical_identity_association: {
@@ -178,10 +229,12 @@ describe('narrative persona canon contract', () => {
       },
     };
     expect(
-      validateNarrativePersona(value, droppedConflictDecision, conflictedCandidate)
+      validateNarrativePersona(value, completeDecision, conflictedCandidate, authority())
     ).toMatchObject({
       valid: false,
       issues: [{ keyword: 'accepted_decision' }],
     });
+    // Minting against the conflicted snapshot and dropping the conflict is refused at the mint.
+    expect(() => acceptedDecision(conflictedCandidate)).toThrow('preserve every conflict');
   });
 });
