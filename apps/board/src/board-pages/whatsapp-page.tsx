@@ -1456,6 +1456,36 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           ) : (
             <Skeleton className="mt-4 size-64" />
           )}
+          <details className="mt-4 w-full max-w-md border-2 border-ink bg-paper p-3 text-left">
+            <summary className="cursor-pointer font-display text-sm uppercase">
+              QR scan help
+            </summary>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+              <li>Open WhatsApp on the phone that owns this number.</li>
+              <li>
+                Android: open the menu and choose <strong>Linked devices</strong>. iPhone: open{' '}
+                <strong>Settings</strong>, then <strong>Linked Devices</strong>.
+              </li>
+              <li>Choose Link a device, unlock your phone, and scan the code shown here.</li>
+            </ol>
+            <p className="mt-3 text-sm">
+              This QR code expires after a short time. If it expires, choose Refresh QR code and
+              scan the new code. If linking fails, update WhatsApp and remove an old linked device
+              if your account has reached its device limit.
+            </p>
+            <p className="mt-2 text-sm font-semibold text-red-800">
+              Keep this QR code private. Anyone who scans it can link a device to your WhatsApp
+              account.
+            </p>
+            <a
+              className="mt-3 inline-block text-sm underline"
+              href="https://faq.whatsapp.com/378279804439436/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WhatsApp linked devices help
+            </a>
+          </details>
         </section>
       )}
       {connected && (

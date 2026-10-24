@@ -1124,8 +1124,6 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Enter the Shadow' }).click();
   await expect(page).toHaveURL(/\/board$/u);
-  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
-  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
   let status = 'disconnected';
   let directUploads = false;
   let accountRequests = 0;
@@ -1264,10 +1262,20 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     });
   });
   await page.goto('/board/whatsapp');
+  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
+  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Switch company. Current scope: MoonWitness' })
+  ).toBeVisible();
   await page.setViewportSize({ width: 320, height: 720 });
   await page.getByRole('button', { name: 'Connect WhatsApp' }).click();
   const qrCode = page.getByAltText('WhatsApp connection QR code');
   await expect(qrCode).toBeVisible();
+  await page.getByText('QR scan help', { exact: true }).click();
+  await expect(page.getByText(/Android: open the menu/u)).toBeVisible();
+  await expect(page.getByText(/iPhone: open Settings/u)).toBeVisible();
+  await expect(page.getByText(/Keep this QR code private/u)).toBeVisible();
+  await page.getByText('QR scan help', { exact: true }).click();
   expect((await qrCode.boundingBox())?.width).toBeLessThanOrEqual(256);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true

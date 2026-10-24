@@ -171,7 +171,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-15** Avatar dan status online/typing hanya jika tersedia dari provider. (UI: `WUI-04`)
 - [ ] **P4-16** Empty state yang mengarahkan pengguna ke connect atau chat pertama. (UI: `WUI-02`, `WUI-03`)
 - [ ] **P4-17** Konfirmasi sebelum disconnect/logout karena sesi linked-device akan putus. (UI: `WUI-02`)
-- [ ] **P4-18** Bantuan QR: cara scan, masa berlaku, linked devices, dan troubleshooting. (UI: `WUI-02`)
+- [x] **P4-18** Bantuan QR menampilkan alur Android/iPhone, masa berlaku dan refresh, troubleshooting batas linked devices, serta peringatan QR rahasia. Langkah menu diperiksa terhadap panduan resmi WhatsApp; E2E Chromium menguji panel bantuan. (UI: `WUI-02`)
 - [ ] **P4-19** Keyboard shortcut dan aria/fokus untuk inbox, composer, attachment, menu. (UI: `WUI-07`)
 - [ ] **P4-20** Reduced motion, kontras, dan penanda status yang tidak bergantung pada warna. (UI: `WUI-07`)
 - [ ] **P4-21** Lokalisasi Indonesia/Inggris untuk label, error, waktu, dan nomor. (UI: `WUI-07`)
