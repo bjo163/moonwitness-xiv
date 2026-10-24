@@ -3484,6 +3484,122 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
   );
 
   app.get<{ Params: Params }>(
+    '/whatsapp/conversations/:id/group/invite-link',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'write')) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const [conversation] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .select('jid');
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Group conversation not found' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+      try {
+        const groupId = encodeURIComponent(String(conversation.jid));
+        const result = await gowaRequest<unknown>(`/group/invite-link?group_id=${groupId}`, {
+          deviceId: account.gateway_device_id,
+        });
+        const value = isRecord(result) && isRecord(result.results) ? result.results : result;
+        const inviteLink = isRecord(value) ? value.invite_link : null;
+        if (typeof inviteLink !== 'string')
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned an invalid invite link' });
+        const parsed = new URL(inviteLink);
+        if (
+          parsed.protocol !== 'https:' ||
+          parsed.hostname !== 'chat.whatsapp.com' ||
+          parsed.username ||
+          parsed.password ||
+          !/^\/[A-Za-z0-9_-]{8,}$/u.test(parsed.pathname)
+        )
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned an invalid invite link' });
+        return reply.send({ success: true, data: { invite_link: parsed.toString() } });
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group invite link failed'
+        );
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Group invite link could not be loaded' });
+      }
+    }
+  );
+
+  app.post<{ Params: Params }>(
+    '/whatsapp/conversations/:id/group/invite-link/reset',
+    whatsappRateLimit(3),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'write')) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const [conversation] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .select('jid');
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Group conversation not found' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+      try {
+        const groupId = encodeURIComponent(String(conversation.jid));
+        const result = await gowaRequest<unknown>(
+          `/group/invite-link?group_id=${groupId}&reset=true`,
+          { deviceId: account.gateway_device_id }
+        );
+        const value = isRecord(result) && isRecord(result.results) ? result.results : result;
+        const inviteLink = isRecord(value) ? value.invite_link : null;
+        if (typeof inviteLink !== 'string')
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned an invalid invite link' });
+        const parsed = new URL(inviteLink);
+        if (
+          parsed.protocol !== 'https:' ||
+          parsed.hostname !== 'chat.whatsapp.com' ||
+          parsed.username ||
+          parsed.password ||
+          !/^\/[A-Za-z0-9_-]{8,}$/u.test(parsed.pathname)
+        )
+          return reply
+            .code(502)
+            .send({ success: false, error: 'WhatsApp returned an invalid invite link' });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          'group_invite_link_reset',
+          conversationId,
+          companyId
+        );
+        return reply.send({ success: true, data: { invite_link: parsed.toString() } });
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group invite link reset failed'
+        );
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Group invite link could not be reset' });
+      }
+    }
+  );
+
+  app.get<{ Params: Params }>(
     '/whatsapp/conversations/:id/contact',
     whatsappRateLimit(30),
     async (req, reply) => {

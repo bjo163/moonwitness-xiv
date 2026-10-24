@@ -109,6 +109,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     key: string;
     body: Record<string, unknown>;
   }> = [];
+  let groupInviteResetCount = 0;
   let includeNewInboundMessage = false;
   let ownReaction: { emoji: string; is_from_me: boolean } | null = null;
   let editedMessageContent = 'A sent reply';
@@ -249,6 +250,18 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     }
     await route.fulfill({
       json: { success: true, data: { status: 'completed', results: [{ status: 'success' }] } },
+    });
+  });
+  await page.route('**/whatsapp/conversations/*/group/invite-link**', async (route) => {
+    const reset = new URL(route.request().url()).pathname.endsWith('/reset');
+    if (reset) groupInviteResetCount++;
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          invite_link: `https://chat.whatsapp.com/AbCdEfGh1234567${groupInviteResetCount}`,
+        },
+      },
     });
   });
   const sentMessages: string[] = [];
@@ -1000,6 +1013,21 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(page.getByText('+628115555666')).toHaveCount(0);
   await page.getByLabel('Add group participant phone number').fill('+62 811-5555-666');
   await expect(page.getByRole('button', { name: 'Add participant' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Get invite link' }).click();
+  await expect(page.getByRole('link', { name: 'Open group invite link' })).toHaveAttribute(
+    'href',
+    'https://chat.whatsapp.com/AbCdEfGh12345670'
+  );
+  await page.getByRole('button', { name: 'Reset invite link' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm invite link reset' })
+    .getByRole('button', { name: 'Confirm reset' })
+    .click();
+  await expect.poll(() => groupInviteResetCount).toBe(1);
+  await expect(page.getByRole('link', { name: 'Open group invite link' })).toHaveAttribute(
+    'href',
+    'https://chat.whatsapp.com/AbCdEfGh12345671'
+  );
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );

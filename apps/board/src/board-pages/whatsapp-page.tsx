@@ -3189,6 +3189,26 @@ function GroupProfileSummary({
   const [actionError, setActionError] = useState<string | null>(null);
   const [refreshRequired, setRefreshRequired] = useState(false);
   const [refreshingAfterUnknown, setRefreshingAfterUnknown] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [confirmInviteReset, setConfirmInviteReset] = useState(false);
+
+  const loadInviteLink = async (reset = false) => {
+    setInviteLoading(true);
+    setActionError(null);
+    try {
+      const response = await client.request<{ data: { invite_link: string } }>(
+        `/whatsapp/conversations/${conversationId}/group/invite-link${reset ? '/reset' : ''}`,
+        reset ? { method: 'POST' } : undefined
+      );
+      setInviteLink(response.data.invite_link);
+      setConfirmInviteReset(false);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Invite link could not be loaded');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const manageParticipant = async () => {
     if (!confirmAction || mutating || refreshRequired) return;
@@ -3334,6 +3354,61 @@ function GroupProfileSummary({
       )}
       {canManage && (
         <div className="mt-2 space-y-2 border-t border-ink/20 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={inviteLoading || refreshRequired}
+              onClick={() => void loadInviteLink()}
+            >
+              {inviteLoading ? 'Loading invite link…' : 'Get invite link'}
+            </Button>
+            {inviteLink && (
+              <a className="break-all underline" href={inviteLink} target="_blank" rel="noreferrer">
+                Open group invite link
+              </a>
+            )}
+            {inviteLink && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={inviteLoading || refreshRequired}
+                onClick={() => setConfirmInviteReset(true)}
+              >
+                Reset invite link
+              </Button>
+            )}
+          </div>
+          {confirmInviteReset && (
+            <div
+              className="border-2 border-ink bg-pink/20 p-2"
+              role="alertdialog"
+              aria-label="Confirm invite link reset"
+            >
+              <p>Resetting this link will invalidate the current group invite.</p>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={inviteLoading}
+                  onClick={() => void loadInviteLink(true)}
+                >
+                  {inviteLoading ? 'Resetting…' : 'Confirm reset'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={inviteLoading}
+                  onClick={() => setConfirmInviteReset(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
           <form
             className="flex flex-wrap gap-2"
             onSubmit={(event) => {

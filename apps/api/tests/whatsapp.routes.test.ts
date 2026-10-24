@@ -149,6 +149,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerGroupActionRequests: Array<{ path: string; body: Record<string, unknown> }> = [];
   let providerGroupActionStatus = 200;
   let providerGroupActionResult: unknown = null;
+  let providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
+  let providerGroupInviteRequests: URL[] = [];
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -364,6 +366,8 @@ describe('WhatsApp API GoWA bridge', () => {
     providerGroupActionRequests = [];
     providerGroupActionStatus = 200;
     providerGroupActionResult = null;
+    providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
+    providerGroupInviteRequests = [];
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -444,6 +448,10 @@ describe('WhatsApp API GoWA bridge', () => {
               group_id: url.searchParams.get('group_id'),
               participants: providerGroupParticipants,
             });
+      if (url.pathname === '/group/invite-link' && method === 'GET') {
+        providerGroupInviteRequests.push(url);
+        return json({ invite_link: providerGroupInviteLink });
+      }
       if (url.pathname === '/group' && method === 'POST') {
         providerGroupCreateRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         if (providerGroupCreateFailureStatus)
@@ -1076,6 +1084,45 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(refreshed.statusCode).toBe(200);
     expect((await db('whatsapp_group_operations').where({ status: 'unknown' })).length).toBe(0);
     expect(providerGroupActionRequests).toHaveLength(2);
+
+    const inviteUrl = `/whatsapp/conversations/${group.id}/group/invite-link`;
+    const inviteDenied = await app.inject({
+      method: 'GET',
+      url: inviteUrl,
+      headers: { authorization: 'Bearer test', 'x-test-role': 'user' },
+    });
+    expect(inviteDenied.statusCode).toBe(403);
+    const foreignInvite = await app.inject({
+      method: 'GET',
+      url: inviteUrl,
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+    });
+    expect(foreignInvite.statusCode).toBe(404);
+    expect(providerGroupInviteRequests).toHaveLength(0);
+    const invite = await app.inject({
+      method: 'GET',
+      url: inviteUrl,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(invite.statusCode).toBe(200);
+    expect(invite.json().data.invite_link).toBe(providerGroupInviteLink);
+    expect(providerGroupInviteRequests[0]?.searchParams.get('group_id')).toBe(
+      '120363000000002@g.us'
+    );
+    const reset = await app.inject({
+      method: 'POST',
+      url: `${inviteUrl}/reset`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(providerGroupInviteRequests[1]?.searchParams.get('reset')).toBe('true');
+    providerGroupInviteLink = 'https://evil.example/AbCdEfGh12345678';
+    const invalidInvite = await app.inject({
+      method: 'GET',
+      url: inviteUrl,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(invalidInvite.statusCode).toBe(502);
   });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {
