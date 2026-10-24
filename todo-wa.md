@@ -31,7 +31,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 
 ## P0 — pairing, status koneksi, dan pengiriman aman
 
-- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pemeriksaan read-only 24 Oktober 2026: `wa.moonwitness.biz.id/health` = 200, `/app/info` = v9.6.0, `/devices` = SUCCESS dengan `results: null` (belum ada device slot), jadi QR dan pairing nyata belum dapat dibuktikan. (UI: `WUI-02`, `WUI-08`)
+- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pemeriksaan read-only 24 Oktober 2026: `wa.moonwitness.biz.id/health` = 200. Pemeriksaan sebelumnya berhasil membaca `/app/info` sebagai v9.6.0 dan `/devices` sebagai SUCCESS dengan `results: null` (belum ada device slot). Pada pemeriksaan lanjutan, `/app/info` menjawab 401 karena kredensial tidak tersedia di worktree; QR dan pairing nyata belum dapat dibuktikan. (UI: `WUI-02`, `WUI-08`)
 - [ ] **P0-02** Buktikan sesi GoWA bertahan setelah restart container tanpa scan QR ulang.
 - [ ] **P0-03** Buktikan sesi dan mapping perusahaan tetap benar setelah restart API, Board, dan PostgreSQL secara terpisah.
 - [ ] **P0-04** Uji putus jaringan, pemulihan koneksi, status reconnecting, lalu kembali connected tanpa akun ganda.
@@ -54,7 +54,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [x] **P0-21** Tetapkan izin peran untuk connect/disconnect, buat percakapan, kirim, dan retry. System/superadmin boleh mengelola; role user mengikuti grant `whatsapp.account.write`, `whatsapp.conversation.create`, dan `whatsapp.message.create`. API mengembalikan capabilities untuk Board; tes memastikan user tanpa grant hanya dapat membaca dan menerima 403 pada aksi.
 - [x] **P0-22** Tambahkan timeout terkonfigurasi, retry hanya untuk operasi aman, circuit breaker, dan batas konkurensi GoWA. Klien GoWA membatasi 8 request aktif per origin, membuka circuit setelah 5 kegagalan beruntun selama 10 detik, lalu mengizinkan satu probe pemulihan; timeout berasal dari konfigurasi. `CIRCUIT_OPEN` dan `GATEWAY_BUSY` dikembalikan ke retry aman outbox sebelum request mencapai GoWA. Unit test mencakup circuit, probe, dan batas konkurensi.
 - [x] **P0-23** Tambahkan readiness GoWA; bedakan gateway mati dari akun WhatsApp yang logout. `GET /whatsapp/readyz` mengecek GoWA dengan timeout 5 detik dan melaporkan reachable/unreachable terpisah dari readiness API; tes memastikan GoWA mati tidak membuat API umum tidak ready. Tes route membuktikan akun logout menjadi `disconnected` sedangkan gateway mati menjadi `error`. Probe GoWA live `/health` merespons `OK` pada 24 Oktober 2026.
-- [ ] **P0-24** Pin versi/image GoWA yang diuji; deployment GoWA kini eksternal di `wa.moonwitness.biz.id`. Versi live `v9.6.0` dan contract `/app/info` sudah diverifikasi 24 Oktober 2026; catat digest/tag Docker dari host deployment sebelum menutup item.
+- [ ] **P0-24** Pin versi/image GoWA yang diuji; deployment GoWA kini eksternal di `wa.moonwitness.biz.id`. Pemeriksaan sebelumnya pada 24 Oktober 2026 membaca versi live `v9.6.0`, tetapi pemeriksaan lanjutan `/app/info` meminta autentikasi (401), dan container GoWA tidak berjalan di Docker lokal yang tersedia. Catat versi dan digest/tag dari host deployment dengan kredensial valid sebelum menutup item.
 - [ ] **P0-25** Uji backup/restore volume GoWA; backup PostgreSQL tidak mencakup kredensial perangkat milik GoWA.
 
 ## P1 — inbox dan sinkronisasi
@@ -181,7 +181,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-25** Metrik GoWA latency, status akun, antrean, kegagalan/retry, ukuran media, durasi poll.
 - [ ] **P4-26** Alarm gateway mati, akun logout, QR kedaluwarsa, antrean macet, storage penuh.
 - [ ] **P4-27** Tampilan admin status per perusahaan tanpa membuka isi pesan yang tidak diperlukan.
-- [x] **P4-28** `GET /whatsapp/readyz` memanggil `gowaRequest('/health')` dengan Basic Auth, timeout 5 detik, tanpa operasi mutasi; status gateway dipisahkan dari readiness API. Tes route memastikan gateway tak tersedia tidak membuat API umum gagal ready, dan contract test GoWA memverifikasi GET `/health` bila `GOWA_CONTRACT_TEST=1`. Pemeriksaan autentikasi live belum dijalankan dari worktree ini karena `.env` tidak tersedia; tetap tercakup sebagai gate P0-01/P4-40.
+- [x] **P4-28** `GET /whatsapp/readyz` memanggil `gowaRequest('/health')` dengan Basic Auth, timeout 5 detik, tanpa operasi mutasi; status gateway dipisahkan dari readiness API. Tes route memastikan gateway tak tersedia tidak membuat API umum gagal ready, dan contract test GoWA memverifikasi GET `/health` bila `GOWA_CONTRACT_TEST=1`. Probe publik live `/health` merespons 200, tetapi autentikasi contract belum dijalankan dari worktree ini karena `.env`/variabel kredensial tidak tersedia; tetap tercakup sebagai gate P0-01/P4-40.
 - [ ] **P4-29** Graceful shutdown/backpressure supaya deploy tidak memotong pengiriman berjalan.
 - [ ] **P4-30** Load test polling untuk banyak perusahaan dan percakapan.
 - [ ] **P4-31** Retensi pesan/media/log/audit dan purge data sesuai lifecycle perusahaan.
