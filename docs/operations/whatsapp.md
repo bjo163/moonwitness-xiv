@@ -16,7 +16,10 @@ Start PostgreSQL with `docker compose up -d`, then run `pnpm dev`. This starts A
 PostgreSQL outbox worker together. The development stack already
 points `WHATSAPP_GATEWAY_URL` at the hosted gateway; override it in `.env` together with
 `WHATSAPP_GATEWAY_USERNAME` and `WHATSAPP_GATEWAY_PASSWORD` when the address or credentials
-differ. The API and Compose development fallback is `https://wa.moonwitness.biz.id`.
+differ. The API and Compose development fallback is `https://wa.moonwitness.biz.id`. The
+expected GoWA version defaults to `v9.6.0`; set `WHATSAPP_GATEWAY_EXPECTED_VERSION` explicitly
+when deliberately upgrading. `/whatsapp/readyz` reports reachable only when both `/health` and
+`/app/info` succeed and the reported version matches that expectation.
 
 Open `http://localhost:5173/board/whatsapp` and choose **Connect WhatsApp**. The API creates a
 stable GoWA device slot for the active company, requests its QR, and proxies the QR image to the
@@ -150,7 +153,9 @@ The production API connects to an independently managed GoWA service. Set
 `WHATSAPP_GATEWAY_URL`, `WHATSAPP_GATEWAY_USERNAME`, and `WHATSAPP_GATEWAY_PASSWORD` in the
 production environment. Use a private network and HTTPS where traffic crosses hosts. The
 production Compose file does not start another WhatsApp runtime; GoWA remains the owner of
-paired sessions and its own persistent storage.
+paired sessions and its own persistent storage. The API expects GoWA `v9.6.0` by default and
+will report the gateway not ready if `/app/info` returns another version; review compatibility
+and set `WHATSAPP_GATEWAY_EXPECTED_VERSION` as part of an intentional GoWA upgrade.
 
 The API makes outbound REST calls to GoWA. Device-specific webhooks are optional; the Board inbox
 keeps polling GoWA's chat REST API as a recovery path. No shared internal token is used between

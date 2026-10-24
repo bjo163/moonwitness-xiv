@@ -30,7 +30,7 @@ import { localRetrievalRoutes } from './routes/local-retrieval.routes.js';
 import { localAiSuggestionRoutes } from './routes/local-ai-suggestion.routes.js';
 import { ensureResearchReviewWorkflow } from './research-review-workflow.js';
 import { config, localAiConfig } from './config/env.js';
-import { gowaRequest } from './whatsapp/gowa-client.js';
+import { checkWhatsAppGatewayVersion } from './whatsapp/version-guard.js';
 import { whatsappLogErrorContext } from './whatsapp/log-redaction.js';
 import {
   LocalFileAttachmentStorage,
@@ -287,12 +287,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Install the handler before route plugins inherit their error handling scope.
   await app.register(healthRoutes, {
     metricsToken: options.metricsToken ?? config.metricsToken,
-    checkWhatsAppGateway:
-      options.checkWhatsAppGateway ??
-      (async () => {
-        await gowaRequest('/health', { timeoutMs: 5_000 });
-        return true;
-      }),
+    checkWhatsAppGateway: options.checkWhatsAppGateway ?? (() => checkWhatsAppGatewayVersion()),
     checkAttachmentStorage: async () => {
       if (attachmentStorage instanceof S3AttachmentStorage) {
         await attachmentStorage.checkReady();
