@@ -2225,12 +2225,24 @@ test('guides the user to connect a WhatsApp account before opening the inbox', a
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Connect a WhatsApp account' })).toBeVisible();
   await expect(page.getByText('One WhatsApp account is available for this company.')).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 640 });
+  const connectButton = page.getByRole('button', { name: 'Connect WhatsApp' });
+  let connectButtonReachedByTab = false;
+  for (let index = 0; index < 40; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await connectButton.evaluate((element) => element === document.activeElement)) {
+      connectButtonReachedByTab = true;
+      break;
+    }
+  }
+  expect(connectButtonReachedByTab, 'Connect WhatsApp must be reachable by keyboard Tab').toBe(
+    true
+  );
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((nextTheme) => {
       document.documentElement.classList.toggle('dark', nextTheme === 'dark');
       window.localStorage.setItem('mw-theme', nextTheme);
     }, theme);
-    await page.setViewportSize({ width: 320, height: 640 });
     const accessibility = await new AxeBuilder({ page })
       .include('main')
       .exclude('iframe')
@@ -2253,11 +2265,9 @@ test('guides the user to connect a WhatsApp account before opening the inbox', a
       width.document,
       `WhatsApp connect state overflows in ${theme} theme`
     ).toBeLessThanOrEqual(width.viewport);
-    const connectButton = await page
-      .getByRole('button', { name: 'Connect WhatsApp' })
-      .boundingBox();
-    if (!connectButton) throw new Error('Connect WhatsApp button has no visible bounds');
-    expect(connectButton.x + connectButton.width).toBeLessThanOrEqual(width.viewport);
+    const buttonBounds = await connectButton.boundingBox();
+    if (!buttonBounds) throw new Error('Connect WhatsApp button has no visible bounds');
+    expect(buttonBounds.x + buttonBounds.width).toBeLessThanOrEqual(width.viewport);
     await page.screenshot({ path: testInfo.outputPath(`whatsapp-connect-${theme}-320.png`) });
   }
 });
