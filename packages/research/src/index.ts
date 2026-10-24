@@ -11,6 +11,7 @@ export {
 } from './assertion.js';
 export {
   EvidenceResolutionError,
+  isAttestedEvidenceResolution,
   resolveResearchEvidenceReference,
   validateResearchEvidenceReference,
   type CanonicalPassageSelector,

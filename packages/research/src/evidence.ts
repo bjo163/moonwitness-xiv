@@ -80,6 +80,16 @@ export class EvidenceResolutionError extends Error {
 
 export const researchEvidenceSelectorSchema = evidenceSelectorSchema;
 
+const attestedResolutions = new WeakSet<ResolvedEvidenceReference>();
+
+/**
+ * Only objects minted by `resolveResearchEvidenceReference` are attested, so a caller cannot
+ * present a hand-built reference as corpus-verified. Cloning or serializing loses attestation.
+ */
+export function isAttestedEvidenceResolution(value: ResolvedEvidenceReference): boolean {
+  return attestedResolutions.has(value);
+}
+
 const validateSchema = createJsonSchemaValidator(
   evidenceSelectorSchema as unknown as JsonSchemaContract,
   'does not match the exact research evidence selector contract'
@@ -143,7 +153,7 @@ export async function resolveResearchEvidenceReference(
     );
   }
 
-  return {
+  const resolution: ResolvedEvidenceReference = {
     evidence,
     direction: evidence.direction,
     source_id: passage.source_id,
@@ -155,4 +165,6 @@ export async function resolveResearchEvidenceReference(
     excerpt,
     ...(selector.range ? { range: selector.range } : {}),
   };
+  attestedResolutions.add(resolution);
+  return resolution;
 }

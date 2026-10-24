@@ -301,7 +301,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 - Deliverable: Explicit Quran-primary profile, candidate divine-attribute relation extraction.
 - Acceptance: No hardcoded list-of-99 as engine truth; every result tied to source and method; historical metrics marked unverified.
 - Verification target: `golden examples, false-positive negatives, reproducibility`. This is a target, not evidence that the command exists or has passed.
-- Evidence: [K4-003](evidence/K4-003.md). The projection enforces the profile's own `method_policy` — a `mw:asma-method:<slug>` identity plus a `major.minor.patch` version — and the candidate id now hashes every persisted, independently variable field, closing an identity collision; the first golden over the reviewed Q7:46 bytes runs through the production entry point at a pinned reproducibility digest. A human-authored Arabic term-discovery method, the K3-005 review rule for persisting a candidate, and any real extraction result remain open and no record is written.
+- Evidence: [K4-003](evidence/K4-003.md). The projection enforces the profile's own `method_policy` — a `mw:asma-method:<slug>` identity plus a `major.minor.patch` version — and the candidate id now hashes every persisted, independently variable field, closing an identity collision; the first golden over the reviewed Q7:46 bytes runs through the production entry point at a pinned reproducibility digest, and the projection now rejects any evidence reference the corpus resolver did not mint. A human-authored Arabic term-discovery method, the K3-005 review rule for persisting a candidate, and any real extraction result remain open and no record is written.
 
 ## K4-004 — Semantic RUH/HIZAB concept scope and mappings
 

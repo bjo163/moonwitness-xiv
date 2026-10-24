@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { URL } from 'node:url';
 import {
+  isAttestedEvidenceResolution,
   projectAsmaAttributeCandidate,
   projectResearchSemanticAnnotation,
   resolveResearchEvidenceReference,
@@ -11,6 +12,7 @@ import {
   type ResearchEvidenceReference,
   type ResolvablePassage,
   type ResearchSemanticAnnotation,
+  type ResolvedEvidenceReference,
   type SemanticSpan,
 } from '../src/index.js';
 import { projectAsmaAttributeCandidateWithProfile } from '../src/asma.js';
@@ -369,6 +371,40 @@ describe('Asma candidate projection', () => {
         `method ${method.id}/${method.version}`
       ).toEqual({ status: 'rejected', reason: 'method' });
     }
+  });
+
+  it('refuses an evidence reference the corpus resolver never minted', async () => {
+    const resolved = await resolvedEvidence();
+    const start = scalarIndexOf(text, 'compassion');
+    const termSpan = span(text, start, start + 'compassion'.length);
+    const method = { id: 'mw:asma-method:attribute-review', version: '1.0.0' };
+    const project = (evidenceReference: ResolvedEvidenceReference) =>
+      projectAsmaAttributeCandidateWithProfile({
+        annotation,
+        evidence: evidenceReference,
+        term_span: termSpan,
+        method,
+        profile: syntheticProfile,
+      });
+
+    expect(isAttestedEvidenceResolution(resolved)).toBe(true);
+    expect(project(resolved).status).toBe('candidate');
+
+    const handBuilt = { ...resolved };
+    expect(isAttestedEvidenceResolution(handBuilt)).toBe(false);
+    expect(project(handBuilt)).toEqual({ status: 'rejected', reason: 'evidence_attestation' });
+
+    const roundTripped = JSON.parse(JSON.stringify(resolved)) as ResolvedEvidenceReference;
+    expect(project(roundTripped)).toEqual({
+      status: 'rejected',
+      reason: 'evidence_attestation',
+    });
+
+    const forged = {
+      ...resolved,
+      content_sha256: createHash('sha256').update('substituted bytes', 'utf8').digest('hex'),
+    } as ResolvedEvidenceReference;
+    expect(project(forged)).toEqual({ status: 'rejected', reason: 'evidence_attestation' });
   });
 
   it('binds the candidate identity to every field the record persists', async () => {
