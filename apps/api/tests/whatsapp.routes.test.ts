@@ -860,7 +860,7 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(concurrentStatuses).toContain(201);
     expect(
       concurrentStatuses.every((status) => status === 200 || status === 201 || status === 409)
-    ).toBe(true);
+    ).toBeTruthy();
     expect(providerGroupCreateRequests).toHaveLength(2);
 
     const keyReuse = await app.inject({
@@ -1143,7 +1143,7 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
-    ).toBe(true);
+    ).toBeTruthy();
 
     const announce = await app.inject({
       method: 'POST',
@@ -1158,7 +1158,7 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_announce
-    ).toBe(true);
+    ).toBeTruthy();
 
     const invalid = await app.inject({
       method: 'POST',
@@ -1187,7 +1187,7 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(failed.statusCode).toBe(502);
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it('manages group participants with company scope and durable idempotency', async () => {
@@ -1347,9 +1347,9 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(left.statusCode).toBe(200);
     expect(left.json().data.left).toBe(true);
     expect(providerGroupLeaveRequests).toEqual([{ group_id: '120363000000002@g.us' }]);
-    expect((await db('whatsapp_conversations').where({ id: group.id }).first()).is_archived).toBe(
-      true
-    );
+    expect(
+      Boolean((await db('whatsapp_conversations').where({ id: group.id }).first()).is_archived)
+    ).toBe(true);
     const leaveReplay = await app.inject({
       method: 'POST',
       url: leaveUrl,
