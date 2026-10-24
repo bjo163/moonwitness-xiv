@@ -828,6 +828,52 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   }, initialThemeIsDark);
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
+  const mentionPicker = page.getByRole('group', { name: 'Mention picker' });
+  await expect(mentionPicker).toBeVisible();
+  const mentionViewport = page.viewportSize();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp mention picker WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dimensions = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        dimensions.document,
+        `WhatsApp mention picker overflows at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(dimensions.viewport);
+      const pickerBounds = await mentionPicker.boundingBox();
+      if (!pickerBounds) throw new Error('WhatsApp mention picker has no visible bounds');
+      expect(pickerBounds.x + pickerBounds.width).toBeLessThanOrEqual(dimensions.viewport);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-mentions-${theme}-${width}.png`),
+      });
+    }
+  }
+  if (mentionViewport) await page.setViewportSize(mentionViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
   await page.getByRole('button', { name: '@Rani Finance' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Mention preview (1/100): @Rani Finance' })
