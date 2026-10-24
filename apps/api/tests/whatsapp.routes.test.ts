@@ -4089,6 +4089,27 @@ describe('WhatsApp API GoWA bridge', () => {
       status: 'received',
     });
     expect(new Date(storedGroupEvents[0].create_date).toISOString()).toBe(groupEventTimestamp);
+    for (const [type, expectedContent] of [
+      ['leave', '628222222222@s.whatsapp.net left the group'],
+      ['promote', '628222222222@s.whatsapp.net became an admin'],
+      ['demote', '628222222222@s.whatsapp.net is no longer an admin'],
+    ]) {
+      expect(
+        (
+          await postEvent(
+            'group.participants',
+            { ...groupEvent, type },
+            `2026-10-25T10:30:0${type === 'leave' ? '1' : type === 'promote' ? '2' : '3'}.000Z`
+          )
+        ).statusCode
+      ).toBe(204);
+      expect(
+        await db('whatsapp_messages')
+          .where({ company_id: companyId, account_id: accountId, conversation_id: group.id })
+          .where('provider_type', `group_event_${type}`)
+          .first('content')
+      ).toEqual({ content: expectedContent });
+    }
     const invalidatedGroup = await db('whatsapp_conversations').where({ id: group.id }).first();
     expect(invalidatedGroup.group_metadata_synced_at).toBeNull();
     expect(JSON.parse(invalidatedGroup.group_participants_json)).toHaveLength(1);

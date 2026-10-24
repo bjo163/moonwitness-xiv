@@ -328,6 +328,27 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     });
     await route.fulfill({ status: 202, json: { success: true, data: { status: 'queued' } } });
   });
+  await page.route('**/whatsapp/conversations/222/messages*', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: [
+          ['join', 'joined the group'],
+          ['leave', 'left the group'],
+          ['promote', 'became an admin'],
+          ['demote', 'is no longer an admin'],
+        ].map(([action, label], index) => ({
+          id: 670 + index,
+          direction: 'inbound',
+          content: `628222222222@s.whatsapp.net ${label}`,
+          status: 'received',
+          message_type: 'text',
+          provider_type: `group_event_${action}`,
+          create_date: new Date(Date.now() - index * 1000).toISOString(),
+        })),
+      },
+    })
+  );
   await page.route('**/whatsapp/conversations/42/messages*', async (route) => {
     if (route.request().method() === 'POST') {
       const expectedMessages = [
@@ -974,6 +995,14 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await expect(page.getByLabel('Group name')).toBeDisabled();
   await page.getByRole('button', { name: 'Check group result' }).click();
   await expect(page.getByRole('heading', { name: 'Board project team' })).toBeVisible();
+  for (const eventText of [
+    '628222222222@s.whatsapp.net joined the group',
+    '628222222222@s.whatsapp.net left the group',
+    '628222222222@s.whatsapp.net became an admin',
+    '628222222222@s.whatsapp.net is no longer an admin',
+  ]) {
+    await expect(page.locator('article').getByText(eventText, { exact: true })).toBeVisible();
+  }
   expect(groupCreateRequests).toHaveLength(2);
   expect(groupCreateRequests[0]?.key).toBeTruthy();
   expect(groupCreateRequests[1]?.key).toBe(groupCreateRequests[0]?.key);
