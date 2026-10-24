@@ -1448,6 +1448,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           phone_number: null,
           qr_code: null,
           direct_uploads: supportsDirectUploads(options.attachmentStorage),
+          webhook_configured: Boolean(
+            process.env.WHATSAPP_WEBHOOK_URL && process.env.WHATSAPP_WEBHOOK_SECRET
+          ),
           permissions: whatsappPermissions(req.auth!),
         },
       };
@@ -1529,6 +1532,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         qr_code: qrCode,
         last_error: lastError,
         direct_uploads: supportsDirectUploads(options.attachmentStorage),
+        webhook_configured: Boolean(
+          process.env.WHATSAPP_WEBHOOK_URL && process.env.WHATSAPP_WEBHOOK_SECRET
+        ),
         permissions: whatsappPermissions(req.auth!),
       },
     };

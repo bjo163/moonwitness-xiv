@@ -15,6 +15,7 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
         data: {
           status: 'connected',
           phone_number: '6281234567890',
+          webhook_configured: false,
           permissions: { manage: true, createConversation: true, send: true, manageMessages: true },
         },
       },
@@ -519,6 +520,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/board/whatsapp');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Live callbacks are not configured.' })
+  ).toBeVisible();
   await expect(page.getByText('+6281234567890')).toBeVisible();
   await page.getByRole('button', { name: /Project group/u }).click();
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();

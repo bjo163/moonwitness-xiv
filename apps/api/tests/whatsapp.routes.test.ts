@@ -998,6 +998,32 @@ describe('WhatsApp API GoWA bridge', () => {
     ).toBe(1);
   });
 
+  it('reports webhook availability without exposing the configured secret', async () => {
+    delete process.env.WHATSAPP_WEBHOOK_URL;
+    delete process.env.WHATSAPP_WEBHOOK_SECRET;
+    const disabled = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(disabled.json().data.webhook_configured).toBe(false);
+
+    try {
+      process.env.WHATSAPP_WEBHOOK_URL = 'https://api.example.test';
+      process.env.WHATSAPP_WEBHOOK_SECRET = 'test-webhook-secret-value-not-returned';
+      const enabled = await app.inject({
+        method: 'GET',
+        url: '/whatsapp/account',
+        headers: { authorization: 'Bearer test' },
+      });
+      expect(enabled.json().data.webhook_configured).toBe(true);
+      expect(enabled.json().data).not.toHaveProperty('webhook_secret');
+    } finally {
+      delete process.env.WHATSAPP_WEBHOOK_URL;
+      delete process.env.WHATSAPP_WEBHOOK_SECRET;
+    }
+  });
+
   it('repairs a connected account with a missing GoWA device mapping and allows pairing again', async () => {
     const [account] = await db('whatsapp_accounts')
       .insert({

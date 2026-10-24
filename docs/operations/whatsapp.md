@@ -36,7 +36,9 @@ deployment environment. The API sets a device-specific callback when the company
 must be able to reach this origin over HTTPS. The callback verifies GoWA's `X-Hub-Signature-256`
 HMAC against the raw request body and checks the GoWA `session_id` against the mapped device.
 Leave both values unset to use REST polling only. Do not use a localhost URL for a hosted GoWA
-instance.
+instance. The account endpoint exposes only a boolean `webhook_configured`; the Board warns when
+callbacks are disabled and the inbox relies on periodic refresh. It never returns the webhook
+secret.
 
 GoWA owns WhatsApp credentials and chat history in its own storage on the hosted deployment. The
 Moonwitness database stores the company-to-device mapping and a company-scoped inbox cache. API

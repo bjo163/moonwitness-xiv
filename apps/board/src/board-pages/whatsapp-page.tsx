@@ -36,6 +36,7 @@ type Account = {
   phone_number?: string | null;
   qr_code?: string | null;
   last_error?: string | null;
+  webhook_configured?: boolean;
   permissions?: {
     manage: boolean;
     manageConversations: boolean;
@@ -1431,6 +1432,13 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
             {account?.phone_number && <span className="font-mono">+{account.phone_number}</span>}
           </p>
           {account?.last_error && <p className="mt-2 text-sm text-red-700">{account.last_error}</p>}
+          {connected && account?.webhook_configured === false && (
+            <p role="status" className="mt-2 max-w-2xl text-sm text-amber-900">
+              Live callbacks are not configured. Inbound messages update through periodic refresh.
+              Configure WHATSAPP_WEBHOOK_URL and WHATSAPP_WEBHOOK_SECRET on the API deployment to
+              enable GoWA callbacks.
+            </p>
+          )}
         </div>
         {!canManage ? (
           <span className="text-sm text-ink-faint">View-only WhatsApp access</span>
