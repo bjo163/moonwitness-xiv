@@ -101,6 +101,9 @@ describe('WhatsApp API GoWA bridge', () => {
   let scannerUnavailable = false;
   let providerImageSendCount = 0;
   let providerImageReplyIds: string[] = [];
+  let providerAudioSendCount = 0;
+  let providerAudioSendFields: string[] = [];
+  let providerAudioCaption = '';
   let providerForwardRequests: Array<{ sourceId: string; body: Record<string, unknown> }> = [];
   let providerReactionRequests: Array<{ messageId: string; body: Record<string, unknown> }> = [];
   let providerMessageMutationRequests: Array<{
@@ -310,6 +313,9 @@ describe('WhatsApp API GoWA bridge', () => {
     scannerUnavailable = false;
     providerImageSendCount = 0;
     providerImageReplyIds = [];
+    providerAudioSendCount = 0;
+    providerAudioSendFields = [];
+    providerAudioCaption = '';
     providerForwardRequests = [];
     providerReactionRequests = [];
     providerMessageMutationRequests = [];
@@ -477,6 +483,15 @@ describe('WhatsApp API GoWA bridge', () => {
           form instanceof FormData ? String(form.get('reply_message_id') ?? '') : ''
         );
         return json({ message_id: 'sent-image-id' });
+      }
+      if (url.pathname === '/send/audio') {
+        providerAudioSendCount++;
+        const form = init?.body;
+        if (form instanceof FormData) {
+          providerAudioSendFields = [...form.keys()];
+          providerAudioCaption = String(form.get('caption') ?? '');
+        }
+        return json({ message_id: 'sent-audio-id' });
       }
       if (/^\/message\/.+\/forward$/u.test(url.pathname) && method === 'POST') {
         providerForwardRequests.push({
@@ -2571,6 +2586,33 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(media.body).toBe(pngFixture().toString());
 
+    const audioUpload = multipartPayload(
+      { content: 'Voice caption' },
+      { name: 'voice.ogg', mime: 'audio/ogg', bytes: Buffer.from('OggSvoice-fixture') }
+    );
+    const sentAudio = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${privateId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': audioUpload.contentType,
+      },
+      payload: audioUpload.payload,
+    });
+    expect(sentAudio.statusCode).toBe(202);
+    const audioMessageId = sentAudio.json().data.id as number;
+    const audioEvent = await db('outbox_events')
+      .where({ aggregate_id: audioMessageId, event_type: 'whatsapp.message.send' })
+      .first();
+    await dispatchQueuedWhatsAppMessage(audioMessageId, companyId, audioEvent.id, storage);
+    expect(providerAudioSendCount).toBe(1);
+    expect(providerAudioSendFields).toEqual(['phone', 'caption', 'audio']);
+    expect(providerAudioCaption).toBe('Voice caption');
+    expect((await db('whatsapp_messages').where({ id: audioMessageId }).first()).status).toBe(
+      'sent'
+    );
+
     failTextSend = true;
     const failed = await app.inject({
       method: 'POST',
@@ -4583,7 +4625,11 @@ describe('WhatsApp API GoWA bridge', () => {
       method: 'POST',
       url: `/whatsapp/conversations/${conversation.id}/uploads`,
       headers,
-      payload: { file_name: 'direct.png', content_type: 'image/png', size_bytes: pngFixture().length },
+      payload: {
+        file_name: 'direct.png',
+        content_type: 'image/png',
+        size_bytes: pngFixture().length,
+      },
     });
     expect(ticketResponse.statusCode).toBe(201);
     const ticket = ticketResponse.json().data as {
@@ -4648,9 +4694,16 @@ describe('WhatsApp API GoWA bridge', () => {
       method: 'POST',
       url: `/whatsapp/conversations/${conversation.id}/uploads`,
       headers: { authorization: 'Bearer test' },
-      payload: { file_name: 'direct.png', content_type: 'image/png', size_bytes: pngFixture().length },
+      payload: {
+        file_name: 'direct.png',
+        content_type: 'image/png',
+        size_bytes: pngFixture().length,
+      },
     });
-    const ticket = ticketResponse.json().data as { upload_id: number; fields: Record<string, string> };
+    const ticket = ticketResponse.json().data as {
+      upload_id: number;
+      fields: Record<string, string>;
+    };
     stored.set(ticket.fields.key!, pngFixture());
     const base = {
       method: 'POST' as const,
@@ -4658,24 +4711,28 @@ describe('WhatsApp API GoWA bridge', () => {
       payload: { content: 'caption', upload_ticket_id: ticket.upload_id },
     };
     expect(
-      (await app.inject({
-        ...base,
-        headers: {
-          authorization: 'Bearer test',
-          'x-test-company': 'foreign',
-          'idempotency-key': `direct-tenant-${randomUUID()}`,
-        },
-      })).statusCode
+      (
+        await app.inject({
+          ...base,
+          headers: {
+            authorization: 'Bearer test',
+            'x-test-company': 'foreign',
+            'idempotency-key': `direct-tenant-${randomUUID()}`,
+          },
+        })
+      ).statusCode
     ).toBe(404);
     expect(
-      (await app.inject({
-        ...base,
-        headers: {
-          authorization: 'Bearer test',
-          'x-test-user-id': '2',
-          'idempotency-key': `direct-user-${randomUUID()}`,
-        },
-      })).statusCode
+      (
+        await app.inject({
+          ...base,
+          headers: {
+            authorization: 'Bearer test',
+            'x-test-user-id': '2',
+            'idempotency-key': `direct-user-${randomUUID()}`,
+          },
+        })
+      ).statusCode
     ).toBe(404);
     await db('whatsapp_upload_tickets')
       .where({ id: ticket.upload_id })
@@ -4744,7 +4801,9 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(infectedResponse.statusCode).toBe(422);
     expect(infectedResponse.json().error).toContain('malware');
     expect(stored.has(infected.fields.key!)).toBe(false);
-    expect(await db('whatsapp_messages').where({ conversation_id: conversation.id })).toHaveLength(0);
+    expect(await db('whatsapp_messages').where({ conversation_id: conversation.id })).toHaveLength(
+      0
+    );
   });
 
   it('rejects uploaded content when its bytes do not match the declared MIME type', async () => {
