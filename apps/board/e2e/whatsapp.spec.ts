@@ -725,6 +725,33 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   });
   const retryInboxButton = inboxRefreshError.getByRole('button', { name: 'Retry' });
   await expect(retryInboxButton).toBeEnabled();
+  const initialThemeIsDark = await page
+    .locator('html')
+    .evaluate((element) => element.classList.contains('dark'));
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    const errorAccessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      errorAccessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp stale inbox/error WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+  }
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
   failInboxRefresh = false;
   await retryInboxButton.click();
   await expect(inboxRefreshError).toHaveCount(0);
@@ -739,9 +766,6 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
     { name: 'mobile-390', width: 390, height: 844 },
     { name: 'mobile-320', width: 320, height: 640 },
   ];
-  const initialThemeIsDark = await page
-    .locator('html')
-    .evaluate((element) => element.classList.contains('dark'));
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((nextTheme) => {
       document.documentElement.classList.toggle('dark', nextTheme === 'dark');

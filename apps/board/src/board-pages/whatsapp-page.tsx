@@ -1647,7 +1647,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
       {(accountQuery.isError || conversationsQuery.isError || messagesQuery.isError) && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-pink p-3 text-sm"
+          className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-pink p-3 text-sm dark:text-black"
         >
           <p>
             WhatsApp data could not be refreshed.
@@ -2769,7 +2769,10 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                 </div>
               )}
               {messagesQuery.isError && !messagesQuery.data && (
-                <div className="space-y-3 border-2 border-ink bg-pink p-3" role="alert">
+                <div
+                  className="space-y-3 border-2 border-ink bg-pink p-3 dark:text-black"
+                  role="alert"
+                >
                   <p className="text-sm">Messages could not be loaded.</p>
                   <Button
                     type="button"
