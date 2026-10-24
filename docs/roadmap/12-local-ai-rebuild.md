@@ -351,13 +351,13 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K5-003 — Witness original/correction/provenance domain
 
-- Status: in progress; synthetic ORM addon and ontology contract are implemented. Generic REST/RPC access is denied to every role by the central API policy, and PostgreSQL/SQLite triggers prevent ordinary SQL `UPDATE`/`DELETE`. A read-only owner/company-scoped endpoint now exposes only explicitly synthetic, restricted records to an active superadmin witness steward with company membership. No list or write endpoint exists; legacy unclassified rows remain hidden. Real-data privacy approval remains open, and database owners can still alter or remove triggers, so this is not tamper-proof storage.
+- Status: in progress; synthetic ORM addon and ontology contract are implemented. Generic REST/RPC access is denied to every role by the central API policy, and PostgreSQL/SQLite triggers prevent ordinary SQL `UPDATE`/`DELETE`. A read-only owner/company-scoped endpoint now exposes only explicitly synthetic, restricted records to an active superadmin witness steward with company membership. No list or write endpoint exists; legacy unclassified rows remain hidden. The internal correction append takes a source only through a caller-supplied resolver that verifies its bytes and citation rights, and fails closed without one. Real-data privacy approval remains open, and database owners can still alter or remove triggers, so this is not tamper-proof storage.
 - Priority: P0; risk: privacy-sensitive.
 - Depends on: `K5-001`, `K3-001`.
 - File scope: `packages/orm-knowledge/`, `ontology/domains/`, workspace quality and architecture registries.
 - Deliverable: First-person testimony plus correction chain, separate interpretation and evidence links.
 - Acceptance: Original witness immutable in ordinary workflow; uncertainty/time precision kept; privacy default private.
-- Verification: [K5-003 evidence](evidence/K5-003.md): synthetic SQLite/PostgreSQL addon tests cover seed visibility, source/correction/interpretation ORM and ordinary SQL mutation denial, correction ordering/provenance validation, and addon conformance. API tests verify owner/company isolation, guessed and non-synthetic ID concealment, no list/write surface, and generic REST/RPC denial for all roles. Keep real testimony disabled until workflow-specific privacy/safeguarding approval and any required legal review are recorded.
+- Verification: [K5-003 evidence](evidence/K5-003.md): synthetic SQLite/PostgreSQL addon tests cover seed visibility, source/correction/interpretation ORM and ordinary SQL mutation denial, correction ordering, and the fail-closed source resolver check for byte, rights and citation use, plus addon conformance. API tests verify owner/company isolation, guessed and non-synthetic ID concealment, no list/write surface, and generic REST/RPC denial for all roles. Keep real testimony disabled until workflow-specific privacy/safeguarding approval and any required legal review are recorded.
 
 ## K5-004 — Story, episode, page/media manifest contracts
 

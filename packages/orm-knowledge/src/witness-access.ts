@@ -99,6 +99,24 @@ export class WitnessAccessError extends Error {
   }
 }
 
+/** The three attribution fields a correction claims to be derived from. */
+export interface WitnessCorrectionSourceReference {
+  readonly source_label: string;
+  readonly source_locator: string;
+  readonly source_digest: string;
+}
+
+/** A trusted local resolver returns this only after verifying source bytes and citation rights. */
+export interface VerifiedWitnessCorrectionSource extends WitnessCorrectionSourceReference {
+  readonly bytes_verified: true;
+  readonly rights_state: 'permitted';
+  readonly allowed_uses: readonly string[];
+}
+
+export type WitnessCorrectionSourceResolver = (
+  reference: WitnessCorrectionSourceReference
+) => Promise<VerifiedWitnessCorrectionSource | null>;
+
 export interface AppendSyntheticWitnessCorrectionInput {
   readonly sequence: number;
   readonly correctionText: string;
@@ -109,6 +127,7 @@ export interface AppendSyntheticWitnessCorrectionInput {
   readonly assertedTimeText: string;
   readonly assertedTimePrecision: WitnessTimePrecision;
   readonly uncertaintyNote?: string | null;
+  readonly resolveSource?: WitnessCorrectionSourceResolver;
 }
 
 export interface AppendedSyntheticWitnessCorrection {
@@ -291,7 +310,28 @@ export async function readOwnedSyntheticWitness(
   });
 }
 
-/** Append an owned synthetic restricted correction after shape-checking its attribution metadata. */
+function verifiedCorrectionSource(
+  reference: WitnessCorrectionSourceReference,
+  resolver: WitnessCorrectionSourceResolver | undefined
+): Promise<boolean> {
+  if (!resolver) return Promise.resolve(false);
+  return resolver(reference).then(
+    (resolved) =>
+      resolved !== null &&
+      resolved.source_label === reference.source_label &&
+      resolved.source_locator === reference.source_locator &&
+      resolved.source_digest === reference.source_digest &&
+      resolved.bytes_verified === true &&
+      resolved.rights_state === 'permitted' &&
+      resolved.allowed_uses.includes('quote_excerpt')
+  );
+}
+
+/**
+ * Append an owned synthetic restricted correction after shape-checking its attribution metadata
+ * and verifying the claimed source through the caller's resolver. Without a resolver the source
+ * stays unverified and the append fails closed.
+ */
 export async function appendOwnedSyntheticWitnessCorrection(
   db: Knex,
   steward: AuthenticatedWitnessSteward,
@@ -338,6 +378,21 @@ export async function appendOwnedSyntheticWitnessCorrection(
       .forUpdate();
     if (chain.some((row, index) => Number(row.sequence) !== index + 1)) {
       throw new TypeError('Synthetic witness correction chain is inconsistent');
+    }
+
+    if (
+      !(await verifiedCorrectionSource(
+        {
+          source_label: input.sourceLabel,
+          source_locator: input.sourceLocator,
+          source_digest: input.sourceDigest,
+        },
+        input.resolveSource
+      ))
+    ) {
+      throw new TypeError(
+        'Correction source must resolve to verified local bytes with quote_excerpt permission'
+      );
     }
 
     const existing = chain.find((row) => Number(row.sequence) === input.sequence);

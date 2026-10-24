@@ -10,9 +10,17 @@ import {
   WitnessCorrection,
   WitnessInterpretation,
   WitnessTestimony,
+  type WitnessCorrectionSourceResolver,
 } from '../src/index.js';
 
 const digest = 'c'.repeat(64);
+
+const resolveSource: WitnessCorrectionSourceResolver = async (reference) => ({
+  ...reference,
+  bytes_verified: true,
+  rights_state: 'permitted',
+  allowed_uses: ['read_analyze', 'quote_excerpt'],
+});
 
 describe('knowledge witness records addon', () => {
   let db: Knex;
@@ -278,6 +286,7 @@ describe('knowledge witness records addon', () => {
       sourceDigest: digest,
       assertedTimeText: '2026',
       assertedTimePrecision: 'year' as const,
+      resolveSource,
     };
     const first = await appendOwnedSyntheticWitnessCorrection(
       db,
@@ -323,5 +332,73 @@ describe('knowledge witness records addon', () => {
         input
       )
     ).rejects.toThrow();
+  });
+
+  it('fails closed unless a resolver verifies the correction source bytes and citation rights', async () => {
+    await installAddons(db, [baseManifest, manifest]);
+    const testimony = await WitnessTestimony.query().findOne({
+      external_key: 'synthetic-witness-scoped-001',
+    });
+    const actor = {
+      userId: Number(testimony?.created_by_id),
+      companyId: Number(testimony?.company_id),
+      role: 'superadmin',
+    } as const;
+    const input = {
+      sequence: 2,
+      correctionText: 'Synthetic correction: the lamp was near the north doorway.',
+      reason: 'Synthetic owner correction fixture.',
+      sourceLabel: 'Synthetic correction fixture',
+      sourceLocator: 'fixture://witness/scoped/001/correction/002',
+      sourceDigest: digest,
+      assertedTimeText: '2026',
+      assertedTimePrecision: 'year' as const,
+    };
+    const unverified: WitnessCorrectionSourceResolver[] = [
+      async () => null,
+      async (reference) => ({
+        ...reference,
+        bytes_verified: true,
+        rights_state: 'blocked' as never,
+        allowed_uses: ['quote_excerpt'],
+      }),
+      async (reference) => ({
+        ...reference,
+        bytes_verified: true,
+        rights_state: 'permitted',
+        allowed_uses: ['read_analyze'],
+      }),
+      async (reference) => ({
+        ...reference,
+        source_digest: 'a'.repeat(64),
+        bytes_verified: true,
+        rights_state: 'permitted',
+        allowed_uses: ['quote_excerpt'],
+      }),
+    ];
+    for (const resolve of [undefined, ...unverified]) {
+      await expect(
+        appendOwnedSyntheticWitnessCorrection(db, actor, Number(testimony?.id), {
+          ...input,
+          resolveSource: resolve,
+        })
+      ).rejects.toThrow('verified local bytes');
+    }
+    expect(
+      await WitnessCorrection.query().where({ testimony_id: testimony?.id, sequence: 2 })
+    ).toHaveLength(0);
+
+    await expect(
+      appendOwnedSyntheticWitnessCorrection(db, actor, Number(testimony?.id), {
+        ...input,
+        resolveSource,
+      })
+    ).resolves.toMatchObject({ sequence: 2, idempotent: false });
+    await expect(
+      appendOwnedSyntheticWitnessCorrection(db, actor, Number(testimony?.id), {
+        ...input,
+        resolveSource: async () => null,
+      })
+    ).rejects.toThrow('verified local bytes');
   });
 });

@@ -100,7 +100,10 @@ export type {
   AppendedSyntheticWitnessCorrection,
   AuthenticatedWitnessSteward,
   ScopedSyntheticWitness,
+  VerifiedWitnessCorrectionSource,
   WitnessAccessErrorCode,
+  WitnessCorrectionSourceReference,
+  WitnessCorrectionSourceResolver,
 } from './witness-access.js';
 export {
   ResearchPrivacyProjection,
