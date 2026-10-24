@@ -135,15 +135,15 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 
 ## P3 — WhatsApp Status/Story
 
-- [ ] **P3-01** Audit dan contract-test endpoint Status yang benar-benar tersedia pada versi GoWA terpasang.
-- [ ] **P3-02** Tetapkan cakupan: melihat Status, membuat Status, atau keduanya.
+- [ ] **P3-01** Audit dan contract-test endpoint Status yang benar-benar tersedia pada versi GoWA terpasang. GoWA v9.6.0 mendokumentasikan publikasi teks, gambar, dan video Status melalui endpoint `/send/message`, `/send/image`, dan `/send/video` dengan `phone=status@broadcast`; `allow_reshare` tersedia untuk jenis Status tersebut. OpenAPI v9.6 tidak menyediakan endpoint feed/list/view Status. Kredensial `.env` berhasil mengakses `GET /health` dan `GET /devices` pada host produksi, tetapi daftar perangkat kosong sehingga kontrak pada perangkat aktif belum dapat diuji. Sumber: [rilis GoWA v9.6.0](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/tag/v9.6.0), [OpenAPI pada commit v9.6.0](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/62e319d/docs/openapi.yaml), [diskusi maintainer tentang batas API Status](https://github.com/aldinokemal/go-whatsapp-web-multidevice/discussions/289).
+- [x] **P3-02** Cakupan v1 diputuskan: **membuat Status teks, gambar, dan video saja**. Feed/viewer, balasan, reaksi, dan daftar penonton memerlukan dukungan provider yang belum tersedia. Persetujuan ini tidak berarti alur publikasi sudah diimplementasikan atau diverifikasi pada perangkat nyata. (UI: `WUI-16`)
 - [ ] **P3-03** Daftar Status kontak dengan pemilik, waktu unggah, sisa masa berlaku, dan urutan.
 - [ ] **P3-04** Viewer foto/video dengan auto-advance, pause, mute, dan progress.
 - [ ] **P3-05** Terapkan masa berlaku 24 jam dan hapus cache Status kedaluwarsa.
 - [ ] **P3-06** Penanda sudah/belum dilihat dan receipt jika GoWA menyediakan.
 - [ ] **P3-07** Audience/privacy Status jika provider memberi kontrol yang aman.
-- [ ] **P3-08** Buat Status teks dengan latar, font, emoji, dan batas karakter.
-- [ ] **P3-09** Buat Status foto/video dengan crop, caption, durasi, dan validasi media.
+- [ ] **P3-08** Buat Status teks dengan latar, font, emoji, dan batas karakter setelah API/outbox mendukung publikasi aman.
+- [ ] **P3-09** Buat Status foto/video dengan crop, caption, durasi, dan validasi media setelah API/outbox mendukung publikasi aman. (UI: `WUI-16`)
 - [ ] **P3-10** Hapus Status sendiri jika didukung dan verifikasi dari perangkat.
 - [ ] **P3-11** Balas Status sebagai pesan privat dengan konteks Status.
 - [ ] **P3-12** Reaksi Status jika GoWA mendukung.
