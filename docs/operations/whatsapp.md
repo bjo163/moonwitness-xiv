@@ -223,6 +223,17 @@ background polling. Labels contain only bounded route/state/direction values; th
 company IDs, phone numbers, JIDs, message content, object keys, or credentials. Database metric
 availability is exposed separately so a failed scrape query is not mistaken for an empty queue.
 
+Alert expressions are provided in [`deploy/monitoring/whatsapp-alerts.yml`](../../deploy/monitoring/whatsapp-alerts.yml).
+Import that rule group into Prometheus and route `severity` labels through the deployment's
+Alertmanager. The expressions expect Blackbox Exporter jobs named `moonwitness-whatsapp-readyz`
+probing `/whatsapp/readyz` and `moonwitness-api-readyz` probing `/readyz`; configure targets to your
+actual API origin. The WhatsApp readiness probe validates GoWA reachability and expected version.
+The API readiness probe checks PostgreSQL and attachment storage. Local storage readiness writes,
+syncs, and removes a one-byte probe file; S3 readiness checks the configured bucket. A disconnected
+account alert also fires for intentionally disconnected accounts, so silence it during planned
+unpairing. Rule definitions are not active until loaded and notification routing is tested in the
+deployment.
+
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.

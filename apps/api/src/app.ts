@@ -289,9 +289,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     metricsToken: options.metricsToken ?? config.metricsToken,
     checkWhatsAppGateway: options.checkWhatsAppGateway ?? (() => checkWhatsAppGatewayVersion()),
     checkAttachmentStorage: async () => {
-      if (attachmentStorage instanceof S3AttachmentStorage) {
-        await attachmentStorage.checkReady();
-      }
+      await attachmentStorage.checkReady?.();
       return true;
     },
   });

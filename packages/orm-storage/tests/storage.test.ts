@@ -43,6 +43,17 @@ afterEach(async () => {
 });
 
 describe('LocalFileAttachmentStorage', () => {
+  it('checks that the persistent directory can create, sync, and remove a probe object', async () => {
+    const storage = await storageFixture();
+    await expect(storage.checkReady()).resolves.toBeUndefined();
+    await expect(readdir(storage.directory)).resolves.toEqual([]);
+
+    const filePath = path.join(storage.directory, 'not-a-directory');
+    await writeFile(filePath, 'blocker');
+    const unavailable = new LocalFileAttachmentStorage(filePath);
+    await expect(unavailable.checkReady()).rejects.toThrow();
+  });
+
   it('writes atomically with generated-safe keys and reads legacy UUID files', async () => {
     const storage = await storageFixture();
     const content = Buffer.from('example bytes');

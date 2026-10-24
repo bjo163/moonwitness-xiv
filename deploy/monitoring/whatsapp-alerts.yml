@@ -1,0 +1,75 @@
+groups:
+  - name: moonwitness.whatsapp
+    rules:
+      - alert: WhatsAppGatewayUnavailable
+        expr: probe_success{job="moonwitness-whatsapp-readyz"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: whatsapp
+        annotations:
+          summary: WhatsApp GoWA gateway is unavailable
+          description: The authenticated GoWA readiness check has failed for at least two minutes.
+
+      - alert: WhatsAppAccountDisconnected
+        expr: sum by (instance) (moonwitness_whatsapp_accounts{status="disconnected"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: whatsapp
+        annotations:
+          summary: A company WhatsApp account is disconnected
+          description: At least one configured account has remained disconnected for five minutes.
+
+      - alert: WhatsAppPairingQrExpired
+        expr: sum by (instance) (moonwitness_whatsapp_accounts{status="qr_expired"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: whatsapp
+        annotations:
+          summary: A WhatsApp pairing QR code expired
+          description: Open the affected company account in Board and request a fresh QR code.
+
+      - alert: WhatsAppOutboxStalled
+        expr: |
+          max by (instance, kind) (moonwitness_whatsapp_outbox_oldest_active_seconds) > 300
+          and on (instance, kind)
+          sum by (instance, kind) (moonwitness_whatsapp_outbox_events{status=~"pending|processing"}) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: whatsapp
+        annotations:
+          summary: WhatsApp outbox work is stalled
+          description: The oldest active WhatsApp {{ $labels.kind }} event has waited over five minutes.
+
+      - alert: WhatsAppOutboxDeadEvents
+        expr: sum by (instance, kind) (moonwitness_whatsapp_outbox_events{status="dead"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: whatsapp
+        annotations:
+          summary: WhatsApp outbox has dead events
+          description: Review failed message or Status delivery records and their safe error reason in Board.
+
+      - alert: WhatsAppAttachmentReadinessFailed
+        expr: probe_success{job="moonwitness-api-readyz"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: whatsapp
+        annotations:
+          summary: API database or attachment storage readiness failed
+          description: The API /readyz dependency check failed; inspect PostgreSQL and the configured attachment store.
+
+      - alert: WhatsAppMetricsDatabaseUnavailable
+        expr: moonwitness_whatsapp_database_metrics_available == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: whatsapp
+        annotations:
+          summary: WhatsApp operational metrics could not read the database
+          description: The authenticated metrics endpoint is reachable but its database aggregates are unavailable.

@@ -28,6 +28,7 @@ export interface StoredObjectMetadata {
 }
 
 export interface AttachmentStorage {
+  checkReady?(): Promise<void>;
   put(key: string, content: Uint8Array): Promise<StoredObjectMetadata>;
   get(key: string): Promise<Buffer | null>;
   putStream?(key: string, content: Readable, maxBytes?: number): Promise<StoredObjectMetadata>;
@@ -69,6 +70,23 @@ export class LocalFileAttachmentStorage implements AttachmentStorage {
 
   constructor(directory: string) {
     this.directory = path.resolve(directory);
+  }
+
+  async checkReady(): Promise<void> {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    const probePath = path.join(this.directory, `.readiness-${randomUUID()}.tmp`);
+    let probe: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      probe = await open(probePath, 'wx', 0o600);
+      await probe.writeFile(Buffer.from([0]));
+      await probe.sync();
+    } finally {
+      try {
+        await probe?.close();
+      } finally {
+        await rm(probePath, { force: true });
+      }
+    }
   }
 
   private objectPath(key: string): string {
