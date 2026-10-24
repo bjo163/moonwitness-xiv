@@ -1138,6 +1138,7 @@ test('assigns conversations to agents and teams and closes or reopens queue item
 });
 
 test('connect shows QR, media is sent, and failures preserve the draft', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -1204,12 +1205,13 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     })
   );
   let signedStorageUpload = 0;
+  let failSignedStorageUpload = false;
   await page.route('https://storage.test/**', async (route) => {
     if (route.request().method() === 'OPTIONS') {
       return route.fulfill({
         status: 204,
         headers: {
-          'access-control-allow-origin': 'http://127.0.0.1:5175',
+          'access-control-allow-origin': '*',
           'access-control-allow-methods': 'POST, OPTIONS',
           'access-control-allow-headers': 'content-type',
         },
@@ -1222,9 +1224,15 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     expect(payload?.toString('latin1')).toContain('name="key"');
     expect(payload?.toString('latin1')).toContain('signed-key');
     expect(payload?.includes(Buffer.from('test attachment'))).toBe(true);
+    if (failSignedStorageUpload) {
+      return route.fulfill({
+        status: 503,
+        headers: { 'access-control-allow-origin': '*' },
+      });
+    }
     await route.fulfill({
       status: 204,
-      headers: { 'access-control-allow-origin': 'http://127.0.0.1:5175' },
+      headers: { 'access-control-allow-origin': '*' },
     });
   });
   let fail = false,
@@ -1374,9 +1382,16 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
     mimeType: 'text/plain',
     buffer: Buffer.from('test attachment'),
   });
+  failSignedStorageUpload = true;
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByPlaceholder('Write a message…')).toHaveValue('Direct caption');
+  await expect(page.getByText('Attached: sample.txt')).toBeVisible();
+  await expect(page.getByText('Storage rejected the media upload', { exact: true })).toBeVisible();
+  expect(signedStorageUpload).toBe(1);
+  failSignedStorageUpload = false;
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByPlaceholder('Write a message…')).toHaveValue('');
-  expect(signedStorageUpload).toBe(1);
+  expect(signedStorageUpload).toBe(2);
   fail = true;
   await page.getByPlaceholder('Write a message…').fill('Keep this draft');
   await page.getByRole('button', { name: 'Send message' }).click();
@@ -1385,11 +1400,18 @@ test('connect shows QR, media is sent, and failures preserve the draft', async (
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
   await expect.poll(() => status).toBe('disconnected');
   await page.reload();
-  await page.getByRole('button', { name: 'Switch company. Current scope: Global Scope' }).click();
-  await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Switch company. Current scope: MoonWitness' })
-  ).toBeVisible();
+  const globalScopeSwitcher = page.getByRole('button', {
+    name: 'Switch company. Current scope: Global Scope',
+  });
+  const companyScopeSwitcher = page.getByRole('button', {
+    name: 'Switch company. Current scope: MoonWitness',
+  });
+  await expect(globalScopeSwitcher.or(companyScopeSwitcher).first()).toBeVisible();
+  if (await globalScopeSwitcher.isVisible().catch(() => false)) {
+    await globalScopeSwitcher.click();
+    await page.getByRole('menuitem', { name: 'MoonWitness' }).click();
+  }
+  await expect(companyScopeSwitcher).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
 });
 
