@@ -866,6 +866,18 @@ test('internal notes stay outside the WhatsApp message timeline', async ({ page 
   );
   await page.route('**/whatsapp/conversations**', async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/contact'))
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            name: conversation.name,
+            phone_number: '628555111222',
+            verified_name: null,
+            status: null,
+          },
+        },
+      });
     if (url.pathname.endsWith('/notes')) {
       if (route.request().method() === 'POST') {
         const { content } = route.request().postDataJSON();
@@ -958,6 +970,18 @@ test('creates labels, applies them to a conversation, and filters the inbox', as
   });
   await page.route('**/whatsapp/conversations**', async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/contact'))
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            name: conversations[0].name,
+            phone_number: '628555111222',
+            verified_name: null,
+            status: null,
+          },
+        },
+      });
     if (url.pathname.endsWith('/labels') && route.request().method() === 'PUT') {
       const body = route.request().postDataJSON() as { label_ids: number[] };
       conversations[0].labels = body.label_ids.includes(8) ? [...labels] : [];
@@ -1059,6 +1083,21 @@ test('assigns conversations to agents and teams and closes or reopens queue item
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
+    if (path.endsWith('/contact')) {
+      const conversationId = Number(path.split('/').at(-2));
+      const conversation = conversations.find((item) => item.id === conversationId);
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            name: conversation?.name ?? 'Unknown contact',
+            phone_number: null,
+            verified_name: null,
+            status: null,
+          },
+        },
+      });
+    }
     if (path.endsWith('/assignment') && method === 'PUT') {
       const body = route.request().postDataJSON() as {
         assigned_user_id: number | null;
