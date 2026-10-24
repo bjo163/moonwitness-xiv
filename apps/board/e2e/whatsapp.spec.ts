@@ -264,6 +264,11 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
       },
     });
   });
+  const groupLeaveRequests: string[] = [];
+  await page.route('**/whatsapp/conversations/*/group/leave', async (route) => {
+    groupLeaveRequests.push(route.request().headers()['idempotency-key'] ?? '');
+    await route.fulfill({ json: { success: true, data: { left: true } } });
+  });
   const sentMessages: string[] = [];
   const sentReactions: Array<{ sourceId: string; emoji: string }> = [];
   await page.route('**/whatsapp/messages/*/reaction', async (route) => {
@@ -1028,6 +1033,14 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     'href',
     'https://chat.whatsapp.com/AbCdEfGh12345671'
   );
+  await page.getByRole('button', { name: 'Leave group' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Confirm leaving group' })
+    .getByRole('button', { name: 'Confirm leave' })
+    .click();
+  await expect.poll(() => groupLeaveRequests.length).toBe(1);
+  expect(groupLeaveRequests[0]).toBeTruthy();
+  await expect(page.getByRole('button', { name: 'Back to conversations' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );

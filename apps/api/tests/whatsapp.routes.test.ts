@@ -151,6 +151,9 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerGroupActionResult: unknown = null;
   let providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
   let providerGroupInviteRequests: URL[] = [];
+  let providerGroupLeaveRequests: Array<Record<string, unknown>> = [];
+  let providerGroupLeaveStatus: number | null = null;
+  let providerGroupMetadataStatus: number | null = null;
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -368,6 +371,9 @@ describe('WhatsApp API GoWA bridge', () => {
     providerGroupActionResult = null;
     providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
     providerGroupInviteRequests = [];
+    providerGroupLeaveRequests = [];
+    providerGroupLeaveStatus = null;
+    providerGroupMetadataStatus = null;
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -438,19 +444,29 @@ describe('WhatsApp API GoWA bridge', () => {
         return json(phoneCheckResult === null ? {} : { is_on_whatsapp: phoneCheckResult });
       }
       if (url.pathname === '/group/info')
-        return groupMetadataFails
-          ? json({ message: 'provider unavailable' }, 503)
-          : json(providerGroupInfo);
+        return providerGroupMetadataStatus
+          ? json({ message: 'group unavailable' }, providerGroupMetadataStatus)
+          : groupMetadataFails
+            ? json({ message: 'provider unavailable' }, 503)
+            : json(providerGroupInfo);
       if (url.pathname === '/group/participants' && method === 'GET')
-        return groupMetadataFails
-          ? json({ message: 'provider unavailable' }, 503)
-          : json({
-              group_id: url.searchParams.get('group_id'),
-              participants: providerGroupParticipants,
-            });
+        return providerGroupMetadataStatus
+          ? json({ message: 'group unavailable' }, providerGroupMetadataStatus)
+          : groupMetadataFails
+            ? json({ message: 'provider unavailable' }, 503)
+            : json({
+                group_id: url.searchParams.get('group_id'),
+                participants: providerGroupParticipants,
+              });
       if (url.pathname === '/group/invite-link' && method === 'GET') {
         providerGroupInviteRequests.push(url);
         return json({ invite_link: providerGroupInviteLink });
+      }
+      if (url.pathname === '/group/leave' && method === 'POST') {
+        providerGroupLeaveRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        if (providerGroupLeaveStatus)
+          return json({ message: 'provider unavailable' }, providerGroupLeaveStatus);
+        return json({ message: 'left group' });
       }
       if (url.pathname === '/group' && method === 'POST') {
         providerGroupCreateRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -1123,6 +1139,89 @@ describe('WhatsApp API GoWA bridge', () => {
       headers: { authorization: 'Bearer test' },
     });
     expect(invalidInvite.statusCode).toBe(502);
+
+    const leaveUrl = `/whatsapp/conversations/${group.id}/group/leave`;
+    const leaveHeaders = {
+      authorization: 'Bearer test',
+      'idempotency-key': 'leave-this-group-001',
+    };
+    const leaveDenied = await app.inject({
+      method: 'POST',
+      url: leaveUrl,
+      headers: { ...leaveHeaders, 'x-test-role': 'user' },
+    });
+    expect(leaveDenied.statusCode).toBe(403);
+    const leaveForeign = await app.inject({
+      method: 'POST',
+      url: leaveUrl,
+      headers: { ...leaveHeaders, 'x-test-company': 'foreign' },
+    });
+    expect(leaveForeign.statusCode).toBe(404);
+    const left = await app.inject({ method: 'POST', url: leaveUrl, headers: leaveHeaders });
+    expect(left.statusCode).toBe(200);
+    expect(left.json().data.left).toBe(true);
+    expect(providerGroupLeaveRequests).toEqual([{ group_id: '120363000000002@g.us' }]);
+    expect((await db('whatsapp_conversations').where({ id: group.id }).first()).is_archived).toBe(
+      true
+    );
+    const leaveReplay = await app.inject({
+      method: 'POST',
+      url: leaveUrl,
+      headers: leaveHeaders,
+    });
+    expect(leaveReplay.statusCode).toBe(200);
+    expect(leaveReplay.json().replayed).toBe(true);
+    expect(providerGroupLeaveRequests).toHaveLength(1);
+
+    const [secondGroup] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '120363000000003@g.us',
+        name: 'Uncertain leave group',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    providerGroupLeaveStatus = 503;
+    const uncertainLeave = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${secondGroup.id}/group/leave`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': 'leave-uncertain-group-1',
+      },
+    });
+    expect(uncertainLeave.statusCode).toBe(502);
+    const blockedByLeave = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${secondGroup.id}/group/participants/add`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': 'add-after-unknown-leave-1',
+      },
+      payload: { participants: ['+6281198765432'] },
+    });
+    expect(blockedByLeave.statusCode).toBe(409);
+    providerGroupMetadataStatus = 404;
+    const leaveCheck = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/conversations/${secondGroup.id}/group`,
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(leaveCheck.statusCode).toBe(200);
+    expect(leaveCheck.json().data.left).toBe(true);
+    expect(leaveCheck.json().data.pending_operation).toBe(false);
+    expect(
+      (
+        await db('whatsapp_group_operations')
+          .where({
+            conversation_id: secondGroup.id,
+            action: 'leave',
+          })
+          .first()
+      ).status
+    ).toBe('completed');
   });
 
   it('returns company-scoped GoWA contact profile and proxies validated avatar bytes', async () => {

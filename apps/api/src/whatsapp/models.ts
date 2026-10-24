@@ -233,7 +233,7 @@ export const WhatsappGroupOperation = defineModel('whatsapp.group.operation', {
     conversation: fields.belongsTo(WhatsappConversation, { required: true }),
     idempotency_key: fields.string({ required: true, hidden: true, sensitive: true }),
     request_hash: fields.string({ required: true, hidden: true, sensitive: true }),
-    action: fields.enum(['add', 'remove', 'promote', 'demote'], { required: true }),
+    action: fields.enum(['add', 'remove', 'promote', 'demote', 'leave'], { required: true }),
     participants_json: fields.text({ required: true, hidden: true, sensitive: true }),
     result_json: fields.text({ hidden: true, sensitive: true }),
     status: fields.enum(['started', 'completed', 'unknown', 'failed'], {

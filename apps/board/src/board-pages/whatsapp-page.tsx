@@ -83,6 +83,8 @@ type GroupProfile = {
   }>;
   synced_at: string | null;
   stale: boolean;
+  pending_operation?: boolean;
+  left?: boolean;
 };
 type ConversationLabel = { id: number; name: string; color: string };
 type ConversationAgent = {
@@ -2167,9 +2169,15 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         failed={groupProfileQuery.isError}
                         refreshing={groupProfileQuery.isFetching}
                         canManage={canManageConversations}
+                        onLeft={() => setSelected(null)}
                         onRefresh={async () => {
                           const refreshed = await groupProfileQuery.refetch();
-                          return refreshed.isSuccess && refreshed.data?.stale === false;
+                          if (refreshed.isSuccess && refreshed.data?.left) return 'left';
+                          return refreshed.isSuccess &&
+                            refreshed.data?.stale === false &&
+                            refreshed.data.pending_operation !== true
+                            ? 'fresh'
+                            : false;
                         }}
                       />
                     )}
@@ -3167,6 +3175,7 @@ function GroupProfileSummary({
   failed,
   refreshing,
   canManage,
+  onLeft,
   onRefresh,
 }: {
   conversationId: number;
@@ -3175,7 +3184,8 @@ function GroupProfileSummary({
   failed: boolean;
   refreshing: boolean;
   canManage: boolean;
-  onRefresh: () => Promise<boolean>;
+  onLeft: () => void;
+  onRefresh: () => Promise<'fresh' | 'left' | false>;
 }) {
   const queryClient = useQueryClient();
   const [participantDraft, setParticipantDraft] = useState('');
@@ -3192,6 +3202,7 @@ function GroupProfileSummary({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [confirmInviteReset, setConfirmInviteReset] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const loadInviteLink = async (reset = false) => {
     setInviteLoading(true);
@@ -3210,8 +3221,36 @@ function GroupProfileSummary({
     }
   };
 
+  const leaveGroup = async () => {
+    if (!confirmLeave || inviteLoading || mutating || profile?.pending_operation) return;
+    setInviteLoading(true);
+    setActionError(null);
+    try {
+      await client.request(`/whatsapp/conversations/${conversationId}/group/leave`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+      });
+      onLeft();
+      await queryClient.invalidateQueries({
+        queryKey: scopedQueryKey(['whatsapp', 'conversations']),
+      });
+    } catch (error) {
+      const uncertain =
+        !(error instanceof ApiError) ||
+        error.status >= 500 ||
+        (error.status === 409 && /unresolved|unknown/iu.test(error.message));
+      if (uncertain) setRefreshRequired(true);
+      setActionError(
+        error instanceof Error ? error.message : 'Leave result could not be confirmed'
+      );
+    } finally {
+      setInviteLoading(false);
+      setConfirmLeave(false);
+    }
+  };
+
   const manageParticipant = async () => {
-    if (!confirmAction || mutating || refreshRequired) return;
+    if (!confirmAction || mutating || refreshRequired || profile?.pending_operation) return;
     setMutating(true);
     setActionError(null);
     try {
@@ -3249,7 +3288,10 @@ function GroupProfileSummary({
     setRefreshingAfterUnknown(true);
     setActionError(null);
     const refreshed = await onRefresh();
-    if (refreshed) setRefreshRequired(false);
+    if (refreshed === 'left') {
+      setRefreshRequired(false);
+      onLeft();
+    } else if (refreshed === 'fresh') setRefreshRequired(false);
     else setActionError('Group details are still unavailable. Do not repeat this action yet.');
     setRefreshingAfterUnknown(false);
   };
@@ -3359,7 +3401,7 @@ function GroupProfileSummary({
               type="button"
               size="sm"
               variant="outline"
-              disabled={inviteLoading || refreshRequired}
+              disabled={inviteLoading || refreshRequired || profile.pending_operation}
               onClick={() => void loadInviteLink()}
             >
               {inviteLoading ? 'Loading invite link…' : 'Get invite link'}
@@ -3374,7 +3416,7 @@ function GroupProfileSummary({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={inviteLoading || refreshRequired}
+                disabled={inviteLoading || refreshRequired || profile.pending_operation}
                 onClick={() => setConfirmInviteReset(true)}
               >
                 Reset invite link
@@ -3409,6 +3451,23 @@ function GroupProfileSummary({
               </div>
             </div>
           )}
+          {profile.pending_operation && (
+            <div className="space-y-1" role="status">
+              <p>
+                A previous group action is still being checked. Refresh group details before
+                continuing.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={refreshing}
+                onClick={() => void refreshAfterUnknown()}
+              >
+                {refreshing ? 'Refreshing…' : 'Refresh group details'}
+              </Button>
+            </div>
+          )}
           <form
             className="flex flex-wrap gap-2"
             onSubmit={(event) => {
@@ -3438,14 +3497,16 @@ function GroupProfileSummary({
               inputMode="tel"
               placeholder="+6281234567890"
               value={participantDraft}
-              disabled={mutating || refreshRequired}
+              disabled={mutating || refreshRequired || profile.pending_operation}
               onChange={(event) => setParticipantDraft(event.target.value)}
             />
             <Button
               type="submit"
               size="sm"
               variant="outline"
-              disabled={mutating || refreshRequired || !participantDraft.trim()}
+              disabled={
+                mutating || refreshRequired || profile.pending_operation || !participantDraft.trim()
+              }
             >
               Add participant
             </Button>
@@ -3469,6 +3530,45 @@ function GroupProfileSummary({
               {actionError}
             </p>
           )}
+          <div className="border-t border-ink/20 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={inviteLoading || mutating || refreshRequired || profile.pending_operation}
+              onClick={() => setConfirmLeave(true)}
+            >
+              Leave group
+            </Button>
+          </div>
+        </div>
+      )}
+      {confirmLeave && (
+        <div
+          className="mt-2 border-2 border-ink bg-pink/20 p-2"
+          role="alertdialog"
+          aria-label="Confirm leaving group"
+        >
+          <p>Leave this WhatsApp group? Its conversation will be archived in Board.</p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={inviteLoading}
+              onClick={() => void leaveGroup()}
+            >
+              {inviteLoading ? 'Leaving…' : 'Confirm leave'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={inviteLoading}
+              onClick={() => setConfirmLeave(false)}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
       {confirmAction && (

@@ -3200,8 +3200,32 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           } catch {
             continue;
           }
+          if (!Array.isArray(targets)) continue;
+          if (operation.action === 'leave') {
+            const accountPhone = account.phone_number?.replace(/\D/gu, '') ?? '';
+            if (!/^[1-9]\d{7,14}$/u.test(accountPhone)) continue;
+            const left = !freshByPhone.has(accountPhone);
+            await WhatsappGroupOperation.query()
+              .where({ id: operation.id })
+              .patch({
+                status: left ? 'completed' : 'failed',
+                result_json: JSON.stringify({ reconciled: true, left }),
+              });
+            if (left)
+              await app
+                .db('whatsapp_conversations')
+                .where({ id: conversationId, company_id: companyId, is_group: true })
+                .update({ is_archived: true, write_date: new Date().toISOString() });
+            await recordWhatsAppAudit(
+              req,
+              'whatsapp.conversation',
+              `group_leave_reconciled_${left ? 'completed' : 'failed'}`,
+              conversationId,
+              companyId
+            );
+            continue;
+          }
           if (
-            !Array.isArray(targets) ||
             targets.length < 1 ||
             targets.some((phone) => typeof phone !== 'string' || !/^[1-9]\d{7,14}$/u.test(phone))
           )
@@ -3236,6 +3260,10 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             companyId
           );
         }
+        const hasPendingGroupOperation = await WhatsappGroupOperation.query()
+          .where({ company_id: companyId, conversation_id: conversationId })
+          .whereIn('status', ['started', 'unknown'])
+          .first();
         return reply.send({
           success: true,
           data: {
@@ -3245,6 +3273,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             participants,
             synced_at: now,
             stale: false,
+            pending_operation: Boolean(hasPendingGroupOperation),
           },
         });
       } catch (error) {
@@ -3252,12 +3281,51 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           { error: whatsappLogErrorContext(error) },
           'WhatsApp group metadata refresh failed'
         );
+        if (error instanceof GowaError && error.statusCode === 404) {
+          const unresolvedLeaves = await WhatsappGroupOperation.query()
+            .where({ company_id: companyId, conversation_id: conversationId, action: 'leave' })
+            .whereIn('status', ['started', 'unknown']);
+          if (unresolvedLeaves.length > 0) {
+            await WhatsappGroupOperation.query()
+              .whereIn(
+                'id',
+                unresolvedLeaves.map((operation) => operation.id)
+              )
+              .patch({
+                status: 'completed',
+                result_json: JSON.stringify({ reconciled: true, left: true }),
+              });
+            await app
+              .db('whatsapp_conversations')
+              .where({ id: conversationId, company_id: companyId, is_group: true })
+              .update({ is_archived: true, write_date: new Date().toISOString() });
+            await recordWhatsAppAudit(
+              req,
+              'whatsapp.conversation',
+              'group_leave_reconciled_completed',
+              conversationId,
+              companyId
+            );
+            return reply.send({
+              success: true,
+              data: { ...fallback(), pending_operation: false, left: true },
+            });
+          }
+        }
         if (
           conversation.group_metadata_synced_at ||
           conversation.group_participants_json ||
           conversation.group_topic
-        )
-          return reply.send({ success: true, data: fallback() });
+        ) {
+          const pending = await WhatsappGroupOperation.query()
+            .where({ company_id: companyId, conversation_id: conversationId })
+            .whereIn('status', ['started', 'unknown'])
+            .first();
+          return reply.send({
+            success: true,
+            data: { ...fallback(), pending_operation: Boolean(pending) },
+          });
+        }
         return reply.code(502).send({ success: false, error: 'Group details could not be loaded' });
       }
     }
@@ -3360,6 +3428,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         .whereIn('status', ['started', 'unknown']);
       const requestedNumbers = new Set(participants);
       const overlapsUnresolved = unresolvedOperations.some((operation) => {
+        if (operation.action === 'leave') return true;
         try {
           const prior: unknown = JSON.parse(operation.participants_json);
           return Array.isArray(prior) && prior.some((phone) => requestedNumbers.has(String(phone)));
@@ -3595,6 +3664,144 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         return reply
           .code(502)
           .send({ success: false, error: 'Group invite link could not be reset' });
+      }
+    }
+  );
+
+  app.post<{ Params: Params; Body: unknown }>(
+    '/whatsapp/conversations/:id/group/leave',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'write')) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const body = isRecord(req.body) ? req.body : {};
+      if (Object.keys(body).length > 0)
+        return reply
+          .code(400)
+          .send({ success: false, error: 'This action does not accept a body' });
+      const rawKey = req.headers['idempotency-key'];
+      const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+      if (!/^[\x21-\x7e]{16,128}$/u.test(key))
+        return reply
+          .code(400)
+          .send({ success: false, error: 'A valid Idempotency-Key header is required' });
+      const idempotencyHash = createHash('sha256').update(key).digest('hex');
+      const requestHash = createHash('sha256')
+        .update(JSON.stringify({ conversationId, action: 'leave' }))
+        .digest('hex');
+      const existing = await WhatsappGroupOperation.query().findOne({
+        company_id: companyId,
+        idempotency_key: idempotencyHash,
+      });
+      if (existing) {
+        if (existing.request_hash !== requestHash)
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Idempotency-Key was used for a different request' });
+        if (existing.status === 'completed')
+          return reply.send({ success: true, data: { left: true }, replayed: true });
+        return reply.code(409).send({
+          success: false,
+          error:
+            existing.status === 'failed'
+              ? 'WhatsApp rejected leaving the group; refresh group details before retrying'
+              : 'Leave result is unresolved; refresh group details before another action',
+        });
+      }
+      const [conversation] = await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .select('jid');
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Group conversation not found' });
+      const pending = await WhatsappGroupOperation.query()
+        .where({ company_id: companyId, conversation_id: conversationId })
+        .whereIn('status', ['started', 'unknown']);
+      if (pending.length > 0)
+        return reply.code(409).send({
+          success: false,
+          error: 'A previous group action is unresolved; refresh group details first',
+        });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+
+      let operationId: number;
+      try {
+        const operation = await WhatsappGroupOperation.query().insert({
+          company_id: companyId,
+          conversation_id: conversationId,
+          idempotency_key: idempotencyHash,
+          request_hash: requestHash,
+          action: 'leave',
+          participants_json: '[]',
+          status: 'started',
+        });
+        operationId = Number(operation.id);
+      } catch (error) {
+        const raced = await WhatsappGroupOperation.query().findOne({
+          company_id: companyId,
+          idempotency_key: idempotencyHash,
+        });
+        if (raced?.request_hash === requestHash)
+          return reply.code(409).send({
+            success: false,
+            error: 'Leave result is unresolved; refresh group details first',
+          });
+        if (raced)
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Idempotency-Key was used for a different request' });
+        throw error;
+      }
+      try {
+        await gowaRequest<unknown>('/group/leave', {
+          method: 'POST',
+          deviceId: account.gateway_device_id,
+          contentType: 'application/json',
+          body: JSON.stringify({ group_id: conversation.jid }),
+        });
+        await app.db.transaction(async (trx) => {
+          await WhatsappGroupOperation.query(trx)
+            .where({ id: operationId })
+            .patch({ status: 'completed', result_json: JSON.stringify({ left: true }) });
+          await trx('whatsapp_conversations')
+            .where({ id: conversationId, company_id: companyId, is_group: true })
+            .update({ is_archived: true, write_date: new Date().toISOString() });
+          await recordWhatsAppAudit(
+            req,
+            'whatsapp.conversation',
+            'group_leave_completed',
+            conversationId,
+            companyId,
+            trx
+          );
+        });
+        return reply.send({ success: true, data: { left: true } });
+      } catch (error) {
+        const rejected =
+          error instanceof GowaError && error.statusCode >= 400 && error.statusCode < 500;
+        await WhatsappGroupOperation.query()
+          .where({ id: operationId })
+          .patch({ status: rejected ? 'failed' : 'unknown' });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.conversation',
+          `group_leave_${rejected ? 'failed' : 'unknown'}`,
+          conversationId,
+          companyId
+        );
+        req.log.warn({ error: whatsappLogErrorContext(error) }, 'WhatsApp leave group failed');
+        return reply.code(502).send({
+          success: false,
+          error: rejected
+            ? 'WhatsApp rejected the leave request'
+            : 'Leave result is unknown; refresh group details before retrying',
+        });
       }
     }
   );
