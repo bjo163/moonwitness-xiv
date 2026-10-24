@@ -2690,6 +2690,18 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                 }
               }}
             >
+              {!activeConversation && (
+                <p role="status" className="m-auto max-w-sm text-center text-sm text-ink-faint">
+                  Select a conversation to view its messages.
+                </p>
+              )}
+              {activeConversation && messagesQuery.isLoading && !messagesQuery.data && (
+                <div aria-label="Loading messages" className="mt-auto space-y-3">
+                  <Skeleton className="h-14 w-3/4" />
+                  <Skeleton className="ml-auto h-14 w-2/3" />
+                  <Skeleton className="h-14 w-1/2" />
+                </div>
+              )}
               {messagesQuery.isError && !messagesQuery.data && (
                 <div className="space-y-3 border-2 border-ink bg-pink p-3" role="alert">
                   <p className="text-sm">Messages could not be loaded.</p>
@@ -2704,6 +2716,14 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                   </Button>
                 </div>
               )}
+              {activeConversation &&
+                !messagesQuery.isLoading &&
+                !messagesQuery.isError &&
+                messageList.length === 0 && (
+                  <p role="status" className="m-auto max-w-sm text-center text-sm text-ink-faint">
+                    No messages in this conversation yet. Send a message to start the conversation.
+                  </p>
+                )}
               {messagesQuery.isError && messagesQuery.data && (
                 <p role="status" className="border border-ink/40 p-2 text-xs text-ink-faint">
                   Showing cached messages. Refresh failed; retrying automatically.

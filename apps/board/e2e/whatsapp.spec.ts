@@ -990,6 +990,11 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.getByRole('button', { name: 'Private' }).click();
   await page.getByRole('button', { name: /Contact 0/u }).click();
   await expect(page.getByRole('heading', { name: 'Contact 0' })).toBeVisible();
+  await expect(
+    page.getByText(
+      'No messages in this conversation yet. Send a message to start the conversation.'
+    )
+  ).toBeVisible();
   await expect(page.getByText('+628200000000')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('checkbox', { name: 'Press Enter to send' })).not.toBeChecked();
