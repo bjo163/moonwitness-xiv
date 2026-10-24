@@ -2295,7 +2295,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
               <p className="p-4 text-sm text-ink-faint">
                 {conversationsQuery.data?.items.length
                   ? 'No conversations match this search or filter.'
-                  : 'No conversations yet.'}
+                  : 'No conversations yet. Start a chat using the phone number above, or wait for an incoming message.'}
               </p>
             )}
             {conversationsQuery.data?.hasMore && (

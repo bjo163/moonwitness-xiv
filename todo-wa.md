@@ -171,7 +171,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P4-13** Ekspor riwayat untuk dukungan/audit dengan redaksi yang sesuai.
 - [ ] **P4-14** Layout dua-pane responsif dan navigasi chat nyaman di layar kecil. (UI: `WUI-01`)
 - [ ] **P4-15** Avatar dan status online/typing hanya jika tersedia dari provider. (UI: `WUI-04`)
-- [ ] **P4-16** Empty state yang mengarahkan pengguna ke connect atau chat pertama. (UI: `WUI-02`, `WUI-03`)
+- [x] **P4-16** Empty state mengarahkan pengguna yang belum tersambung ke aksi Connect dan menjelaskan batas satu akun perusahaan; inbox connected yang kosong mengarahkan pengguna memulai chat lewat form nomor atau menunggu pesan masuk. Pane pesan juga mengarahkan pengguna memilih percakapan atau mengirim pesan pertama. Chromium E2E memverifikasi layar disconnected dan percakapan tanpa pesan. (UI: `WUI-02`, `WUI-03`)
 - [ ] **P4-17** Konfirmasi sebelum disconnect/logout karena sesi linked-device akan putus. (UI: `WUI-02`)
 - [x] **P4-18** Bantuan QR menampilkan alur Android/iPhone, masa berlaku dan refresh, troubleshooting batas linked devices, serta peringatan QR rahasia. Langkah menu diperiksa terhadap panduan resmi WhatsApp; E2E Chromium menguji panel bantuan. (UI: `WUI-02`)
 - [ ] **P4-19** Keyboard shortcut dan aria/fokus untuk inbox, composer, attachment, menu. (UI: `WUI-07`)

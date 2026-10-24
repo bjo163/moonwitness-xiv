@@ -2060,3 +2060,28 @@ test('pauses WhatsApp account polling while the Board tab is hidden', async ({ p
   });
   await expect.poll(() => accountPolls, { timeout: 5000 }).toBeGreaterThan(1);
 });
+
+test('guides the user to connect a WhatsApp account before opening the inbox', async ({ page }) => {
+  await page.route('**/whatsapp/account', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: 'disconnected',
+          permissions: { manage: true, createConversation: true, send: false },
+        },
+      },
+    })
+  );
+
+  await page.goto('/login');
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+
+  await page.goto('/board/whatsapp');
+  await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect a WhatsApp account' })).toBeVisible();
+  await expect(page.getByText('One WhatsApp account is available for this company.')).toBeVisible();
+});
