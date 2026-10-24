@@ -1681,7 +1681,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           </p>
           {account?.last_error && <p className="mt-2 text-sm text-red-700">{account.last_error}</p>}
           {connected && account?.webhook_configured === false && (
-            <p role="status" className="mt-2 max-w-2xl text-sm text-amber-900">
+            <p role="status" className="mt-2 max-w-2xl text-sm text-amber-900 dark:text-amber-300">
               Live callbacks are not configured. Inbound messages update through periodic refresh.
               Configure WHATSAPP_WEBHOOK_URL and WHATSAPP_WEBHOOK_SECRET on the API deployment to
               enable GoWA callbacks.
@@ -2381,7 +2381,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           >
             <div className="border-b-2 border-ink p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex w-full min-w-0 flex-col items-start gap-2 md:w-auto md:flex-row md:items-center">
                   {activeConversation && (
                     <Button
                       type="button"
@@ -2393,7 +2393,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       Back to conversations
                     </Button>
                   )}
-                  <div className="min-w-0">
+                  <div className="w-full min-w-0 md:w-auto">
                     <h2 className="font-display text-lg uppercase">
                       {activeConversation?.name ?? 'Select a conversation'}
                     </h2>
@@ -3006,7 +3006,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                       <span>{messageStatusLabel[message.status] ?? 'Status unavailable'}</span>
                     </p>
                     {message.last_error && (
-                      <p role="status" className="mt-1 text-xs text-red-800">
+                      <p role="status" className="mt-1 text-xs text-red-800 dark:text-red-200">
                         {message.last_error}
                       </p>
                     )}

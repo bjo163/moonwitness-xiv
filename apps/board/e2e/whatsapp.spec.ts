@@ -2,8 +2,8 @@ import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { E2E_SUPERADMIN_PASSWORD } from './constants.js';
 
-test('company WhatsApp inbox displays chats and sends a reply', async ({ page }) => {
-  test.setTimeout(90_000);
+test('company WhatsApp inbox displays chats and sends a reply', async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -732,19 +732,76 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  const accessibility = await new AxeBuilder({ page })
-    .include('main')
-    .exclude('iframe')
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze();
-  expect(
-    accessibility.violations.map(({ id, impact, help, nodes }) => ({
-      id,
-      impact,
-      help,
-      nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
-    }))
-  ).toEqual([]);
+  const originalViewport = page.viewportSize();
+  const responsiveViewports = [
+    { name: 'desktop', width: 1440, height: 1000 },
+    { name: 'tablet', width: 768, height: 1024 },
+    { name: 'mobile-390', width: 390, height: 844 },
+    { name: 'mobile-320', width: 320, height: 640 },
+  ];
+  const initialThemeIsDark = await page
+    .locator('html')
+    .evaluate((element) => element.classList.contains('dark'));
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp inbox WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const viewport of responsiveViewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const dimensions = await page.evaluate(() => ({
+        width: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        clippedControls: Array.from(
+          document.querySelectorAll(
+            'main h1, main h2, main h3, main button, main input, main textarea'
+          )
+        )
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              label: element.textContent?.trim().slice(0, 60) || element.getAttribute('aria-label'),
+              left: Math.round(rect.left),
+              right: Math.round(rect.right),
+            };
+          })
+          .filter(
+            ({ left, right }) => right - left > 0 && (left < -1 || right > window.innerWidth + 1)
+          ),
+      }));
+      expect(
+        dimensions.scrollWidth,
+        `WhatsApp inbox has horizontal overflow in ${viewport.name}/${theme}: ${dimensions.scrollWidth}px > ${dimensions.width}px`
+      ).toBeLessThanOrEqual(dimensions.width);
+      expect(
+        dimensions.clippedControls,
+        `WhatsApp inbox has controls outside ${viewport.name}/${theme}`
+      ).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-${theme}-${viewport.name}.png`),
+      });
+    }
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
   await page.getByRole('button', { name: '@Rani Finance' }).click();
