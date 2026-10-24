@@ -1411,7 +1411,8 @@ test('publishes WhatsApp text and image Status from the dedicated composer', asy
   await expect(page.getByText('GoWA rejected the Status media')).toBeVisible();
 });
 
-test('internal notes stay outside the WhatsApp message timeline', async ({ page }) => {
+test('internal notes stay outside the WhatsApp message timeline', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -1500,6 +1501,54 @@ test('internal notes stay outside the WhatsApp message timeline', async ({ page 
     page.getByRole('region', { name: 'Internal notes' }).getByText('superadmin', { exact: true })
   ).toBeVisible();
   await expect(page.locator('article')).toHaveCount(0);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp internal notes WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const notesRegion = page.getByRole('region', { name: 'Internal notes' });
+      if (width === 390 && !(await notesRegion.isVisible())) {
+        const conversationButton = page.getByRole('button', {
+          name: 'Internal notes test',
+          exact: true,
+        });
+        await conversationButton.focus();
+        await page.keyboard.press('Enter');
+      }
+      await expect(notesRegion).toBeVisible();
+      const pageWidth = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        pageWidth.document,
+        `WhatsApp internal notes overflow at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(pageWidth.viewport);
+      const notesBounds = await notesRegion.boundingBox();
+      if (!notesBounds) throw new Error('Internal notes region has no visible bounds');
+      expect(notesBounds.x + notesBounds.width).toBeLessThanOrEqual(pageWidth.viewport);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-notes-${theme}-${width}.png`),
+      });
+    }
+  }
 });
 
 test('creates labels, applies them to a conversation, and filters the inbox', async ({ page }) => {
