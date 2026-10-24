@@ -57,6 +57,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
     })
   );
   let managedMemberAdmin = false;
+  let groupLocked = false;
+  let groupAnnounce = false;
+  const groupSettingRequests: Array<{ setting: string; enabled: boolean }> = [];
   let addedManagedParticipant: string | null = null;
   let simulateUnknownGroupRemoval = false;
   await page.route('**/whatsapp/conversations/*/group', (route) => {
@@ -68,6 +71,9 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
           name: 'Project group',
           topic: 'Project updates',
           participant_count: 2,
+          is_locked: groupLocked,
+          is_announce: groupAnnounce,
+          is_ephemeral: true,
           participants: [
             {
               jid: '628111222333@s.whatsapp.net',
@@ -100,6 +106,13 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
         },
       },
     });
+  });
+  await page.route('**/whatsapp/conversations/*/group/settings', async (route) => {
+    const body = route.request().postDataJSON() as { setting: string; enabled: boolean };
+    groupSettingRequests.push(body);
+    if (body.setting === 'locked') groupLocked = body.enabled;
+    if (body.setting === 'announce') groupAnnounce = body.enabled;
+    await route.fulfill({ json: { success: true, data: body } });
   });
   let failSearchConversationLoad = false;
   let createdGroup: Record<string, unknown> | null = null;
@@ -677,8 +690,22 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.getByRole('button', { name: '@everyone' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Mention preview' })).toHaveCount(0);
   await expect(page.getByText('2 participants')).toBeVisible();
+  await expect(page.getByText('Disappearing messages are on')).toBeVisible();
   await page.getByText('Show participants').click();
   await expect(page.getByText('Rani Finance · admin')).toBeVisible();
+  await page.getByRole('button', { name: 'Restrict group info edits' }).click();
+  await expect(page.getByRole('alertdialog')).toContainText(
+    'Restrict group information changes to admins?'
+  );
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Allow members to edit group info' })
+  ).toBeVisible();
+  expect(groupSettingRequests).toContainEqual({ setting: 'locked', enabled: true });
+  await page.getByRole('button', { name: 'Admins only can send messages' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByRole('button', { name: 'Allow members to send messages' })).toBeVisible();
+  expect(groupSettingRequests).toContainEqual({ setting: 'announce', enabled: true });
   await page.getByLabel('Phone number with country code').fill('+62 (858) 9342-9926');
   await page.getByRole('button', { name: 'Check number' }).click();
   await expect(

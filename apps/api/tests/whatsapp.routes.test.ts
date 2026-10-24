@@ -150,6 +150,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerGroupActionRequests: Array<{ path: string; body: Record<string, unknown> }> = [];
   let providerGroupActionStatus = 200;
   let providerGroupActionResult: unknown = null;
+  let providerGroupSettingRequests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  let providerGroupSettingStatus = 200;
   let providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
   let providerGroupInviteRequests: URL[] = [];
   let providerGroupLeaveRequests: Array<Record<string, unknown>> = [];
@@ -357,6 +359,9 @@ describe('WhatsApp API GoWA bridge', () => {
       name: 'Project Group',
       topic: 'Project updates',
       participant_count: 2,
+      is_locked: false,
+      is_announce: false,
+      is_ephemeral: true,
     };
     providerGroupParticipants = [
       {
@@ -374,6 +379,8 @@ describe('WhatsApp API GoWA bridge', () => {
     providerGroupActionRequests = [];
     providerGroupActionStatus = 200;
     providerGroupActionResult = null;
+    providerGroupSettingRequests = [];
+    providerGroupSettingStatus = 200;
     providerGroupInviteLink = 'https://chat.whatsapp.com/AbCdEfGh12345678';
     providerGroupInviteRequests = [];
     providerGroupLeaveRequests = [];
@@ -466,6 +473,16 @@ describe('WhatsApp API GoWA bridge', () => {
                 group_id: url.searchParams.get('group_id'),
                 participants: providerGroupParticipants,
               });
+      if (
+        (url.pathname === '/group/locked' || url.pathname === '/group/announce') &&
+        method === 'POST'
+      ) {
+        providerGroupSettingRequests.push({
+          path: url.pathname,
+          body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        });
+        return json({}, providerGroupSettingStatus);
+      }
       if (url.pathname === '/group/invite-link' && method === 'GET') {
         providerGroupInviteRequests.push(url);
         return json({ invite_link: providerGroupInviteLink });
@@ -566,8 +583,7 @@ describe('WhatsApp API GoWA bridge', () => {
       if (url.pathname === '/send/image') {
         providerImageSendCount++;
         const form = init?.body;
-        providerImageMentions =
-          form instanceof FormData ? form.getAll('mentions').map(String) : [];
+        providerImageMentions = form instanceof FormData ? form.getAll('mentions').map(String) : [];
         providerImageReplyIds.push(
           form instanceof FormData ? String(form.get('reply_message_id') ?? '') : ''
         );
@@ -997,6 +1013,9 @@ describe('WhatsApp API GoWA bridge', () => {
       name: 'Project Group',
       topic: 'Project updates',
       participant_count: 2,
+      is_locked: false,
+      is_announce: false,
+      is_ephemeral: true,
       stale: false,
       participants: [
         { jid: '628111111111@s.whatsapp.net', display_name: 'Rani', is_admin: true },
@@ -1028,6 +1047,85 @@ describe('WhatsApp API GoWA bridge', () => {
       headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
     });
     expect(foreign.statusCode).toBe(404);
+  });
+
+  it('exposes only supported group settings and updates them within the active company', async () => {
+    const [account] = await db('whatsapp_accounts')
+      .insert({
+        company_id: companyId,
+        status: 'connected',
+        gateway_device_id: `moonwitness-company-${companyId}`,
+      })
+      .returning(['id']);
+    const [group] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid: '120363000000018@g.us',
+        name: 'Settings group',
+        is_group: true,
+        unread_count: 0,
+      })
+      .returning(['id']);
+    const url = `/whatsapp/conversations/${group.id}/group/settings`;
+    const locked = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: 'Bearer test' },
+      payload: { setting: 'locked', enabled: true },
+    });
+    expect(locked.statusCode).toBe(200);
+    expect(providerGroupSettingRequests).toContainEqual({
+      path: '/group/locked',
+      body: { group_id: '120363000000018@g.us', locked: true },
+    });
+    expect(
+      (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
+    ).toBe(true);
+
+    const announce = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: 'Bearer test' },
+      payload: { setting: 'announce', enabled: true },
+    });
+    expect(announce.statusCode).toBe(200);
+    expect(providerGroupSettingRequests.at(-1)).toEqual({
+      path: '/group/announce',
+      body: { group_id: '120363000000018@g.us', announce: true },
+    });
+    expect(
+      (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_announce
+    ).toBe(true);
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: 'Bearer test' },
+      payload: { setting: 'ephemeral', enabled: true },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const foreign = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: 'Bearer test', 'x-test-company': 'foreign' },
+      payload: { setting: 'locked', enabled: false },
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(providerGroupSettingRequests).toHaveLength(2);
+
+    providerGroupSettingStatus = 503;
+    const failed = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: 'Bearer test' },
+      payload: { setting: 'locked', enabled: false },
+    });
+    expect(failed.statusCode).toBe(502);
+    expect(
+      (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
+    ).toBe(true);
   });
 
   it('manages group participants with company scope and durable idempotency', async () => {
@@ -3183,20 +3281,27 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     const groupId = inbox.json().data.find((chat: { is_group: boolean }) => chat.is_group)
       .id as number;
-    await db('whatsapp_conversations').where({ id: groupId, company_id: companyId }).update({
-      group_participant_count: 2,
-      group_metadata_synced_at: new Date().toISOString(),
-      group_participants_json: JSON.stringify([
-        {
-          jid: '628111111111@s.whatsapp.net',
-          phone_number: '628111111111@s.whatsapp.net',
-          display_name: 'Rani',
-        },
-      ]),
-    });
+    await db('whatsapp_conversations')
+      .where({ id: groupId, company_id: companyId })
+      .update({
+        group_participant_count: 2,
+        group_metadata_synced_at: new Date().toISOString(),
+        group_participants_json: JSON.stringify([
+          {
+            jid: '628111111111@s.whatsapp.net',
+            phone_number: '628111111111@s.whatsapp.net',
+            display_name: 'Rani',
+          },
+        ]),
+      });
     const mentionGroupSnapshot = await db('whatsapp_conversations')
       .where({ id: groupId, company_id: companyId })
-      .first('is_group', 'group_participant_count', 'group_participants_json', 'group_metadata_synced_at');
+      .first(
+        'is_group',
+        'group_participant_count',
+        'group_participants_json',
+        'group_metadata_synced_at'
+      );
     expect(mentionGroupSnapshot.is_group).toBeTruthy();
     expect(mentionGroupSnapshot.group_metadata_synced_at).toBeTruthy();
     const privateId = inbox.json().data.find((chat: { is_group: boolean }) => !chat.is_group)
@@ -4139,14 +4244,10 @@ describe('WhatsApp API GoWA bridge', () => {
     };
     const groupEventTimestamp = '2026-10-25T10:30:00.000Z';
     expect(
-      (
-        await postEvent('group.participants', groupEvent, groupEventTimestamp)
-      ).statusCode
+      (await postEvent('group.participants', groupEvent, groupEventTimestamp)).statusCode
     ).toBe(204);
     expect(
-      (
-        await postEvent('group.participants', groupEvent, groupEventTimestamp)
-      ).statusCode
+      (await postEvent('group.participants', groupEvent, groupEventTimestamp)).statusCode
     ).toBe(204);
     const storedGroupEvents = await db('whatsapp_messages').where({
       company_id: companyId,

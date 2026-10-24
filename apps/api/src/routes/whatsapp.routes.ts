@@ -3417,7 +3417,10 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           'group_topic',
           'group_participant_count',
           'group_participants_json',
-          'group_metadata_synced_at'
+          'group_metadata_synced_at',
+          'group_is_locked',
+          'group_is_announce',
+          'group_is_ephemeral'
         );
       if (!conversation)
         return reply.code(404).send({ success: false, error: 'Group conversation not found' });
@@ -3480,6 +3483,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             ? null
             : Number(conversation.group_participant_count),
         participants: storedParticipants(),
+        is_locked: conversation.group_is_locked ?? null,
+        is_announce: conversation.group_is_announce ?? null,
+        is_ephemeral: conversation.group_is_ephemeral ?? null,
         synced_at: conversation.group_metadata_synced_at ?? null,
         stale: true,
       });
@@ -3561,6 +3567,12 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             group_topic: topic,
             group_participant_count: count,
             group_participants_json: JSON.stringify(participants),
+            group_is_locked:
+              typeof infoResult.is_locked === 'boolean' ? infoResult.is_locked : null,
+            group_is_announce:
+              typeof infoResult.is_announce === 'boolean' ? infoResult.is_announce : null,
+            group_is_ephemeral:
+              typeof infoResult.is_ephemeral === 'boolean' ? infoResult.is_ephemeral : null,
             group_metadata_synced_at: now,
             write_date: now,
           });
@@ -3652,6 +3664,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             topic,
             participant_count: count,
             participants,
+            is_locked: typeof infoResult.is_locked === 'boolean' ? infoResult.is_locked : null,
+            is_announce:
+              typeof infoResult.is_announce === 'boolean' ? infoResult.is_announce : null,
+            is_ephemeral:
+              typeof infoResult.is_ephemeral === 'boolean' ? infoResult.is_ephemeral : null,
             synced_at: now,
             stale: false,
             pending_operation: Boolean(hasPendingGroupOperation),
@@ -3709,6 +3726,74 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         }
         return reply.code(502).send({ success: false, error: 'Group details could not be loaded' });
       }
+    }
+  );
+
+  app.post<{ Params: Params; Body: unknown }>(
+    '/whatsapp/conversations/:id/group/settings',
+    whatsappRateLimit(10),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'write')) return;
+      const conversationId = id(req.params.id);
+      if (!conversationId)
+        return reply.code(400).send({ success: false, error: 'Invalid conversation ID' });
+      const body = req.body;
+      if (
+        !isRecord(body) ||
+        Object.keys(body).length !== 2 ||
+        !['setting', 'enabled'].every((key) => key in body) ||
+        (body.setting !== 'locked' && body.setting !== 'announce') ||
+        typeof body.enabled !== 'boolean'
+      )
+        return reply.code(400).send({ success: false, error: 'Invalid group setting' });
+      const conversation = await WhatsappConversation.query().findOne({
+        id: conversationId,
+        company_id: companyId,
+        is_group: true,
+      });
+      if (!conversation)
+        return reply.code(404).send({ success: false, error: 'Group conversation not found' });
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+
+      const setting = body.setting;
+      const enabled = body.enabled;
+      const field = setting === 'locked' ? 'group_is_locked' : 'group_is_announce';
+      try {
+        await gowaRequest<unknown>(setting === 'locked' ? '/group/locked' : '/group/announce', {
+          method: 'POST',
+          deviceId: account.gateway_device_id,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            group_id: conversation.jid,
+            [setting]: enabled,
+          }),
+        });
+      } catch (error) {
+        req.log.warn(
+          { error: whatsappLogErrorContext(error) },
+          'WhatsApp group setting update failed'
+        );
+        return reply
+          .code(502)
+          .send({ success: false, error: 'Group setting could not be confirmed' });
+      }
+      const now = new Date().toISOString();
+      await app
+        .db('whatsapp_conversations')
+        .where({ id: conversationId, company_id: companyId, is_group: true })
+        .update({ [field]: enabled, group_metadata_synced_at: now, write_date: now });
+      await recordWhatsAppAudit(
+        req,
+        'whatsapp.conversation',
+        `group_${setting}_${enabled ? 'enabled' : 'disabled'}`,
+        conversationId,
+        companyId
+      );
+      return reply.send({ success: true, data: { setting, enabled } });
     }
   );
 

@@ -81,6 +81,9 @@ type GroupProfile = {
     is_admin: boolean;
     is_super_admin: boolean;
   }>;
+  is_locked: boolean | null;
+  is_announce: boolean | null;
+  is_ephemeral: boolean | null;
   synced_at: string | null;
   stale: boolean;
   pending_operation?: boolean;
@@ -2721,15 +2724,16 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                     tabIndex={-1}
                     className={`group relative max-w-[85%] border-2 border-ink p-3 ${message.direction === 'outbound' ? 'ml-auto bg-pink/30' : 'mr-auto bg-white'}`}
                   >
-                    {activeConversation?.is_group && !message.provider_type?.startsWith('group_event_') && (
-                      <p className="mb-1 font-mono text-[10px] text-ink-faint">
-                        {message.direction === 'outbound'
-                          ? 'You'
-                          : message.sender_display_name?.trim() ||
-                            message.sender_jid?.split('@')[0]?.split(':')[0] ||
-                            'Group participant'}
-                      </p>
-                    )}
+                    {activeConversation?.is_group &&
+                      !message.provider_type?.startsWith('group_event_') && (
+                        <p className="mb-1 font-mono text-[10px] text-ink-faint">
+                          {message.direction === 'outbound'
+                            ? 'You'
+                            : message.sender_display_name?.trim() ||
+                              message.sender_jid?.split('@')[0]?.split(':')[0] ||
+                              'Group participant'}
+                        </p>
+                      )}
                     <p
                       className={`whitespace-pre-wrap break-words text-sm ${message.is_deleted || message.provider_type ? 'italic text-ink-faint' : ''}`}
                     >
@@ -2737,9 +2741,9 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                         ? 'This message was deleted'
                         : message.provider_type?.startsWith('group_event_')
                           ? message.content || messageFallbackLabel(message.provider_type)
-                        : message.provider_type
-                          ? messageFallbackLabel(message.provider_type)
-                          : message.content}
+                          : message.provider_type
+                            ? messageFallbackLabel(message.provider_type)
+                            : message.content}
                     </p>
                     {message.is_edited && !message.is_deleted && (
                       <span className="ml-2 text-[10px] italic text-ink-faint">Edited</span>
@@ -3272,10 +3276,11 @@ function MessageComposer({
                   size="sm"
                   variant={selectedMentions.includes(participant.phone) ? 'default' : 'outline'}
                   aria-pressed={selectedMentions.includes(participant.phone)}
-                disabled={
-                  sending ||
-                  (selectedMentions.length >= 100 && !selectedMentions.includes(participant.phone))
-                }
+                  disabled={
+                    sending ||
+                    (selectedMentions.length >= 100 &&
+                      !selectedMentions.includes(participant.phone))
+                  }
                   onClick={() => toggleMention(participant.phone)}
                 >
                   @{participant.label}
@@ -3285,7 +3290,8 @@ function MessageComposer({
           )}
           {selectedMentions.length > 0 && (
             <p role="status" className="text-xs text-ink-faint">
-              Mention preview ({selectedMentions.length}/100): {selectedMentions
+              Mention preview ({selectedMentions.length}/100):{' '}
+              {selectedMentions
                 .map((mention) =>
                   mention === '@everyone'
                     ? mention
@@ -3481,6 +3487,7 @@ function GroupProfileSummary({
   const [inviteLoading, setInviteLoading] = useState(false);
   const [confirmInviteReset, setConfirmInviteReset] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmSetting, setConfirmSetting] = useState<'locked' | 'announce' | null>(null);
 
   const loadInviteLink = async (reset = false) => {
     setInviteLoading(true);
@@ -3565,6 +3572,31 @@ function GroupProfileSummary({
     }
   };
 
+  const updateGroupSetting = async () => {
+    if (!confirmSetting || !profile || mutating || refreshRequired || profile.pending_operation)
+      return;
+    const setting = confirmSetting;
+    const current = setting === 'locked' ? profile.is_locked : profile.is_announce;
+    if (current === null) return;
+    setMutating(true);
+    setActionError(null);
+    try {
+      await client.request(`/whatsapp/conversations/${conversationId}/group/settings`, {
+        method: 'POST',
+        body: { setting, enabled: !current },
+      });
+      setConfirmSetting(null);
+      const refreshed = await onRefresh();
+      if (!refreshed) setActionError('Setting updated. Group details could not be refreshed yet.');
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : 'Group setting could not be confirmed'
+      );
+    } finally {
+      setMutating(false);
+    }
+  };
+
   const refreshAfterUnknown = async () => {
     setRefreshingAfterUnknown(true);
     setActionError(null);
@@ -3601,7 +3633,76 @@ function GroupProfileSummary({
           : `${profile.participant_count} participants`}
         {profile.stale ? ' · saved details' : ''}
       </p>
+      {profile.is_ephemeral !== null && (
+        <p className="mt-1">
+          {profile.is_ephemeral ? 'Disappearing messages are on' : 'Disappearing messages are off'}
+        </p>
+      )}
       {profile.topic && <p className="mt-1 whitespace-pre-wrap break-words">{profile.topic}</p>}
+      {canManage && (profile.is_locked !== null || profile.is_announce !== null) && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {profile.is_locked !== null && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={mutating || refreshRequired || profile.stale || profile.pending_operation}
+              onClick={() => setConfirmSetting('locked')}
+            >
+              {profile.is_locked ? 'Allow members to edit group info' : 'Restrict group info edits'}
+            </Button>
+          )}
+          {profile.is_announce !== null && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={mutating || refreshRequired || profile.stale || profile.pending_operation}
+              onClick={() => setConfirmSetting('announce')}
+            >
+              {profile.is_announce
+                ? 'Allow members to send messages'
+                : 'Admins only can send messages'}
+            </Button>
+          )}
+        </div>
+      )}
+      {confirmSetting && profile && (
+        <div
+          className="mt-2 border-2 border-ink bg-pink/20 p-2"
+          role="alertdialog"
+          aria-modal="true"
+        >
+          <p>
+            {confirmSetting === 'announce'
+              ? profile.is_announce
+                ? 'Allow all group members to send messages?'
+                : 'Restrict group messages to admins?'
+              : profile.is_locked
+                ? 'Allow all group members to edit group information?'
+                : 'Restrict group information changes to admins?'}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={mutating}
+              onClick={() => void updateGroupSetting()}
+            >
+              {mutating ? 'Updating…' : 'Confirm'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={mutating}
+              onClick={() => setConfirmSetting(null)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {profile.participants.length > 0 && (
         <details className="mt-1">
           <summary className="cursor-pointer">Show participants</summary>
