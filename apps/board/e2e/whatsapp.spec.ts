@@ -824,6 +824,132 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page })
   await page.screenshot({ path: '../../test-results/whatsapp-board.png', fullPage: true });
 });
 
+test('publishes WhatsApp text and image Status from the dedicated composer', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+
+  await page.route('**/whatsapp/account', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: { status: 'connected', permissions: { send: true } },
+      },
+    })
+  );
+  const published: Array<{
+    content: string;
+    type: 'text' | 'image' | 'video';
+    allow_reshare: boolean;
+    status: 'queued' | 'sent' | 'failed';
+    last_error?: string | null;
+  }> = [];
+  await page.route('**/whatsapp/statuses', async (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        json: {
+          success: true,
+          data: published.map((item, index) => ({
+            id: index + 1,
+            status_type: item.type,
+            content: item.content,
+            media_file_name:
+              item.type === 'image' ? 'status.png' : item.type === 'video' ? 'status.mp4' : null,
+            allow_reshare: item.allow_reshare,
+            status: item.status,
+            attempt_count: 0,
+            last_error: item.last_error ?? null,
+            published_at: null,
+            create_date: new Date().toISOString(),
+          })),
+        },
+      });
+    }
+    const request = route.request();
+    const contentType = request.headers()['content-type'] ?? '';
+    if (contentType.includes('multipart/form-data')) {
+      const body = (await request.postDataBuffer())?.toString('latin1') ?? '';
+      const type = body.includes('status.mp4') ? 'video' : 'image';
+      published.push({
+        content: body.includes('Image caption')
+          ? 'Image caption'
+          : body.includes('Video caption')
+            ? 'Video caption'
+            : '',
+        type,
+        allow_reshare: body.includes('name="allow_reshare"\r\n\r\ntrue'),
+        status: 'queued',
+      });
+    } else {
+      const body = request.postDataJSON() as { content: string; allow_reshare: boolean };
+      published.push({
+        content: body.content,
+        type: 'text',
+        allow_reshare: body.allow_reshare,
+        status: 'queued',
+      });
+    }
+    await route.fulfill({
+      status: 202,
+      json: { success: true, data: { id: published.length, status: 'queued' } },
+    });
+  });
+  page.on('dialog', (dialog) => dialog.accept());
+
+  await page.goto('/board/whatsapp/status');
+  await page.getByLabel('Status text or caption').fill('A text Status');
+  await page.getByRole('button', { name: 'Publish Status' }).click();
+  await expect(page.getByText('text · Queued')).toBeVisible();
+  expect(published[0]).toMatchObject({
+    content: 'A text Status',
+    type: 'text',
+    allow_reshare: false,
+  });
+
+  await page.getByLabel('Status text or caption').fill('Image caption');
+  await page.getByLabel('Choose Status image or video').setInputFiles({
+    name: 'status.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l5sAAAAASUVORK5CYII=',
+      'base64'
+    ),
+  });
+  await expect(page.getByRole('img', { name: 'WhatsApp Status image preview' })).toBeVisible();
+  await page.getByLabel('Allow resharing this Status').check();
+  await page.getByRole('button', { name: 'Publish Status' }).click();
+  await expect(page.getByText('image · Queued')).toBeVisible();
+  expect(published[1]).toMatchObject({
+    content: 'Image caption',
+    type: 'image',
+    allow_reshare: true,
+  });
+
+  await page.getByLabel('Status text or caption').fill('Video caption');
+  await page.getByLabel('Choose Status image or video').setInputFiles({
+    name: 'status.mp4',
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('0000ftypisom'),
+  });
+  await expect(page.locator('video')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish Status' }).click();
+  await expect(page.getByText('video · Queued')).toBeVisible();
+  expect(published[2]).toMatchObject({
+    content: 'Video caption',
+    type: 'video',
+    allow_reshare: false,
+  });
+
+  published[0]!.status = 'sent';
+  published[1]!.status = 'failed';
+  published[1]!.last_error = 'GoWA rejected the Status media';
+  await expect(page.getByText('text · Published')).toBeVisible({ timeout: 7_000 });
+  await expect(page.getByText('image · Failed')).toBeVisible({ timeout: 7_000 });
+  await expect(page.getByText('GoWA rejected the Status media')).toBeVisible();
+});
+
 test('internal notes stay outside the WhatsApp message timeline', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');

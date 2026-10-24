@@ -137,14 +137,14 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 ## P3 — WhatsApp Status/Story
 
 - [ ] **P3-01** Audit dan contract-test endpoint Status yang benar-benar tersedia pada versi GoWA terpasang. GoWA v9.6.0 mendokumentasikan publikasi teks, gambar, dan video Status melalui endpoint `/send/message`, `/send/image`, dan `/send/video` dengan `phone=status@broadcast`; `allow_reshare` tersedia untuk jenis Status tersebut. OpenAPI v9.6 tidak menyediakan endpoint feed/list/view Status. Kredensial `.env` berhasil mengakses `GET /health` dan `GET /devices` pada host produksi, tetapi daftar perangkat kosong sehingga kontrak pada perangkat aktif belum dapat diuji. Sumber: [rilis GoWA v9.6.0](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/tag/v9.6.0), [OpenAPI pada commit v9.6.0](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/62e319d/docs/openapi.yaml), [diskusi maintainer tentang batas API Status](https://github.com/aldinokemal/go-whatsapp-web-multidevice/discussions/289).
-- [x] **P3-02** Cakupan v1 diputuskan: **membuat Status teks, gambar, dan video saja**. Feed/viewer, balasan, reaksi, dan daftar penonton memerlukan dukungan provider yang belum tersedia. Persetujuan ini tidak berarti alur publikasi sudah diimplementasikan atau diverifikasi pada perangkat nyata. (UI: `WUI-16`)
+- [x] **P3-02** Cakupan v1 diputuskan: **membuat Status teks, gambar, dan video saja**. Feed/viewer, balasan, reaksi, dan daftar penonton memerlukan dukungan provider yang belum tersedia. API/outbox dan composer Board kini diimplementasikan serta diuji dengan GoWA/browser mock (P3-17, `todo-ui.md` WUI-16); uji publikasi nyata masih menunggu device tertaut (P3-16).
 - [ ] **P3-03** Daftar Status kontak dengan pemilik, waktu unggah, sisa masa berlaku, dan urutan.
 - [ ] **P3-04** Viewer foto/video dengan auto-advance, pause, mute, dan progress.
 - [ ] **P3-05** Terapkan masa berlaku 24 jam dan hapus cache Status kedaluwarsa.
 - [ ] **P3-06** Penanda sudah/belum dilihat dan receipt jika GoWA menyediakan.
 - [ ] **P3-07** Audience/privacy Status jika provider memberi kontrol yang aman.
-- [ ] **P3-08** Buat Status teks dengan latar, font, emoji, dan batas karakter setelah API/outbox mendukung publikasi aman.
-- [ ] **P3-09** Buat Status foto/video dengan crop, caption, durasi, dan validasi media setelah API/outbox mendukung publikasi aman. (UI: `WUI-16`)
+- [ ] **P3-08** Penyempurnaan Status teks: latar, pilihan font, dan emoji. Publikasi teks, batas 700 karakter, konfirmasi, dan state queued/published/failed sudah tersedia melalui API/outbox + composer Board (lihat P3-17 dan `todo-ui.md` WUI-16); desain teks dan styling Status native belum dibuat.
+- [ ] **P3-09** Penyempurnaan Status foto/video: crop, durasi video, dan validasi lanjutan/provider. Publikasi image/video, caption, preview, batas 10 MiB, malware scan, dan reshare sudah tersedia melalui API/outbox + composer Board (lihat P3-17 dan `todo-ui.md` WUI-16); durasi/crop dan pengujian penerimaan perangkat nyata belum dibuktikan.
 - [ ] **P3-10** Hapus Status sendiri jika didukung dan verifikasi dari perangkat.
 - [ ] **P3-11** Balas Status sebagai pesan privat dengan konteks Status.
 - [ ] **P3-12** Reaksi Status jika GoWA mendukung.
@@ -152,7 +152,7 @@ Legenda: **P0** penghambat keselamatan/keandalan; **P1** inbox v1; **P2** media 
 - [ ] **P3-14** Jadwal publikasi Status dengan zona waktu perusahaan.
 - [ ] **P3-15** Analytics tayangan, balasan, dan error hanya dari metrik provider yang nyata.
 - [ ] **P3-16** Test mock, contract test, dan uji nyata per tipe Status sebelum fitur dirilis.
-- [x] **P3-17** API menyediakan antrean publikasi Status teks/gambar/video yang idempotent, company-scoped, menyimpan metadata dan status delivery terpisah dari inbox, memindai media sebelum antri, serta mengirim ke `status@broadcast` lewat outbox GoWA. Route tests SQLite membuktikan teks, gambar, video, idempotensi, dan tidak membuat percakapan inbox; API build dan seluruh test WhatsApp lulus. Ini baru fondasi API: belum ada composer Board dan belum diverifikasi dengan perangkat GoWA tertaut; P3-16 tetap terbuka.
+- [x] **P3-17** API menyediakan antrean publikasi Status teks/gambar/video yang idempotent, company-scoped, menyimpan metadata dan status delivery terpisah dari inbox, memindai media sebelum antri, serta mengirim ke `status@broadcast` lewat outbox GoWA. Route tests SQLite membuktikan teks, gambar, video, idempotensi, dan tidak membuat percakapan inbox; API build dan seluruh test WhatsApp lulus. Board composer kini tersedia dan E2E PostgreSQL membuktikan alur publikasi mock untuk ketiga tipe media serta state antre/sukses/gagal (lihat WUI-16). Publikasi nyata belum diverifikasi karena GoWA belum memiliki perangkat tertaut; P3-16 tetap terbuka.
 
 ## P4 — bisnis, UX, dan operasi
 

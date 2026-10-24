@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@moonwitness/client';
 import {
@@ -1433,6 +1434,15 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
         </div>
         {!canManage ? (
           <span className="text-sm text-ink-faint">View-only WhatsApp access</span>
+        ) : status === 'connected' ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/board/whatsapp/status">Create Status</Link>
+            </Button>
+            <Button type="button" variant="outline" onClick={disconnect}>
+              Disconnect
+            </Button>
+          </div>
         ) : ['connected', 'connecting', 'qr', 'reconnecting'].includes(status) ? (
           <Button type="button" variant="outline" onClick={disconnect}>
             {connected ? 'Disconnect' : 'Cancel connection'}
