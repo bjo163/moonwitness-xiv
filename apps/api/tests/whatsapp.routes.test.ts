@@ -144,6 +144,8 @@ describe('WhatsApp API GoWA bridge', () => {
     { jid: '987654321@lid', display_name: 'Anonymous member' },
     { jid: 'bad\u0000jid@lid', display_name: 'Invalid' },
   ];
+  let providerGroupCreateRequests: Array<Record<string, unknown>> = [];
+  let providerGroupCreateFailureStatus: number | null = null;
   let profileRequestsFail = false;
   let phoneCheckResult: boolean | null = true;
   let phoneCheckRequests: URL[] = [];
@@ -354,6 +356,8 @@ describe('WhatsApp API GoWA bridge', () => {
       { jid: '987654321@lid', display_name: 'Anonymous member' },
       { jid: 'bad\u0000jid@lid', display_name: 'Invalid' },
     ];
+    providerGroupCreateRequests = [];
+    providerGroupCreateFailureStatus = null;
     profileRequestsFail = false;
     phoneCheckResult = true;
     phoneCheckRequests = [];
@@ -434,6 +438,12 @@ describe('WhatsApp API GoWA bridge', () => {
               group_id: url.searchParams.get('group_id'),
               participants: providerGroupParticipants,
             });
+      if (url.pathname === '/group' && method === 'POST') {
+        providerGroupCreateRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        if (providerGroupCreateFailureStatus)
+          return json({ message: 'provider unavailable' }, providerGroupCreateFailureStatus);
+        return json({ group_id: '120363123456789@g.us' });
+      }
       if (/^\/chat\/.+\/(archive|pin)$/u.test(url.pathname) && method === 'POST') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         const path = url.pathname.endsWith('/archive') ? 'archive' : 'pin';
@@ -610,6 +620,7 @@ describe('WhatsApp API GoWA bridge', () => {
     for (const table of [
       'outbox_events',
       'whatsapp_upload_tickets',
+      'whatsapp_group_creations',
       'whatsapp_conversation_labels',
       'whatsapp_conversation_aliases',
       'whatsapp_conversation_reads',
@@ -688,6 +699,202 @@ describe('WhatsApp API GoWA bridge', () => {
     }
     await db.raw(`DROP TRIGGER ${name}`);
   }
+
+  it('creates a company-scoped group idempotently and keeps ambiguous provider results from being retried blindly', async () => {
+    const accountId = await connectAndMarkReady();
+    const idempotencyKey = randomUUID();
+    const headers = {
+      authorization: 'Bearer test',
+      'idempotency-key': idempotencyKey,
+      'x-test-user-id': '10',
+    };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: { ...headers, 'x-test-user-id': '11' },
+      payload: {
+        title: 'Project team',
+        participants: ['+62 811-1122-333', '628222333444'],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data).toMatchObject({
+      company_id: companyId,
+      account_id: accountId,
+      jid: '120363123456789@g.us',
+      name: 'Project team',
+      group_participant_count: 3,
+    });
+    expect(Boolean(created.json().data.is_group)).toBe(true);
+    expect(providerGroupCreateRequests).toEqual([
+      { title: 'Project team', participants: ['628111122333', '628222333444'] },
+    ]);
+    expect(
+      await db('audit_logs').where({ model: 'whatsapp.conversation', operation: 'group_create' })
+    ).toHaveLength(1);
+
+    const replayed = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: { ...headers, 'x-test-user-id': '12' },
+      payload: { title: 'Project team', participants: ['+628111122333', '+628222333444'] },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json()).toMatchObject({ replayed: true, data: { id: created.json().data.id } });
+    expect(providerGroupCreateRequests).toHaveLength(1);
+
+    const concurrentKey = randomUUID();
+    const concurrentRequests = await Promise.all(
+      ['17', '18'].map((userId) =>
+        app.inject({
+          method: 'POST',
+          url: '/whatsapp/groups',
+          headers: {
+            authorization: 'Bearer test',
+            'idempotency-key': concurrentKey,
+            'x-test-user-id': userId,
+          },
+          payload: { title: 'Concurrent team', participants: ['628111122333'] },
+        })
+      )
+    );
+    const concurrentStatuses = concurrentRequests.map((response) => response.statusCode);
+    expect(concurrentStatuses).toContain(201);
+    expect(
+      concurrentStatuses.every((status) => status === 200 || status === 201 || status === 409)
+    ).toBe(true);
+    expect(providerGroupCreateRequests).toHaveLength(2);
+
+    const keyReuse = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers,
+      payload: { title: 'Different group', participants: ['628111122333'] },
+    });
+    expect(keyReuse.statusCode).toBe(409);
+
+    const foreign = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: { ...headers, 'x-test-company': 'foreign', 'x-test-user-id': '10' },
+      payload: { title: 'Project team', participants: ['628111122333'] },
+    });
+    expect(foreign.statusCode).toBe(409);
+    expect(providerGroupCreateRequests).toHaveLength(2);
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'x-test-user-id': '13',
+      },
+      payload: { title: 'Bad group', participants: ['628111122333', '+62 811-1122-333'] },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const userDenied = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'x-test-role': 'user',
+        'x-test-user-id': '14',
+      },
+      payload: { title: 'User group', participants: ['628111122333'] },
+    });
+    expect(userDenied.statusCode).toBe(403);
+
+    providerGroupCreateFailureStatus = 503;
+    const ambiguousKey = randomUUID();
+    const ambiguous = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': ambiguousKey,
+        'x-test-user-id': '15',
+      },
+      payload: { title: 'Ambiguous group', participants: ['628111122333'] },
+    });
+    expect(ambiguous.statusCode).toBe(502);
+    expect(ambiguous.json().error).toContain('could not be confirmed');
+    const ambiguousRow = await db('whatsapp_group_creations')
+      .where({ company_id: companyId })
+      .orderBy('id', 'desc')
+      .first();
+    expect(ambiguousRow.status).toBe('unknown');
+    const retryAmbiguous = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/groups',
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': ambiguousKey,
+        'x-test-user-id': '16',
+      },
+      payload: { title: 'Ambiguous group', participants: ['628111122333'] },
+    });
+    expect(retryAmbiguous.statusCode).toBe(409);
+    expect(providerGroupCreateRequests).toHaveLength(3);
+  });
+
+  it('reconciles a provider-confirmed group after local projection failure without creating another provider group', async () => {
+    await connectAndMarkReady();
+    const triggerName = `fail_group_insert_${randomUUID().replaceAll('-', '')}`;
+    const functionName = `${triggerName}_function`;
+    if (postgres) {
+      await db.raw(
+        `CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulated conversation projection failure'; END; $$`
+      );
+      await db.raw(
+        `CREATE TRIGGER ${triggerName} BEFORE INSERT ON whatsapp_conversations FOR EACH ROW EXECUTE FUNCTION ${functionName}()`
+      );
+    } else {
+      await db.raw(
+        `CREATE TRIGGER ${triggerName} BEFORE INSERT ON whatsapp_conversations BEGIN SELECT RAISE(ABORT, 'simulated conversation projection failure'); END;`
+      );
+    }
+
+    const idempotencyKey = randomUUID();
+    const request = {
+      method: 'POST' as const,
+      url: '/whatsapp/groups',
+      headers: { authorization: 'Bearer test', 'idempotency-key': idempotencyKey },
+      payload: { title: 'Projection recovery', participants: ['628111122333'] },
+    };
+    try {
+      const first = await app.inject(request);
+      expect(first.statusCode).toBe(502);
+      expect(providerGroupCreateRequests).toHaveLength(1);
+      const saved = await db('whatsapp_group_creations').first();
+      expect(saved).toMatchObject({ status: 'unknown', group_jid: '120363123456789@g.us' });
+      expect(
+        await db('audit_logs').where({
+          model: 'whatsapp.group.creation',
+          operation: 'group_create_unknown',
+        })
+      ).toHaveLength(1);
+    } finally {
+      if (postgres) {
+        await db.raw(`DROP TRIGGER ${triggerName} ON whatsapp_conversations`);
+        await db.raw(`DROP FUNCTION ${functionName}()`);
+      } else {
+        await db.raw(`DROP TRIGGER ${triggerName}`);
+      }
+    }
+
+    const recovered = await app.inject(request);
+    expect(recovered.statusCode).toBe(200);
+    expect(recovered.json()).toMatchObject({
+      success: true,
+      replayed: true,
+      data: { jid: '120363123456789@g.us', name: 'Projection recovery' },
+    });
+    expect(providerGroupCreateRequests).toHaveLength(1);
+    expect((await db('whatsapp_group_creations').first()).status).toBe('completed');
+  });
 
   it('syncs group metadata and participants within the active company and serves stale cache on provider failure', async () => {
     const [account] = await db('whatsapp_accounts')

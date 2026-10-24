@@ -11,6 +11,7 @@ import {
   WhatsappMessage,
   WhatsappStatus,
   WhatsappUploadTicket,
+  WhatsappGroupCreation,
 } from '../whatsapp/models.js';
 import { attachPrivateLidAlias } from '../whatsapp/conversation-identity.js';
 import { isRecord, MAX_ATTACHMENT_BYTES } from '@moonwitness/types';
@@ -738,7 +739,8 @@ type WhatsappModel =
   | 'whatsapp.internal_note'
   | 'whatsapp.label'
   | 'whatsapp.message'
-  | 'whatsapp.status';
+  | 'whatsapp.status'
+  | 'whatsapp.group.creation';
 
 function canPerformWhatsAppAction(
   auth: {
@@ -2658,6 +2660,230 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         });
       });
       return { success: true, data: updated };
+    }
+  );
+
+  app.post<{ Params: Params; Body: unknown }>(
+    '/whatsapp/groups',
+    whatsappRateLimit(5),
+    async (req, reply) => {
+      const companyId = requireCompany(req, reply);
+      if (!companyId) return;
+      if (!requireWhatsAppAction(req, reply, 'whatsapp.conversation', 'create')) return;
+      const body = isRecord(req.body) ? req.body : null;
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      const rawParticipants = body?.participants;
+      if (
+        !body ||
+        Object.keys(body).some((key) => !['title', 'participants'].includes(key)) ||
+        !title ||
+        title.length > 25 ||
+        !Array.isArray(rawParticipants) ||
+        rawParticipants.length < 1 ||
+        rawParticipants.length > 100 ||
+        rawParticipants.some((participant) => typeof participant !== 'string')
+      )
+        return reply.code(400).send({
+          success: false,
+          error: 'Enter a group name up to 25 characters and 1–100 participant phone numbers',
+        });
+
+      const participantNumbers: string[] = [];
+      for (const rawParticipant of rawParticipants as string[]) {
+        const compactPhone = rawParticipant.trim().replace(/[\s().-]/gu, '');
+        const phone = compactPhone.startsWith('+') ? compactPhone.slice(1) : compactPhone;
+        const parsed = /^\d+$/u.test(phone) ? parsePhoneNumberFromString(`+${phone}`) : undefined;
+        if (!/^[1-9]\d{7,14}$/u.test(phone) || !parsed?.isValid())
+          return reply
+            .code(400)
+            .send({ success: false, error: 'A participant phone number is invalid' });
+        participantNumbers.push(parsed.number.slice(1));
+      }
+      if (new Set(participantNumbers).size !== participantNumbers.length)
+        return reply
+          .code(400)
+          .send({ success: false, error: 'Participant phone numbers must be unique' });
+
+      const idempotencyHeader = req.headers['idempotency-key'];
+      const idempotencyKey = typeof idempotencyHeader === 'string' ? idempotencyHeader.trim() : '';
+      if (!/^[\x21-\x7e]{16,128}$/u.test(idempotencyKey))
+        return reply
+          .code(400)
+          .send({ success: false, error: 'A valid Idempotency-Key header is required' });
+      const idempotencyHash = createHash('sha256').update(idempotencyKey).digest('hex');
+      const requestHash = createHash('sha256')
+        .update(JSON.stringify({ title, participants: participantNumbers }))
+        .digest('hex');
+      const existing = await WhatsappGroupCreation.query().findOne({
+        company_id: companyId,
+        idempotency_key: idempotencyHash,
+      });
+      if (existing) {
+        if (existing.request_hash !== requestHash)
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Idempotency-Key was used for a different request' });
+        if (existing.group_jid && existing.status !== 'failed') {
+          let conversation = await WhatsappConversation.query().findOne({
+            company_id: companyId,
+            jid: existing.group_jid,
+            is_group: true,
+          });
+          if (!conversation && existing.status === 'unknown') {
+            const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+            if (account) {
+              conversation = await app.db.transaction(async (trx) => {
+                const [recovered] = await trx('whatsapp_conversations')
+                  .insert({
+                    company_id: companyId,
+                    account_id: account.id,
+                    jid: existing.group_jid,
+                    name: title,
+                    is_group: true,
+                    group_participant_count: participantNumbers.length + 1,
+                    unread_count: 0,
+                    write_date: new Date().toISOString(),
+                  })
+                  .onConflict(['company_id', 'jid'])
+                  .merge({ name: title, is_group: true, write_date: new Date().toISOString() })
+                  .returning('*');
+                await WhatsappGroupCreation.query(trx).where({ id: existing.id }).patch({
+                  status: 'completed',
+                });
+                await recordWhatsAppAudit(
+                  req,
+                  'whatsapp.conversation',
+                  'group_create_reconciled',
+                  Number(recovered.id),
+                  companyId,
+                  trx
+                );
+                return recovered;
+              });
+            }
+          }
+          if (conversation)
+            return reply.send({ success: true, data: conversation, replayed: true });
+        }
+        return reply.code(409).send({
+          success: false,
+          error:
+            existing.status === 'failed'
+              ? 'This group creation failed; use a new idempotency key to retry'
+              : 'Group creation is unresolved; check the inbox before retrying',
+        });
+      }
+
+      const account = await WhatsappAccount.query().findOne({ company_id: companyId });
+      if (!account || account.status !== 'connected' || !account.gateway_device_id)
+        return reply.code(409).send({ success: false, error: 'WhatsApp account is not connected' });
+
+      let creationId: number;
+      try {
+        const creation = await WhatsappGroupCreation.query().insert({
+          company_id: companyId,
+          idempotency_key: idempotencyHash,
+          request_hash: requestHash,
+          status: 'started',
+        });
+        creationId = Number(creation.id);
+      } catch (error) {
+        const raced = await WhatsappGroupCreation.query().findOne({
+          company_id: companyId,
+          idempotency_key: idempotencyHash,
+        });
+        if (!raced) throw error;
+        if (raced.request_hash !== requestHash)
+          return reply
+            .code(409)
+            .send({ success: false, error: 'Idempotency-Key was used for a different request' });
+        return reply.code(409).send({
+          success: false,
+          error: 'Group creation is unresolved; check the inbox before retrying',
+        });
+      }
+
+      try {
+        const result = await gowaRequest<{ group_id?: unknown }>('/group', {
+          method: 'POST',
+          deviceId: account.gateway_device_id,
+          contentType: 'application/json',
+          body: JSON.stringify({ title, participants: participantNumbers }),
+        });
+        const groupJid = typeof result.group_id === 'string' ? result.group_id : '';
+        if (!/^[^\s@]{1,200}@g\.us$/u.test(groupJid)) {
+          await WhatsappGroupCreation.query()
+            .where({ id: creationId })
+            .patch({ status: 'unknown' });
+          await recordWhatsAppAudit(
+            req,
+            'whatsapp.group.creation',
+            'group_create_unknown',
+            creationId,
+            companyId
+          );
+          return reply
+            .code(502)
+            .send({ success: false, error: 'Group creation result could not be confirmed' });
+        }
+        await WhatsappGroupCreation.query().where({ id: creationId }).patch({
+          status: 'unknown',
+          group_jid: groupJid,
+        });
+        const now = new Date().toISOString();
+        const conversation = await app.db.transaction(async (trx) => {
+          const [created] = await trx('whatsapp_conversations')
+            .insert({
+              company_id: companyId,
+              account_id: account.id,
+              jid: groupJid,
+              name: title,
+              is_group: true,
+              group_participant_count: participantNumbers.length + 1,
+              unread_count: 0,
+              write_date: now,
+            })
+            .onConflict(['company_id', 'jid'])
+            .merge({ name: title, is_group: true, write_date: now })
+            .returning('*');
+          await WhatsappGroupCreation.query(trx).where({ id: creationId }).patch({
+            status: 'completed',
+            group_jid: groupJid,
+          });
+          await recordWhatsAppAudit(
+            req,
+            'whatsapp.conversation',
+            'group_create',
+            Number(created.id),
+            companyId,
+            trx
+          );
+          return created;
+        });
+        return reply.code(201).send({ success: true, data: conversation });
+      } catch (error) {
+        const definitelyRejected =
+          error instanceof GowaError && error.statusCode >= 400 && error.statusCode < 500;
+        await WhatsappGroupCreation.query()
+          .where({ id: creationId })
+          .patch({
+            status: definitelyRejected ? 'failed' : 'unknown',
+          });
+        await recordWhatsAppAudit(
+          req,
+          'whatsapp.group.creation',
+          definitelyRejected ? 'group_create_failed' : 'group_create_unknown',
+          creationId,
+          companyId
+        );
+        req.log.warn({ error: whatsappLogErrorContext(error) }, 'WhatsApp group creation failed');
+        return reply.code(502).send({
+          success: false,
+          error: definitelyRejected
+            ? 'WhatsApp rejected the group creation request'
+            : 'Group creation could not be confirmed; check the inbox before retrying',
+        });
+      }
     }
   );
 

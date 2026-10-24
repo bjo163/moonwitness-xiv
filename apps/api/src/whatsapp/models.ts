@@ -207,3 +207,19 @@ export const WhatsappConversationAlias = defineModel('whatsapp.conversation.alia
     alias_jid: fields.string({ required: true, hidden: true }),
   },
 });
+
+export const WhatsappGroupCreation = defineModel('whatsapp.group.creation', {
+  table: 'whatsapp_group_creations',
+  order: 'id desc',
+  unique: [['company', 'idempotency_key']],
+  fields: {
+    company: fields.belongsTo(Company, { required: true }),
+    idempotency_key: fields.string({ required: true, hidden: true, sensitive: true }),
+    request_hash: fields.string({ required: true, hidden: true, sensitive: true }),
+    status: fields.enum(['started', 'completed', 'unknown', 'failed'], {
+      required: true,
+      default: 'started',
+    }),
+    group_jid: fields.string({ hidden: true, sensitive: true }),
+  },
+});
