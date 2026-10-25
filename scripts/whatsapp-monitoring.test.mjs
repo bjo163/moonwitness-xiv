@@ -3,8 +3,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const alertsPath = 'deploy/monitoring/whatsapp-alerts.yml';
-const alerts = readFileSync(alertsPath, 'utf8');
-const alertsTests = readFileSync('deploy/monitoring/whatsapp-alerts.test.yml', 'utf8');
+const alerts = readFileSync(alertsPath, 'utf8').replaceAll('\r\n', '\n');
+const alertsTests = readFileSync('deploy/monitoring/whatsapp-alerts.test.yml', 'utf8').replaceAll(
+  '\r\n',
+  '\n'
+);
 const metrics = readFileSync('apps/api/src/observability/metrics.ts', 'utf8');
 const runbook = readFileSync('docs/operations/whatsapp.md', 'utf8');
 

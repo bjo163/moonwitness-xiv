@@ -10,6 +10,8 @@ tests:
         values: '0+0x8'
       - series: 'moonwitness_whatsapp_webhook_configured{instance="api:3000"}'
         values: '0+0x8'
+      - series: 'moonwitness_whatsapp_accounts{instance="api:3000", status="connected"}'
+        values: '1+0x8'
       - series: 'probe_success{job="moonwitness-api-readyz", instance="api:3000"}'
         values: '0+0x8'
       - series: 'moonwitness_whatsapp_accounts{instance="api:3000", status="disconnected"}'
@@ -45,7 +47,7 @@ tests:
               component: whatsapp
             exp_annotations:
               summary: WhatsApp inbound callbacks are not configured
-              description: GoWA cannot push inbound messages or delivery receipts to this API; the inbox relies on periodic REST refresh.
+              description: A connected WhatsApp account has no callback URL/HMAC secret; inbound messages and delivery receipts rely on periodic REST refresh.
       - eval_time: 6m
         alertname: WhatsAppAccountDisconnected
         exp_alerts:
@@ -111,6 +113,8 @@ tests:
               description: The authenticated metrics endpoint is reachable but its database aggregates are unavailable.
   - interval: 1m
     input_series:
+      - series: 'moonwitness_whatsapp_webhook_configured{instance="api:3000"}'
+        values: '0+0x8'
       - series: 'moonwitness_whatsapp_outbox_oldest_active_seconds{instance="api:3000", kind="message"}'
         values: '500+0x8'
       - series: 'moonwitness_whatsapp_outbox_events{instance="api:3000", kind="message", status="pending"}'
@@ -118,4 +122,7 @@ tests:
     alert_rule_test:
       - eval_time: 6m
         alertname: WhatsAppOutboxStalled
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WhatsAppWebhookNotConfigured
         exp_alerts: []

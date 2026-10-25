@@ -12,14 +12,17 @@ groups:
           description: The authenticated GoWA readiness check has failed for at least two minutes.
 
       - alert: WhatsAppWebhookNotConfigured
-        expr: moonwitness_whatsapp_webhook_configured == 0
+        expr: |
+          moonwitness_whatsapp_webhook_configured == 0
+          and on (instance)
+          sum by (instance) (moonwitness_whatsapp_accounts{status="connected"}) > 0
         for: 5m
         labels:
           severity: warning
           component: whatsapp
         annotations:
           summary: WhatsApp inbound callbacks are not configured
-          description: GoWA cannot push inbound messages or delivery receipts to this API; the inbox relies on periodic REST refresh.
+          description: A connected WhatsApp account has no callback URL/HMAC secret; inbound messages and delivery receipts rely on periodic REST refresh.
 
       - alert: WhatsAppAccountDisconnected
         expr: sum by (instance) (moonwitness_whatsapp_accounts{status="disconnected"}) > 0
