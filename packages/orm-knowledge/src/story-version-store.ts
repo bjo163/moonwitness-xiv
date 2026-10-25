@@ -85,7 +85,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isAuthenticatedEditor(value: AuthenticatedStoryEditor): boolean {
+export function isAuthenticatedEditor(value: AuthenticatedStoryEditor): boolean {
   return (
     Number.isSafeInteger(value.userId) &&
     value.userId > 0 &&
@@ -150,7 +150,7 @@ export function validateStoryVersion(value: unknown): KnowledgeValidationResult 
   return schemaResult;
 }
 
-async function assertActiveCompanyEditor(
+export async function assertActiveCompanyEditor(
   trx: Knex.Transaction,
   actor: AuthenticatedStoryEditor
 ): Promise<void> {
@@ -188,7 +188,7 @@ function verifiedMedia(
   );
 }
 
-async function readVersionRow(
+export async function readVersionRow(
   trx: Knex.Transaction,
   row: Record<string, unknown>,
   resolveMedia?: StoryVersionMediaResolver

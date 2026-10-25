@@ -427,13 +427,14 @@
       "test:unit:built": "pnpm --filter @moonwitness/types test && pnpm test:whatsapp && pnpm --filter @moonwitness/api exec vitest run --exclude tests/postgres.integration.test.ts --exclude tests/postgres.performance.integration.test.ts && pnpm --filter @moonwitness/auth test && pnpm --filter @moonwitness/client test && pnpm --filter @moonwitness/jobs test && pnpm --filter @moonwitness/logger test && pnpm --filter @moonwitness/orm test && pnpm test:board-csv && pnpm test:addon-conformance && pnpm --filter @moonwitness/orm-base test && pnpm --filter @moonwitness/orm-integration test && pnpm --filter @moonwitness/orm-knowledge test && pnpm --filter @moonwitness/orm-notification test && pnpm --filter @moonwitness/orm-organization test && pnpm --filter @moonwitness/orm-request test && pnpm --filter @moonwitness/orm-storage test && pnpm --filter @moonwitness/orm-workflow test && pnpm --filter @moonwitness/knowledge typecheck && pnpm --filter @moonwitness/knowledge test && pnpm --filter @moonwitness/corpus typecheck && pnpm --filter @moonwitness/corpus test && pnpm --filter @moonwitness/research typecheck && pnpm --filter @moonwitness/research test && pnpm test:knowledge-cli:built && pnpm test:assets && pnpm test:ui && pnpm test:platform-audit && pnpm test:board-budget && pnpm board:budget && pnpm test:release-workflow && pnpm test:release-latest-policy && pnpm test:release-image-publish && pnpm test:release-asset-reconcile && pnpm test:release-dry-run && pnpm test:release-verify-attestations && pnpm test:expected-ref && pnpm test:release-plan && pnpm test:release-orchestration && pnpm test:versioned-docs",
       "test:unit:ci": "node scripts/run-unit-tests.mjs",
       "test:versioned-docs": "node --test scripts/docs/versioned-site.test.mjs",
-      "test:whatsapp": "node --test scripts/whatsapp-compose-env.test.mjs scripts/whatsapp-monitoring.test.mjs scripts/whatsapp-ci-runner.test.mjs && pnpm --filter @moonwitness/api exec vitest run tests/whatsapp.config.test.ts tests/whatsapp.media.test.ts tests/whatsapp.routes.test.ts tests/whatsapp-attachment-references.test.ts tests/whatsapp-attachments-job.test.ts tests/whatsapp-attachments-job.postgres.integration.test.ts tests/whatsapp.version-guard.test.ts",
+      "test:whatsapp": "node --test scripts/whatsapp-compose-env.test.mjs scripts/whatsapp-monitoring.test.mjs scripts/whatsapp-ci-runner.test.mjs scripts/verify-whatsapp-production-deployment.test.mjs && pnpm --filter @moonwitness/api exec vitest run tests/whatsapp.config.test.ts tests/whatsapp.media.test.ts tests/whatsapp.routes.test.ts tests/whatsapp-attachment-references.test.ts tests/whatsapp-attachments-job.test.ts tests/whatsapp-attachments-job.postgres.integration.test.ts tests/whatsapp.version-guard.test.ts",
       "test:workflow-trust": "node --test scripts/check-workflow-checkout-trust.test.mjs",
       "test:workspace-version-policy": "node --test scripts/workspace-version-policy.test.mjs",
       "typecheck": "pnpm build && pnpm --filter @moonwitness/board typecheck",
       "ui:budget": "node scripts/check-ui-catalog-budget.mjs",
       "ui:visual:update": "pnpm --filter @moonwitness/ui-catalog build && pnpm --filter @moonwitness/ui-catalog exec playwright test --update-snapshots",
-      "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:unit:built && pnpm test:architecture && pnpm architecture:check:built && pnpm docs:build:built"
+      "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:unit:built && pnpm test:architecture && pnpm architecture:check:built && pnpm docs:build:built",
+      "whatsapp:verify:deployment": "node scripts/verify-whatsapp-production-deployment.mjs"
     }
   },
   "environment": [
@@ -3169,7 +3170,7 @@
     },
     {
       "name": "knowledge",
-      "version": "1.9.0",
+      "version": "1.10.0",
       "depends": ["base"],
       "models": [
         {
@@ -4063,6 +4064,167 @@
           "uniqueConstraints": [["company", "suggestion_id", "version"]]
         },
         {
+          "name": "knowledge.story_episode_version",
+          "table": "knowledge_story_episode_versions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "episode_digest",
+              "kind": "string",
+              "column": "episode_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "episode_id",
+              "kind": "string",
+              "column": "episode_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "episode_json",
+              "kind": "text",
+              "column": "episode_json",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "first_page_order",
+              "kind": "integer",
+              "column": "first_page_order",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "last_page_order",
+              "kind": "integer",
+              "column": "last_page_order",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "page_count",
+              "kind": "integer",
+              "column": "page_count",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "previous_episode_digest",
+              "kind": "string",
+              "column": "previous_episode_digest",
+              "declaredRequired": false,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": false
+            },
+            {
+              "name": "recorded_by",
+              "kind": "belongsTo",
+              "column": "recorded_by_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "story_digest",
+              "kind": "string",
+              "column": "story_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "story_id",
+              "kind": "string",
+              "column": "story_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "story_version",
+              "kind": "integer",
+              "column": "story_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "title",
+              "kind": "string",
+              "column": "title",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "version",
+              "kind": "integer",
+              "column": "version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "visibility",
+              "kind": "enum",
+              "column": "visibility",
+              "declaredRequired": true,
+              "required": false,
+              "unique": false,
+              "optional": true,
+              "hasDefault": true,
+              "default": "[redacted]",
+              "values": ["INTERNAL"]
+            }
+          ],
+          "uniqueConstraints": [["company", "episode_id", "version"]]
+        },
+        {
           "name": "knowledge.story_page_version",
           "table": "knowledge_story_page_versions",
           "fields": [
@@ -4831,7 +4993,7 @@
         "knowledge.witness_testimony": 2,
         "knowledge.witness_correction": 2,
         "knowledge.witness_interpretation": 2,
-        "base.model_access": 15
+        "base.model_access": 16
       },
       "accessRules": [
         {
@@ -4901,6 +5063,14 @@
         {
           "group": "base.group_user",
           "model": "knowledge.research_suggestion_version",
+          "read": false,
+          "create": false,
+          "write": false,
+          "unlink": false
+        },
+        {
+          "group": "base.group_user",
+          "model": "knowledge.story_episode_version",
           "read": false,
           "create": false,
           "write": false,
@@ -6865,5 +7035,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "538936c8d12dbeb8672d13edccfcb26a03ba590a94d754c8a97fd9e9c615afdc"
+  "generatedFromSha256": "a522c8ceed1781e61d0a2a9db5951d1e6804880ae8599a77ddb19f6b11bf0851"
 }

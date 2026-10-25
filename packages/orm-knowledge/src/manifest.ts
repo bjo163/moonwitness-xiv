@@ -14,6 +14,7 @@ import {
   ResearchSuggestionReviewDecision,
   StoryVersion,
   StoryPageVersion,
+  StoryEpisodeVersion,
   WitnessCorrection,
   WitnessInterpretation,
   WitnessTestimony,
@@ -32,6 +33,7 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
   const tables = [
     'knowledge_story_versions',
     'knowledge_story_page_versions',
+    'knowledge_story_episode_versions',
     'knowledge_witness_testimonies',
     'knowledge_witness_corrections',
     'knowledge_witness_interpretations',
@@ -75,6 +77,9 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
       IF TG_TABLE_NAME IN ('knowledge_story_versions', 'knowledge_story_page_versions') THEN
         RAISE EXCEPTION 'Knowledge story versions and pages are append-only';
       END IF;
+      IF TG_TABLE_NAME = 'knowledge_story_episode_versions' THEN
+        RAISE EXCEPTION 'Knowledge story episodes are append-only';
+      END IF;
       RAISE EXCEPTION 'Knowledge witness records are append-only';
       END;
       $$ LANGUAGE plpgsql
@@ -108,7 +113,9 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
                     : table === 'knowledge_story_versions' ||
                         table === 'knowledge_story_page_versions'
                       ? 'Knowledge story versions and pages are append-only'
-                      : 'Knowledge witness records are append-only';
+                      : table === 'knowledge_story_episode_versions'
+                        ? 'Knowledge story episodes are append-only'
+                        : 'Knowledge witness records are append-only';
       await trx.raw(
         `CREATE TRIGGER IF NOT EXISTS ${table}_reject_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT, '${errorMessage}'); END`
       );
@@ -121,7 +128,7 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
 
 export const manifest = defineAddon({
   name: 'knowledge',
-  version: '1.9.0',
+  version: '1.10.0',
   depends: ['base'],
   models: [
     WitnessTestimony,
@@ -139,6 +146,7 @@ export const manifest = defineAddon({
     ResearchSuggestionReviewDecision,
     StoryVersion,
     StoryPageVersion,
+    StoryEpisodeVersion,
     ResearchActorIdentity,
     ResearchPrivacyRevocation,
     ResearchPrivacyProjection,
@@ -282,6 +290,7 @@ export const manifest = defineAddon({
         TextualAlignmentCandidateVersion,
         StoryVersion,
         StoryPageVersion,
+        StoryEpisodeVersion,
         ResearchActorIdentity,
         ResearchPrivacyRevocation,
         ResearchPrivacyProjection,

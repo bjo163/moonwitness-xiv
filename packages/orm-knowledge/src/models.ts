@@ -334,6 +334,35 @@ export const StoryPageVersion = defineModel('knowledge.story_page_version', {
     media_ref_json: fields.text({ hidden: true }),
   },
 });
+/** Ordered contiguous slice of one exact, digest-bound story version. */
+export const StoryEpisodeVersion = defineModel('knowledge.story_episode_version', {
+  table: 'knowledge_story_episode_versions',
+  order: 'company_id asc, episode_id asc, version asc',
+  unique: [['company', 'episode_id', 'version']],
+  fields: {
+    company: fields.belongsTo(Company, { required: true }),
+    episode_id: fields.string({
+      required: true,
+      pattern: '^mw:story-episode:[a-z0-9][a-z0-9._-]{0,179}$',
+    }),
+    version: fields.integer({ required: true }),
+    visibility: fields.enum(['INTERNAL'], { required: true, default: 'INTERNAL' }),
+    title: fields.string({ required: true }),
+    episode_json: fields.text({ required: true, hidden: true }),
+    episode_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+    story_id: fields.string({
+      required: true,
+      pattern: '^mw:story:[a-z0-9][a-z0-9._-]{0,179}$',
+    }),
+    story_version: fields.integer({ required: true }),
+    story_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+    first_page_order: fields.integer({ required: true }),
+    last_page_order: fields.integer({ required: true }),
+    page_count: fields.integer({ required: true }),
+    previous_episode_digest: fields.string({ pattern: '^[a-f0-9]{64}$' }),
+    recorded_by: fields.belongsTo(User, { required: true }),
+  },
+});
 
 /** Explicit, stable ontology identities for database users; IDs are never inferred from SQL rows. */
 export const ResearchActorIdentity = defineModel('knowledge.research_actor_identity', {
@@ -371,6 +400,7 @@ for (const model of [
   ResearchActorIdentity,
   StoryVersion,
   StoryPageVersion,
+  StoryEpisodeVersion,
 ]) {
   model.beforeUpdate = (_args: StaticHookArguments<InstanceType<typeof model>>): never =>
     rejectImmutableMutation();

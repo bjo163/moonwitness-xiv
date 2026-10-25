@@ -27,12 +27,14 @@ import {
   resolveConceptProfileReviewDecision,
   readTextualAlignmentCandidateVersion,
   resolveTextualAlignmentCandidateReviewDecision,
+  readStoryEpisode,
   readStoryVersion,
   syntheticWitnessSubjectRefSha256,
   type StoryMediaReference,
   type WitnessCorrectionSourceResolver,
   ResearchGraphRecord,
   storeTextualAlignmentCandidates,
+  storeStoryEpisode,
   storeStoryVersion,
   transitionResearchReview,
   storeConceptProfiles,
@@ -903,6 +905,39 @@ postgresDescribe('knowledge addon PostgreSQL integration', () => {
       .whereNotNull('media_ref_json')
       .first('media_ref_json');
     expect(JSON.parse(String(storedMedia?.media_ref_json))).toEqual(pgStoryMedia);
+    const pgEpisode = await storeStoryEpisode(db, {
+      authenticatedActor: actor,
+      episode: {
+        schema_version: 1,
+        episode_id: 'mw:story-episode:pg-synthetic-part-one',
+        version: 1,
+        title: 'Synthetic PostgreSQL episode one',
+        visibility: 'INTERNAL',
+        story_id: first.storyId,
+        story_version: 1,
+        story_digest: first.digest,
+        first_page_order: 1,
+        last_page_order: 2,
+      },
+      resolveMedia: resolvePgStoryMedia,
+    });
+    expect(pgEpisode.pages.map((page) => [page.page_order, page.original_text])).toEqual([
+      [1, firstText],
+      [2, 'Synthetic page two: Arabic علامة.'],
+    ]);
+    expect(
+      await readStoryEpisode(db, {
+        authenticatedReader: actor,
+        episodeId: pgEpisode.episodeId,
+        resolveMedia: resolvePgStoryMedia,
+      })
+    ).toMatchObject({ version: 1, previousDigest: null, idempotent: false });
+    expect(await db('knowledge_story_episode_versions')).toHaveLength(1);
+    await expect(
+      db('knowledge_story_episode_versions')
+        .where({ episode_id: pgEpisode.episodeId, version: 1 })
+        .delete()
+    ).rejects.toThrow('Knowledge story episodes are append-only');
     await expect(
       db('knowledge_story_versions').where({ story_id: first.storyId, version: 1 }).update({
         visibility: 'PUBLIC',

@@ -1,6 +1,6 @@
 # Generated platform reference
 
-Source fingerprint: `538936c8d12dbeb8672d13edccfcb26a03ba590a94d754c8a97fd9e9c615afdc`. This reference contains package names, script names and environment variable names only; it does not contain local environment values.
+Source fingerprint: `a522c8ceed1781e61d0a2a9db5951d1e6804880ae8599a77ddb19f6b11bf0851`. This reference contains package names, script names and environment variable names only; it does not contain local environment values.
 
 ## Workspace packages and apps
 
@@ -228,3 +228,4 @@ Value categories are inferred from variable names and example syntax; requiredne
 - `pnpm ui:budget`
 - `pnpm ui:visual:update`
 - `pnpm verify`
+- `pnpm whatsapp:verify:deployment`

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "addons": ["auth", "base", "jobs", "notification"],
   "generatedFrom": "core addon manifests and model field metadata; no seed values included",
-  "sourceSha256": "d789b97540e12081cbbe93be6b1cea8ecd02268eed3663f6a3146dec4592b4ed",
+  "sourceSha256": "c7c6f092723fe64ffb0c15859725c52312e3960b43fe6a3166c22257a666ecf1",
   "models": [
     {
       "name": "auth.refresh_token",
@@ -163,6 +163,10 @@
     {
       "name": "knowledge.research_suggestion_version",
       "table": "knowledge_research_suggestion_versions"
+    },
+    {
+      "name": "knowledge.story_episode_version",
+      "table": "knowledge_story_episode_versions"
     },
     {
       "name": "knowledge.story_page_version",
@@ -615,6 +619,20 @@
     },
     {
       "from": "knowledge.research_suggestion_version",
+      "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.story_episode_version",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.story_episode_version",
       "field": "recorded_by",
       "to": "base.user",
       "cardinality": "N:1",

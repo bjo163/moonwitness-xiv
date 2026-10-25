@@ -1,6 +1,6 @@
 # Generated model and addon reference
 
-Source fingerprint: `538936c8d12dbeb8672d13edccfcb26a03ba590a94d754c8a97fd9e9c615afdc`. Seed values and field defaults are intentionally omitted.
+Source fingerprint: `a522c8ceed1781e61d0a2a9db5951d1e6804880ae8599a77ddb19f6b11bf0851`. Seed values and field defaults are intentionally omitted.
 
 ## Addon `auth`
 
@@ -287,9 +287,9 @@ Models: 4; declared views: 0; menu entries: 0; seed rows: 1.
 
 ## Addon `knowledge`
 
-Version: `1.9.0`; dependencies: `base`.
+Version: `1.10.0`; dependencies: `base`.
 
-Models: 18; declared views: 3; menu entries: 3; seed rows: 26.
+Models: 19; declared views: 3; menu entries: 3; seed rows: 27.
 
 | Model                                                   | Table                                                    | Field                         | Kind      | Required | Optional | Default    | Relation                           |
 | ------------------------------------------------------- | -------------------------------------------------------- | ----------------------------- | --------- | -------- | -------- | ---------- | ---------------------------------- |
@@ -371,6 +371,21 @@ Models: 18; declared views: 3; menu entries: 3; seed rows: 26.
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `suggestion_json`             | text      | Yes      | No       | No         | —                                  |
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `version`                     | integer   | Yes      | No       | No         | —                                  |
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `episode_digest`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `episode_id`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `episode_json`                | text      | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `first_page_order`            | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `last_page_order`             | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `page_count`                  | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `previous_episode_digest`     | string    | No       | Yes      | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `story_digest`                | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `story_id`                    | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `story_version`               | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `title`                       | string    | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `version`                     | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.story_episode_version`                       | `knowledge_story_episode_versions`                       | `visibility`                  | enum      | No       | Yes      | [redacted] | —                                  |
 | `knowledge.story_page_version`                          | `knowledge_story_page_versions`                          | `media_ref_json`              | text      | No       | Yes      | No         | —                                  |
 | `knowledge.story_page_version`                          | `knowledge_story_page_versions`                          | `original_text`               | text      | Yes      | No       | No         | —                                  |
 | `knowledge.story_page_version`                          | `knowledge_story_page_versions`                          | `original_text_digest`        | string    | Yes      | No       | No         | —                                  |
@@ -447,7 +462,7 @@ Models: 18; declared views: 3; menu entries: 3; seed rows: 26.
 
 - Seed coverage: `base.access_group` has 2 declared seed row(s); seed values are not included.
 - Seed coverage: `base.group_membership` has 2 declared seed row(s); seed values are not included.
-- Seed coverage: `base.model_access` has 15 declared seed row(s); seed values are not included.
+- Seed coverage: `base.model_access` has 16 declared seed row(s); seed values are not included.
 - Seed coverage: `knowledge.privacy_projection` has 1 declared seed row(s); seed values are not included.
 - Seed coverage: `knowledge.witness_correction` has 2 declared seed row(s); seed values are not included.
 - Seed coverage: `knowledge.witness_interpretation` has 2 declared seed row(s); seed values are not included.
@@ -466,6 +481,7 @@ Models: 18; declared views: 3; menu entries: 3; seed rows: 26.
 | `base.group_user` | `knowledge.research_graph_release`              | No   | No     | No    | No     |
 | `base.group_user` | `knowledge.research_review_event`               | No   | No     | No    | No     |
 | `base.group_user` | `knowledge.research_suggestion_version`         | No   | No     | No    | No     |
+| `base.group_user` | `knowledge.story_episode_version`               | No   | No     | No    | No     |
 | `base.group_user` | `knowledge.story_page_version`                  | No   | No     | No    | No     |
 | `base.group_user` | `knowledge.story_version`                       | No   | No     | No    | No     |
 | `base.group_user` | `knowledge.textual_alignment_candidate_version` | No   | No     | No    | No     |

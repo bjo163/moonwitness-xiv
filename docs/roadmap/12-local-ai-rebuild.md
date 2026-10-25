@@ -363,6 +363,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K5-004 — Story, episode, page/media manifest contracts
 
+- Status: in progress. Story, page, media, and now episode exist as append-only, digest-bound tenant-scoped records with synthetic tests; the episode axis named by this card's title landed locally on 2026-10-25 (`ontology/domains/story-episode.schema.json`, `packages/orm-knowledge/src/story-episode-store.ts`). No story or episode renderer, route, or publication path exists, and the new PostgreSQL episode assertions are written but unrun because no local engine was available. See [K5-004 evidence](evidence/K5-004.md).
 - Priority: P0; risk: normal.
 - Depends on: `K5-003`, `K2-003`.
 - File scope: `packages/orm-knowledge*/`, `ontology/domains/`.

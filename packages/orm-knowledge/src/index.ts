@@ -13,6 +13,7 @@ export {
   ResearchSuggestionReviewDecision,
   StoryVersion,
   StoryPageVersion,
+  StoryEpisodeVersion,
   WitnessCorrection,
   WitnessInterpretation,
   WitnessTestimony,
@@ -22,6 +23,11 @@ export {
   storeStoryVersion,
   readStoryVersion,
 } from './story-version-store.js';
+export {
+  validateStoryEpisode,
+  storeStoryEpisode,
+  readStoryEpisode,
+} from './story-episode-store.js';
 export type {
   StoryVersionDocument,
   StoryPageDocument,
@@ -31,6 +37,12 @@ export type {
   StoredStoryVersion,
   StoryVersionMediaResolver,
 } from './story-version-store.js';
+export type {
+  StoryEpisodeDocument,
+  StoredStoryEpisode,
+  StoreStoryEpisodeInput,
+  ReadStoryEpisodeInput,
+} from './story-episode-store.js';
 export {
   MAX_RESEARCH_RELEASE_CANONICAL_BYTES,
   MAX_RESEARCH_RELEASE_RECORDS,

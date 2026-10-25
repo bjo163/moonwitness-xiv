@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonwitness.dev/ontology/domains/story-episode.schema.json",
+  "title": "MoonWitness versioned story episode",
+  "description": "A versioned slice of one exact story version. An episode names a contiguous page range and binds the referenced story version by ID, version number, and canonical digest, so it can never reorder, re-point, or restate story text. The storage layer must verify the referenced story version and keep first_page_order at or below last_page_order inside that version's page count; JSON Schema cannot read the referenced version. Visibility is fixed to INTERNAL; this contract has no publication, rendering, or auto-publish semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "version",
+    "title",
+    "visibility",
+    "story_id",
+    "story_version",
+    "story_digest",
+    "first_page_order",
+    "last_page_order"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "episode_id": { "type": "string", "pattern": "^mw:story-episode:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "visibility": { "const": "INTERNAL" },
+    "story_id": { "type": "string", "pattern": "^mw:story:[a-z0-9][a-z0-9._-]{0,179}$" },
+    "story_version": { "type": "integer", "minimum": 1 },
+    "story_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "first_page_order": { "type": "integer", "minimum": 1 },
+    "last_page_order": { "type": "integer", "minimum": 1 }
+  }
+}
