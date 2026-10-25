@@ -201,7 +201,7 @@ from that deployment before an incident; do not assume a volume name from this r
 4. Restore the PostgreSQL dump to a new/isolated database, and restore the matching attachment
    bucket or local volume to an isolated target. Never overwrite the live database or bucket during
    a drill. Follow the detailed object-store checks in
-   [attachment storage operations](./attachment-storage.md#backup-and-restore).
+   [attachment storage operations](./attachment-storage.md#operasi-dan-pemulihan).
 5. Before enabling writers, verify database readiness and account/company/device mappings; check
    that the expected GoWA version matches the restored image; run `attachments:reconcile` in
    dry-run mode and investigate missing/corrupt references. Do not delete orphan candidates as
