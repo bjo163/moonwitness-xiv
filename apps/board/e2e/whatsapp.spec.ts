@@ -734,7 +734,6 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   await page.getByRole('button', { name: /Project group/u }).click();
   await expect(page.getByLabel('Loading messages')).toBeVisible();
   releaseMessageResponse?.();
-  releaseMessageResponse = null;
   await expect(page.getByRole('heading', { name: 'Project group' })).toBeVisible();
   const inboxRefreshError = page
     .getByRole('alert')

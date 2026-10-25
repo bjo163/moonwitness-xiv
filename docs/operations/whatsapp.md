@@ -194,6 +194,36 @@ inbound/receipt callbacks and public API WhatsApp deployment are not active. Do 
 GoWA callback to the public API until that deployment exposes the WhatsApp route and is verified
 over HTTPS.
 
+### Publishing the API origin
+
+WhatsApp lives at the API root, not under `/api`. Anything in front of the API must forward every
+prefix the Board proxies: `/api`, `/auth`, `/jsonrpc`, `/health`, `/livez`, `/readyz`, `/metrics`,
+`/notifications`, `/workflows`, and `/whatsapp`. A proxy with a narrower allowlist answers `404` for
+`/whatsapp/*` while `/health` still succeeds, which looks like a missing WhatsApp build but is a
+routing gap. Allow `POST` to `/whatsapp/gowa/webhook/<device id>` and let request bodies of at least
+15 MiB through so Base64 WhatsApp sends are not truncated; files stay capped at 10 MiB by the
+application. Verify the published origin before changing WhatsApp configuration:
+
+```powershell
+pnpm whatsapp:verify:deployment -- --base-url https://your-api-origin
+```
+
+The probe sends no credentials. It classifies the origin first, so a different application or a
+placeholder worker answering on the domain is reported as `wrong-origin` instead of being mistaken
+for missing WhatsApp routes. Only a `ready` result means the route set, the registered WhatsApp
+models, and the signed callback endpoint are actually reachable.
+
+### Enabling the GoWA callback
+
+Set `WHATSAPP_WEBHOOK_URL` to the verified public origin (scheme and host only, no path) and
+`WHATSAPP_WEBHOOK_SECRET` to a random value of at least 32 characters; both must be present or the
+API refuses to start pairing. Restart the API, then trigger Connect for the account. The API pushes
+`<origin>/whatsapp/gowa/webhook/<device id>`, the secret, and the event list to GoWA during that call,
+so an already linked device is reconfigured without scanning a QR code again. Confirm with a read-only
+GoWA `GET /devices/<device id>/webhook` that `webhook_url` and `webhook_events` are no longer empty, then
+send a message from another number and check it appears in the Board inbox. Inbound events are also
+recovered by polling, so a callback failure degrades to delayed delivery rather than lost messages.
+
 ## Full WhatsApp restore order
 
 Treat a WhatsApp recovery as one coordinated set: PostgreSQL (account/device mapping, inbox,
@@ -349,6 +379,8 @@ Rule definitions are not active until loaded and notification routing is tested 
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.
+- `pnpm whatsapp:verify:deployment -- --base-url <origin>` probes a published origin without credentials
+  and fails until the API root, the WhatsApp models, and the signed callback route are all reachable.
 - `pnpm --filter @moonwitness/api build` and `pnpm --filter @moonwitness/board typecheck`
   check the API connector and Board UI.
 - Check the deployed API's configured GoWA authentication, health, and expected version without
