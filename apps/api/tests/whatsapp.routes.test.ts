@@ -80,6 +80,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let deviceLookupReturnsInternalError = false;
   let providerConnected = false;
   let providerStatusUnavailable = false;
+  let providerStatusMissing = false;
   let onDeviceStatusRequest: (() => void) | null = null;
   let deviceStatusGate: Promise<void> | null = null;
   let qrExpired = false;
@@ -321,6 +322,7 @@ describe('WhatsApp API GoWA bridge', () => {
     deviceLookupReturnsInternalError = false;
     providerConnected = false;
     providerStatusUnavailable = false;
+    providerStatusMissing = false;
     onDeviceStatusRequest = null;
     deviceStatusGate = null;
     qrExpired = false;
@@ -451,6 +453,7 @@ describe('WhatsApp API GoWA bridge', () => {
         onDeviceStatusRequest?.();
         if (deviceStatusGate) await deviceStatusGate;
         if (providerStatusUnavailable) return json({ message: 'temporary status outage' }, 503);
+        if (providerStatusMissing) return json({ message: 'device status not found' }, 404);
         return json({
           device_id: 'moonwitness-company-' + companyId,
           is_connected: providerConnected,
@@ -1904,7 +1907,69 @@ describe('WhatsApp API GoWA bridge', () => {
       status: 'qr_expired',
       qr_code: null,
     });
+
+    const refreshed = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(refreshed.json().data).toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+      last_error: 'QR code expired. Request a new code to continue pairing.',
+    });
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+      last_error: 'QR code expired. Request a new code to continue pairing.',
+    });
+
+    providerStatusUnavailable = false;
+    providerStatusMissing = true;
+    const missingDeviceStatus = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(missingDeviceStatus.json().data).toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+      last_error: 'QR code expired. Request a new code to continue pairing.',
+    });
   });
+
+  it.skipIf(!postgres)(
+    'upgrades the persisted account status check to allow an expired QR',
+    async () => {
+      await db.raw(
+        'ALTER TABLE "whatsapp_accounts" DROP CONSTRAINT IF EXISTS "whatsapp_accounts_status_check"'
+      );
+      await db.raw(
+        `ALTER TABLE "whatsapp_accounts"
+       ADD CONSTRAINT "whatsapp_accounts_status_check"
+       CHECK ("status" IN ('disconnected', 'connecting', 'qr', 'connected', 'reconnecting', 'error'))`
+      );
+      await db('_orm_addons').where({ name: 'orm-whatsapp' }).update({ version: '1.13.0' });
+
+      await installAddons(db, [
+        baseManifest,
+        jobsManifest,
+        notificationManifest,
+        organizationManifest,
+        whatsappManifest,
+      ]);
+
+      await expect(
+        db('whatsapp_accounts').insert({ company_id: companyId, status: 'qr_expired' })
+      ).resolves.toBeDefined();
+      await expect(
+        db('_orm_addons').where({ name: 'orm-whatsapp' }).first('version')
+      ).resolves.toEqual(expect.objectContaining({ version: '1.14.0' }));
+    },
+    30_000
+  );
 
   it('does not let a slow account poll overwrite a newer pairing QR', async () => {
     await db('whatsapp_accounts').insert({

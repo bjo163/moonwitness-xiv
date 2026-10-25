@@ -1552,9 +1552,19 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
     // Account status is also changed by the connect flow. Avoid letting a slow
     // provider status lookup overwrite a newer QR/connection state.
     const patchIfUnchanged = async (values: Record<string, unknown>) => {
-      let query = WhatsappAccount.query().where({ id: account.id, company_id: companyId });
-      if (account.write_date) query = query.where('write_date', account.write_date);
-      else query = query.where('status', account.status);
+      const query = WhatsappAccount.query().where({
+        id: account.id,
+        company_id: companyId,
+        status: account.status,
+      });
+      if (account.gateway_device_id === null || account.gateway_device_id === undefined)
+        query.whereNull('gateway_device_id');
+      else query.where('gateway_device_id', account.gateway_device_id);
+      if (account.qr_code === null || account.qr_code === undefined) query.whereNull('qr_code');
+      else query.where('qr_code', account.qr_code);
+      if (account.phone_number === null || account.phone_number === undefined)
+        query.whereNull('phone_number');
+      else query.where('phone_number', account.phone_number);
       await query.patch({ ...values, write_date: new Date().toISOString() });
     };
     if (!account.gateway_device_id) {
@@ -1600,13 +1610,20 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             await patchIfUnchanged({ status, qr_code: null, last_error: lastError });
           }
         } else {
+          const expiredQr =
+            status === 'disconnected' && account.status === 'qr_expired' && !upstream.is_logged_in;
+          if (expiredQr) {
+            status = 'qr_expired';
+            lastError = 'QR code expired. Request a new code to continue pairing.';
+          } else {
+            lastError = null;
+          }
           await patchIfUnchanged({
             status,
-            phone_number: phoneNumber,
+            phone_number: expiredQr ? null : phoneNumber,
             qr_code: null,
-            last_error: null,
+            last_error: lastError,
           });
-          lastError = null;
         }
       } catch (error) {
         if (!(error instanceof GowaError && error.statusCode === 404)) {
@@ -1652,18 +1669,31 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               }
             }
           } else {
-            status = 'error';
-            await patchIfUnchanged({
-              status,
-              last_error: 'WhatsApp gateway is temporarily unavailable',
-            });
-            lastError = 'WhatsApp gateway is temporarily unavailable';
+            if (account.status === 'qr_expired') {
+              status = 'qr_expired';
+              phoneNumber = null;
+              lastError = 'QR code expired. Request a new code to continue pairing.';
+              await patchIfUnchanged({ status, phone_number: null, last_error: lastError });
+            } else {
+              status = 'error';
+              await patchIfUnchanged({
+                status,
+                last_error: 'WhatsApp gateway is temporarily unavailable',
+              });
+              lastError = 'WhatsApp gateway is temporarily unavailable';
+            }
           }
         } else {
-          status = 'disconnected';
-          await patchIfUnchanged({ status, qr_code: null, phone_number: null, last_error: null });
+          const expiredQr = account.status === 'qr_expired';
+          status = expiredQr ? 'qr_expired' : 'disconnected';
+          lastError = expiredQr ? 'QR code expired. Request a new code to continue pairing.' : null;
+          await patchIfUnchanged({
+            status,
+            qr_code: null,
+            phone_number: null,
+            last_error: lastError,
+          });
           phoneNumber = null;
-          lastError = null;
         }
       }
     }
