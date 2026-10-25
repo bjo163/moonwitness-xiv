@@ -25,10 +25,14 @@ postgresDescribe('WhatsApp attachment reconciliation on PostgreSQL', () => {
   let unregister: (() => void) | undefined;
   let storageDirectory: string;
   let storage: LocalFileAttachmentStorage;
+  let previousModelKnex: Knex | undefined;
+  let modelKnexCaptured = false;
   const schema = `mw_whatsapp_cleanup_${randomUUID().replaceAll('-', '')}`;
 
   beforeAll(async () => {
     if (!connectionString) throw new Error('POSTGRES_TEST_URL is required');
+    previousModelKnex = Model.knex();
+    modelKnexCaptured = true;
     adminDb = knex({ client: 'pg', connection: connectionString, pool: { min: 0, max: 2 } });
     await adminDb.raw('create schema ??', [schema]);
     db = knex(
@@ -46,6 +50,7 @@ postgresDescribe('WhatsApp attachment reconciliation on PostgreSQL', () => {
 
   afterAll(async () => {
     unregister?.();
+    if (modelKnexCaptured) Model.knex(previousModelKnex);
     if (db) await db.destroy();
     if (adminDb) {
       await adminDb.raw('drop schema if exists ?? cascade', [schema]);
