@@ -3,13 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const alertsPath = 'deploy/monitoring/whatsapp-alerts.yml';
-const alerts = readFileSync(alertsPath, 'utf8');
-const alertsTests = readFileSync('deploy/monitoring/whatsapp-alerts.test.yml', 'utf8');
+const alerts = readFileSync(alertsPath, 'utf8').replaceAll('\r\n', '\n');
+const alertsTests = readFileSync('deploy/monitoring/whatsapp-alerts.test.yml', 'utf8').replaceAll(
+  '\r\n',
+  '\n'
+);
 const metrics = readFileSync('apps/api/src/observability/metrics.ts', 'utf8');
 const runbook = readFileSync('docs/operations/whatsapp.md', 'utf8');
 
 const expectedAlerts = [
   'WhatsAppGatewayUnavailable',
+  'WhatsAppWebhookNotConfigured',
   'WhatsAppAccountDisconnected',
   'WhatsAppPairingQrExpired',
   'WhatsAppOutboxStalled',
@@ -25,7 +29,7 @@ function ruleBlock(source, name, nextName) {
   return source.slice(start, next < 0 ? undefined : next);
 }
 
-test('WhatsApp Prometheus rules define the documented seven operational alerts', () => {
+test('WhatsApp Prometheus rules define the documented eight operational alerts', () => {
   const names = [...alerts.matchAll(/^      - alert: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name);
   assert.deepEqual(names, expectedAlerts);
   const testedAlerts = [

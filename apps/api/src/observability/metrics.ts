@@ -282,7 +282,10 @@ export function renderMetrics(
   lines.push(
     '# HELP moonwitness_whatsapp_gateway_requests_in_flight Current GoWA REST requests.',
     '# TYPE moonwitness_whatsapp_gateway_requests_in_flight gauge',
-    `moonwitness_whatsapp_gateway_requests_in_flight ${gatewayRequestsInFlight}`
+    `moonwitness_whatsapp_gateway_requests_in_flight ${gatewayRequestsInFlight}`,
+    '# HELP moonwitness_whatsapp_webhook_configured Whether GoWA inbound callbacks have both URL and HMAC secret configured.',
+    '# TYPE moonwitness_whatsapp_webhook_configured gauge',
+    `moonwitness_whatsapp_webhook_configured ${process.env.WHATSAPP_WEBHOOK_URL && process.env.WHATSAPP_WEBHOOK_SECRET ? 1 : 0}`
   );
   appendDurationMetrics(
     lines,

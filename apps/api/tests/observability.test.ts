@@ -85,6 +85,33 @@ describe('health and metrics endpoints', () => {
     }
   });
 
+  it('reports webhook availability separately in readiness and Prometheus metrics', async () => {
+    const previousUrl = process.env.WHATSAPP_WEBHOOK_URL;
+    const previousSecret = process.env.WHATSAPP_WEBHOOK_SECRET;
+    process.env.WHATSAPP_WEBHOOK_URL = 'https://api.example.test';
+    process.env.WHATSAPP_WEBHOOK_SECRET = 'test-webhook-secret-that-is-long-enough';
+    try {
+      const ready = await app.inject('/whatsapp/readyz');
+      expect(ready.statusCode).toBe(200);
+      expect(ready.json()).toMatchObject({ status: 'reachable', webhook_configured: true });
+
+      const metrics = await app.inject({
+        url: '/metrics',
+        headers: { authorization: 'Bearer metrics-secret-token-at-least-32-chars' },
+      });
+      expect(metrics.body).toContain('moonwitness_whatsapp_webhook_configured 1');
+
+      delete process.env.WHATSAPP_WEBHOOK_SECRET;
+      const incomplete = await app.inject('/whatsapp/readyz');
+      expect(incomplete.json()).toMatchObject({ status: 'reachable', webhook_configured: false });
+    } finally {
+      if (previousUrl === undefined) delete process.env.WHATSAPP_WEBHOOK_URL;
+      else process.env.WHATSAPP_WEBHOOK_URL = previousUrl;
+      if (previousSecret === undefined) delete process.env.WHATSAPP_WEBHOOK_SECRET;
+      else process.env.WHATSAPP_WEBHOOK_SECRET = previousSecret;
+    }
+  });
+
   it('protects Prometheus metrics and records route status and duration', async () => {
     expect((await app.inject('/metrics')).statusCode).toBe(401);
     expect(

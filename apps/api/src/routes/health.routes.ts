@@ -40,12 +40,16 @@ export const healthRoutes: FastifyPluginAsync<HealthRoutesOptions> = async (fast
     const reachable = options.checkWhatsAppGateway
       ? await options.checkWhatsAppGateway().catch(() => false)
       : false;
+    const webhookConfigured = Boolean(
+      process.env.WHATSAPP_WEBHOOK_URL && process.env.WHATSAPP_WEBHOOK_SECRET
+    );
     return reply
       .header('Cache-Control', 'no-store')
       .status(reachable ? 200 : 503)
       .send({
         status: reachable ? 'reachable' : 'unreachable',
         gateway: reachable ? 'connected' : 'disconnected',
+        webhook_configured: webhookConfigured,
         timestamp: new Date().toISOString(),
       });
   });
