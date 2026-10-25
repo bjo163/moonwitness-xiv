@@ -45,6 +45,8 @@ type Options = {
 };
 type Params = { id: string };
 const MAX_CONTACT_AVATAR_BYTES = 2 * 1024 * 1024;
+const INBOX_SYNC_PAGE_SIZE = 100;
+const INBOX_SYNC_MAX_MESSAGES_PER_POLL = 500;
 
 type DirectUploadStorage = AttachmentStorage &
   Pick<S3AttachmentStorage, 'createPresignedUpload' | 'head'>;
@@ -2198,7 +2200,14 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
     const existingPreviewRows = primaryJids.length
       ? await app
           .db('whatsapp_conversations')
-          .select('id', 'jid', 'last_message', 'last_message_at', 'last_message_sync_at')
+          .select(
+            'id',
+            'jid',
+            'last_message',
+            'last_message_at',
+            'last_message_sync_at',
+            'history_sync_offset'
+          )
           .where({ company_id: companyId })
           .whereIn('jid', primaryJids)
       : [];
@@ -2242,7 +2251,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       if (!providerTime) return false;
       const existing = existingPreviewByJid.get(jid);
       const syncedTime = providerTimestamp(existing?.last_message_sync_at);
-      return !syncedTime || Date.parse(providerTime) > Date.parse(syncedTime);
+      return (
+        Number(existing?.history_sync_offset ?? 0) > 0 ||
+        !syncedTime ||
+        Date.parse(providerTime) > Date.parse(syncedTime)
+      );
     });
     const conversationIdByJid = new Map(
       existingPreviewRows.map((row) => [String(row.jid), Number(row.id)])
@@ -2269,9 +2282,49 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             const conversationId = conversationIdByJid.get(jid);
             if (!conversationId) continue;
             const latest = await gowaRequest<{ data?: Array<Record<string, unknown>> }>(
-              `/chat/${encodeURIComponent(jid)}/messages?limit=100&offset=0`,
+              `/chat/${encodeURIComponent(jid)}/messages?limit=${INBOX_SYNC_PAGE_SIZE}&offset=0`,
               { deviceId: account.gateway_device_id! }
             );
+            const synchronizedMessages = [...(latest.data ?? [])];
+            const previousSyncTime = providerTimestamp(
+              existingPreviewByJid.get(jid)?.last_message_sync_at
+            );
+            const existingHistoryOffset = Number(
+              existingPreviewByJid.get(jid)?.history_sync_offset ?? 0
+            );
+            let nextHistoryOffset = 0;
+            let historySyncComplete = true;
+            if (previousSyncTime && synchronizedMessages.length === INBOX_SYNC_PAGE_SIZE) {
+              let offset = existingHistoryOffset || INBOX_SYNC_PAGE_SIZE;
+              let fetchedThisPoll = 0;
+              for (
+                ;
+                fetchedThisPoll < INBOX_SYNC_MAX_MESSAGES_PER_POLL;
+                offset += INBOX_SYNC_PAGE_SIZE
+              ) {
+                const page = await gowaRequest<{ data?: Array<Record<string, unknown>> }>(
+                  `/chat/${encodeURIComponent(jid)}/messages?limit=${INBOX_SYNC_PAGE_SIZE}&offset=${offset}`,
+                  { deviceId: account.gateway_device_id! }
+                );
+                const pageMessages = page.data ?? [];
+                synchronizedMessages.push(...pageMessages);
+                fetchedThisPoll += pageMessages.length;
+                const oldestTimestamp = pageMessages.reduce<string | null>((oldest, item) => {
+                  const timestamp = providerTimestamp(item.timestamp);
+                  return timestamp && (!oldest || Date.parse(timestamp) < Date.parse(oldest))
+                    ? timestamp
+                    : oldest;
+                }, null);
+                if (pageMessages.length < INBOX_SYNC_PAGE_SIZE) break;
+                if (oldestTimestamp && Date.parse(oldestTimestamp) <= Date.parse(previousSyncTime))
+                  break;
+                if (fetchedThisPoll >= INBOX_SYNC_MAX_MESSAGES_PER_POLL) {
+                  historySyncComplete = false;
+                  nextHistoryOffset = offset + INBOX_SYNC_PAGE_SIZE;
+                  break;
+                }
+              }
+            }
             const latestMessage = (latest.data ?? []).reduce<{
               item: Record<string, unknown>;
               timestamp: string;
@@ -2296,7 +2349,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               continue;
             }
             const recentMessages = new Map<string, Record<string, unknown>>();
-            for (const item of latest.data ?? []) {
+            for (const item of synchronizedMessages) {
               if (typeof item.id !== 'string' || !item.id) continue;
               const timestamp = providerTimestamp(item.timestamp);
               if (!timestamp) continue;
@@ -2394,10 +2447,14 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
                 write_date: new Date().toISOString(),
               });
             if (providerTime) {
-              await app.db('whatsapp_conversations').where({ company_id: companyId, jid }).update({
-                last_message_sync_at: providerTime,
-                write_date: new Date().toISOString(),
-              });
+              await app
+                .db('whatsapp_conversations')
+                .where({ company_id: companyId, jid })
+                .update({
+                  ...(historySyncComplete ? { last_message_sync_at: providerTime } : {}),
+                  history_sync_offset: historySyncComplete ? 0 : nextHistoryOffset,
+                  write_date: new Date().toISOString(),
+                });
             }
           } catch (error) {
             req.log.warn(

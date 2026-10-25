@@ -125,6 +125,8 @@ services:
     healthcheck:
       disable: true
     environment: *app_environment
+    volumes:
+      - whatsapp_attachments:/var/lib/moonwitness/attachments
 
   jobs-scheduler:
     image: moonwitness-api:production
@@ -141,6 +143,8 @@ services:
     healthcheck:
       disable: true
     environment: *app_environment
+    volumes:
+      - whatsapp_attachments:/var/lib/moonwitness/attachments
 
   outbox-worker:
     image: moonwitness-api:production

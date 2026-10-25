@@ -180,6 +180,45 @@ and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `
 these boundaries. Compose does not filter outbound network destinations, so enforce any egress
 allowlist for the hosted GoWA endpoint at the container host or network firewall.
 
+## Full WhatsApp restore order
+
+Treat a WhatsApp recovery as one coordinated set: PostgreSQL (account/device mapping, inbox,
+outbox, and audit metadata), the configured attachment store (message media, thumbnails, and
+cached profile images), and GoWA's own persistent device/session data. The GoWA deployment is
+external to this Compose project, so identify its actual volume or bind mount and backup method
+from that deployment before an incident; do not assume a volume name from this repository.
+
+1. Declare a maintenance window. Stop the API and all database writers (`outbox-worker`,
+   `jobs-worker`, and `jobs-scheduler`), pause webhook delivery at GoWA, and stop the GoWA
+   container only when its own documented backup method requires a stopped filesystem. Do not
+   allow queued sends to run against a partially restored data set.
+2. Select backups that belong to the same recovery point. Record timestamps, API commit, exact
+   GoWA image digest/version, expected GoWA version, attachment driver/bucket, and identifiers of
+   the database/object/session backups. If the backups are from incompatible points or any one
+   component is missing, stop; do not combine unrelated snapshots and claim session recovery.
+3. Restore GoWA's persistent data with the GoWA deployment's documented procedure and the matching
+   image digest. Keep the restored service isolated from production until its storage is verified.
+4. Restore the PostgreSQL dump to a new/isolated database, and restore the matching attachment
+   bucket or local volume to an isolated target. Never overwrite the live database or bucket during
+   a drill. Follow the detailed object-store checks in
+   [attachment storage operations](./attachment-storage.md#backup-and-restore).
+5. Before enabling writers, verify database readiness and account/company/device mappings; check
+   that the expected GoWA version matches the restored image; run `attachments:reconcile` in
+   dry-run mode and investigate missing/corrupt references. Do not delete orphan candidates as
+   part of restore validation.
+6. Start GoWA and confirm authenticated `/health`, `/app/info`, and the expected device/session
+   state. Then start the API against the restored database and attachment target, verify
+   `/whatsapp/readyz`, and confirm Board shows the expected account only in its company scope.
+7. Inspect queued, `sending`, and `unknown` outbound messages before resuming `outbox-worker`.
+   Resolve ambiguous sends against GoWA history or manually; never blindly replay them. Resume
+   webhook delivery, workers, and scheduling only after the database, GoWA session, and media
+   checks pass. Verify receipt, inbox sync, and an approved test send/receive end to end.
+
+If GoWA's session backup is absent or cannot be restored, follow the QR pairing recovery path in
+this runbook and treat it as a new linked-device session; do not claim that the old session was
+recovered. This procedure defines the order and safety checks only. A full coordinated restore
+drill remains unproven and is tracked separately under P0-25, P2-15, and P4-37 in `todo-wa.md`.
+
 ## GoWA compatibility and rollback
 
 The version check is exact-string matching, not a claim that neighboring releases are compatible.

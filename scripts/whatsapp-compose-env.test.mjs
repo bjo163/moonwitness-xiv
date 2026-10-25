@@ -62,6 +62,11 @@ for (const file of composeFiles) {
       const block = serviceBlock(source, name);
       assert.doesNotMatch(block, /WHATSAPP_GATEWAY_(?:USERNAME|PASSWORD)|WHATSAPP_WEBHOOK_SECRET/u);
       assert.doesNotMatch(block, new RegExp(`\\*${environmentAnchors.gateway}`, 'u'));
+      assert.match(
+        block,
+        /attachments:\/var\/lib\/moonwitness\/attachments/u,
+        `${name} must share the attachment store so scheduled cleanup sees the same objects`
+      );
     }
     const board = serviceBlock(source, 'board');
     assert.doesNotMatch(board, /WHATSAPP_GATEWAY_(?:USERNAME|PASSWORD)|WHATSAPP_WEBHOOK_SECRET/u);

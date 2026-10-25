@@ -95,6 +95,8 @@ services:
     init: true
     stop_grace_period: 30s
     environment: *app-environment
+    volumes:
+      - attachments:/var/lib/moonwitness/attachments
 
   outbox-worker:
     image: moonwitness-api:prd
