@@ -17,7 +17,7 @@ Sudah tersedia di kode:
 
 Belum dibuktikan pada koneksi WhatsApp nyata:
 
-- [ ] Pairing QR GoWA, persistensi sesi setelah restart, kirim/terima pesan nyata.
+- [ ] Pairing QR GoWA sudah diminta dari Board pada 25 Oktober 2026; GoWA membuat device slot stabil dan Board menampilkan QR live. Menunggu scan pengguna untuk membuktikan perangkat `connected`; persistensi sesi setelah restart dan kirim/terima pesan nyata masih terbuka.
 - [ ] Receipt/status pesan nyata, perilaku grup nyata, dan unduhan media nyata.
 
 Bukti GoWA live: 25 Oktober 2026, contract test read-only `apps/api/tests/gowa.contract.test.ts`
@@ -42,7 +42,7 @@ Goal aktif difokuskan pada inbox yang aman dan dapat diandalkan: pairing/status 
 
 ## P0 — pairing, status koneksi, dan pengiriman aman
 
-- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pada 25 Oktober 2026, contract test read-only autentikasi ke `/app/info` dan `/health` lulus (2/2, GoWA `v9.6.0`); `/devices` juga HTTP 200 tetapi `results: null`, jadi belum ada device slot. QR dan pairing pada device nyata belum dapat dibuktikan. (UI: `WUI-02`, `WUI-08`)
+- [ ] **P0-01** Pairkan perangkat lewat QR Board dengan GoWA aktual dan catat versi/endpoint. Pada 25 Oktober 2026, contract test read-only autentikasi ke `/app/info` dan `/health` lulus (2/2, GoWA `v9.6.0`). Detail GoWA memberi HTTP 500 untuk device yang belum ada walau OpenAPI mendokumentasikan 404; API kini memeriksa `/devices` lalu membuat slot hanya jika memang belum ada. Device `moonwitness-company-1` berhasil dibuat dan `/devices/{id}/login` menghasilkan QR yang tampil langsung di Board. Menunggu scan dan status `connected` untuk membuktikan pairing nyata. (UI: `WUI-02`, `WUI-08`)
 - [ ] **P0-02** Buktikan sesi GoWA bertahan setelah restart container tanpa scan QR ulang.
 - [ ] **P0-03** Buktikan sesi dan mapping perusahaan tetap benar setelah restart API, Board, dan PostgreSQL secara terpisah.
 - [ ] **P0-04** Uji putus jaringan, pemulihan koneksi, status reconnecting, lalu kembali connected tanpa akun ganda.

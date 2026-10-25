@@ -77,10 +77,14 @@ describe('WhatsApp API GoWA bridge', () => {
   let loadFixtureCompanyIds: number[] = [];
   let schema: string;
   let deviceExists = false;
+  let deviceLookupReturnsInternalError = false;
   let providerConnected = false;
+  let onDeviceStatusRequest: (() => void) | null = null;
+  let deviceStatusGate: Promise<void> | null = null;
   let qrExpired = false;
   let qrLoginCount = 0;
   let deviceCreateCount = 0;
+  let deviceListCount = 0;
   let providerChats: Array<Record<string, unknown>> = [];
   let providerChatRequests: URL[] = [];
   let providerChatActions: Array<{ path: string; body: Record<string, unknown> }> = [];
@@ -313,10 +317,14 @@ describe('WhatsApp API GoWA bridge', () => {
     delete process.env.WHATSAPP_WEBHOOK_URL;
     delete process.env.WHATSAPP_WEBHOOK_SECRET;
     deviceExists = false;
+    deviceLookupReturnsInternalError = false;
     providerConnected = false;
+    onDeviceStatusRequest = null;
+    deviceStatusGate = null;
     qrExpired = false;
     qrLoginCount = 0;
     deviceCreateCount = 0;
+    deviceListCount = 0;
     providerChats = [];
     providerChatRequests = [];
     providerChatActions = [];
@@ -420,6 +428,10 @@ describe('WhatsApp API GoWA bridge', () => {
         deviceExists = true;
         return json({ device_id: 'moonwitness-company-' + companyId });
       }
+      if (url.pathname === '/devices' && method === 'GET') {
+        deviceListCount++;
+        return json(deviceExists ? [{ device_id: 'moonwitness-company-' + companyId }] : null);
+      }
       if (/^\/devices\/[^/]+\/webhook$/u.test(url.pathname) && method === 'PATCH') {
         providerWebhookUpdates.push({
           path: url.pathname,
@@ -428,16 +440,21 @@ describe('WhatsApp API GoWA bridge', () => {
         return json({});
       }
       if (/^\/devices\/[^/]+$/u.test(url.pathname) && method === 'GET')
-        return deviceExists
-          ? json({ device_id: 'moonwitness-company-' + companyId })
-          : json({ message: 'not found' }, 404);
-      if (/^\/devices\/[^/]+\/status$/u.test(url.pathname))
+        return deviceLookupReturnsInternalError
+          ? json({ message: 'device not found' }, 500)
+          : deviceExists
+            ? json({ device_id: 'moonwitness-company-' + companyId })
+            : json({ message: 'not found' }, 404);
+      if (/^\/devices\/[^/]+\/status$/u.test(url.pathname)) {
+        onDeviceStatusRequest?.();
+        if (deviceStatusGate) await deviceStatusGate;
         return json({
           device_id: 'moonwitness-company-' + companyId,
           is_connected: providerConnected,
           is_logged_in: providerConnected,
           jid: providerConnected ? '6281234567890@s.whatsapp.net' : '',
         });
+      }
       if (/^\/devices\/[^/]+\/login$/u.test(url.pathname)) {
         qrLoginCount++;
         return json({ qr_link: 'http://localhost:3000/statics/images/qrcode/test.png' });
@@ -1829,6 +1846,46 @@ describe('WhatsApp API GoWA bridge', () => {
     ).toBe(1);
   });
 
+  it('does not let a slow account poll overwrite a newer pairing QR', async () => {
+    await db('whatsapp_accounts').insert({
+      company_id: companyId,
+      status: 'disconnected',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    let signalStatusRequest!: () => void;
+    const statusRequested = new Promise<void>((resolve) => {
+      signalStatusRequest = resolve;
+    });
+    let releaseStatusRequest!: () => void;
+    deviceStatusGate = new Promise<void>((resolve) => {
+      releaseStatusRequest = resolve;
+    });
+    onDeviceStatusRequest = signalStatusRequest;
+
+    const poll = app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    await statusRequested;
+    await db('whatsapp_accounts')
+      .where({ company_id: companyId })
+      .update({
+        status: 'qr',
+        qr_code: '/statics/images/qrcode/live.png',
+        write_date: new Date(Date.now() + 1000).toISOString(),
+      });
+    releaseStatusRequest();
+    await poll;
+
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      status: 'qr',
+      qr_code: '/statics/images/qrcode/live.png',
+    });
+  });
+
   it('reports webhook availability without exposing the configured secret', async () => {
     delete process.env.WHATSAPP_WEBHOOK_URL;
     delete process.env.WHATSAPP_WEBHOOK_SECRET;
@@ -1853,6 +1910,22 @@ describe('WhatsApp API GoWA bridge', () => {
       delete process.env.WHATSAPP_WEBHOOK_URL;
       delete process.env.WHATSAPP_WEBHOOK_SECRET;
     }
+  });
+
+  it('creates a missing GoWA device when its detail endpoint returns 500 but the device list is empty', async () => {
+    deviceLookupReturnsInternalError = true;
+    const response = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().data.status).toBe('qr');
+    expect(deviceListCount).toBe(1);
+    expect(deviceCreateCount).toBe(1);
+    expect(qrLoginCount).toBe(1);
   });
 
   it('repairs a connected account with a missing GoWA device mapping and allows pairing again', async () => {

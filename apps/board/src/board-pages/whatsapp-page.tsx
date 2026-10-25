@@ -360,6 +360,54 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
     'disconnect'
   );
   const [disconnecting, setDisconnecting] = useState(false);
+  const disconnectConfirmDialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!disconnectConfirmOpen) return;
+    const dialog = disconnectConfirmDialogRef.current;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector =
+      'button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusables = () =>
+      Array.from(dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? []).filter(
+        (element) => element.getAttribute('aria-hidden') !== 'true'
+      );
+    focusables()[0]?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && !disconnecting) {
+        event.preventDefault();
+        event.stopPropagation();
+        setDisconnectConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusables();
+      if (elements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || !dialog?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last?.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last || !dialog?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [disconnectConfirmOpen, disconnecting]);
   const [groupCreatorOpen, setGroupCreatorOpen] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupParticipantDraft, setGroupParticipantDraft] = useState('');
@@ -1405,6 +1453,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
       {disconnectConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4">
           <section
+            ref={disconnectConfirmDialogRef}
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="whatsapp-disconnect-title"
