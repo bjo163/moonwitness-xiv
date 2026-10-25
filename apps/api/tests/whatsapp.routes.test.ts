@@ -80,6 +80,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let deviceLookupReturnsInternalError = false;
   let providerConnected = false;
   let providerStatusUnavailable = false;
+  let providerStatusMissing = false;
   let onDeviceStatusRequest: (() => void) | null = null;
   let deviceStatusGate: Promise<void> | null = null;
   let qrExpired = false;
@@ -321,6 +322,7 @@ describe('WhatsApp API GoWA bridge', () => {
     deviceLookupReturnsInternalError = false;
     providerConnected = false;
     providerStatusUnavailable = false;
+    providerStatusMissing = false;
     onDeviceStatusRequest = null;
     deviceStatusGate = null;
     qrExpired = false;
@@ -451,6 +453,7 @@ describe('WhatsApp API GoWA bridge', () => {
         onDeviceStatusRequest?.();
         if (deviceStatusGate) await deviceStatusGate;
         if (providerStatusUnavailable) return json({ message: 'temporary status outage' }, 503);
+        if (providerStatusMissing) return json({ message: 'device status not found' }, 404);
         return json({
           device_id: 'moonwitness-company-' + companyId,
           is_connected: providerConnected,
@@ -1918,6 +1921,19 @@ describe('WhatsApp API GoWA bridge', () => {
     await expect(
       db('whatsapp_accounts').where({ company_id: companyId }).first()
     ).resolves.toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+      last_error: 'QR code expired. Request a new code to continue pairing.',
+    });
+
+    providerStatusUnavailable = false;
+    providerStatusMissing = true;
+    const missingDeviceStatus = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(missingDeviceStatus.json().data).toMatchObject({
       status: 'qr_expired',
       qr_code: null,
       last_error: 'QR code expired. Request a new code to continue pairing.',

@@ -1684,10 +1684,16 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             }
           }
         } else {
-          status = 'disconnected';
-          await patchIfUnchanged({ status, qr_code: null, phone_number: null, last_error: null });
+          const expiredQr = account.status === 'qr_expired';
+          status = expiredQr ? 'qr_expired' : 'disconnected';
+          lastError = expiredQr ? 'QR code expired. Request a new code to continue pairing.' : null;
+          await patchIfUnchanged({
+            status,
+            qr_code: null,
+            phone_number: null,
+            last_error: lastError,
+          });
           phoneNumber = null;
-          lastError = null;
         }
       }
     }
