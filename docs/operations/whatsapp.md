@@ -188,11 +188,16 @@ Read-only probes using the primary checkout's configured credentials returned HT
 `/health`, `/app/info`, `/devices`, and `/devices/moonwitness-company-1/status`. GoWA reports
 `v9.6.0`, one device, and `is_connected=true`/`is_logged_in=true`. The device webhook endpoint
 returns HTTP 200 but has no callback URL or subscribed events. The local API reports the account as
-connected and `webhook_configured=false`; the public API returns HTTP 200 from `/health/ready` but
-HTTP 404 from `/whatsapp/readyz`. Therefore this snapshot proves a live linked GoWA session, but
-inbound/receipt callbacks and public API WhatsApp deployment are not active. Do not configure the
-GoWA callback to the public API until that deployment exposes the WhatsApp route and is verified
-over HTTPS.
+connected and `webhook_configured=false`. An unauthenticated `pnpm whatsapp:verify:deployment`
+probe against `https://api.moonwitness.biz.id` later the same day classified the origin as
+`moonwitness-api` with status `ready`: `/livez` and `/readyz` returned 200 (69 models),
+`/whatsapp/readyz` returned 200 `reachable`, `/whatsapp/account` and `/whatsapp/conversations`
+returned 401, and the signed callback route returned 401 on the missing HMAC signature. The public
+API therefore now routes WhatsApp; earlier 404s came from the domain serving a different
+application, not a stale build. Before enabling the callback, confirm the API container actually
+runs the current image (the cache-control and linked-phone fixes ship with the same route set),
+then follow **Enabling the GoWA callback** below — that step edits the GoWA device webhook
+configuration and requires the deployment owner's approval.
 
 ### Publishing the API origin
 
