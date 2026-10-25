@@ -188,11 +188,46 @@ Read-only probes using the primary checkout's configured credentials returned HT
 `/health`, `/app/info`, `/devices`, and `/devices/moonwitness-company-1/status`. GoWA reports
 `v9.6.0`, one device, and `is_connected=true`/`is_logged_in=true`. The device webhook endpoint
 returns HTTP 200 but has no callback URL or subscribed events. The local API reports the account as
-connected and `webhook_configured=false`; the public API returns HTTP 200 from `/health/ready` but
-HTTP 404 from `/whatsapp/readyz`. Therefore this snapshot proves a live linked GoWA session, but
-inbound/receipt callbacks and public API WhatsApp deployment are not active. Do not configure the
-GoWA callback to the public API until that deployment exposes the WhatsApp route and is verified
-over HTTPS.
+connected and `webhook_configured=false`. An unauthenticated `pnpm whatsapp:verify:deployment`
+probe against `https://api.moonwitness.biz.id` later the same day classified the origin as
+`moonwitness-api` with status `ready`: `/livez` and `/readyz` returned 200 (69 models),
+`/whatsapp/readyz` returned 200 `reachable`, `/whatsapp/account` and `/whatsapp/conversations`
+returned 401, and the signed callback route returned 401 on the missing HMAC signature. The public
+API therefore now routes WhatsApp; earlier 404s came from the domain serving a different
+application, not a stale build. Before enabling the callback, confirm the API container actually
+runs the current image (the cache-control and linked-phone fixes ship with the same route set),
+then follow **Enabling the GoWA callback** below — that step edits the GoWA device webhook
+configuration and requires the deployment owner's approval.
+
+### Publishing the API origin
+
+WhatsApp lives at the API root, not under `/api`. Anything in front of the API must forward every
+prefix the Board proxies: `/api`, `/auth`, `/jsonrpc`, `/health`, `/livez`, `/readyz`, `/metrics`,
+`/notifications`, `/workflows`, and `/whatsapp`. A proxy with a narrower allowlist answers `404` for
+`/whatsapp/*` while `/health` still succeeds, which looks like a missing WhatsApp build but is a
+routing gap. Allow `POST` to `/whatsapp/gowa/webhook/<device id>` and let request bodies of at least
+15 MiB through so Base64 WhatsApp sends are not truncated; files stay capped at 10 MiB by the
+application. Verify the published origin before changing WhatsApp configuration:
+
+```powershell
+pnpm whatsapp:verify:deployment -- --base-url https://your-api-origin
+```
+
+The probe sends no credentials. It classifies the origin first, so a different application or a
+placeholder worker answering on the domain is reported as `wrong-origin` instead of being mistaken
+for missing WhatsApp routes. Only a `ready` result means the route set, the registered WhatsApp
+models, and the signed callback endpoint are actually reachable.
+
+### Enabling the GoWA callback
+
+Set `WHATSAPP_WEBHOOK_URL` to the verified public origin (scheme and host only, no path) and
+`WHATSAPP_WEBHOOK_SECRET` to a random value of at least 32 characters; both must be present or the
+API refuses to start pairing. Restart the API, then trigger Connect for the account. The API pushes
+`<origin>/whatsapp/gowa/webhook/<device id>`, the secret, and the event list to GoWA during that call,
+so an already linked device is reconfigured without scanning a QR code again. Confirm with a read-only
+GoWA `GET /devices/<device id>/webhook` that `webhook_url` and `webhook_events` are no longer empty, then
+send a message from another number and check it appears in the Board inbox. Inbound events are also
+recovered by polling, so a callback failure degrades to delayed delivery rather than lost messages.
 
 ## Full WhatsApp restore order
 
@@ -349,6 +384,8 @@ Rule definitions are not active until loaded and notification routing is tested 
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.
+- `pnpm whatsapp:verify:deployment -- --base-url <origin>` probes a published origin without credentials
+  and fails until the API root, the WhatsApp models, and the signed callback route are all reachable.
 - `pnpm --filter @moonwitness/api build` and `pnpm --filter @moonwitness/board typecheck`
   check the API connector and Board UI.
 - Check the deployed API's configured GoWA authentication, health, and expected version without

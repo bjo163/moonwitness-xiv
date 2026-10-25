@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+// Rule blocks are sliced with explicit newline offsets, so normalize the CRLF that a Windows
+// checkout can produce. The committed blobs stay LF; this only makes local runs deterministic.
+const readSource = (path) => readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 const alertsPath = 'deploy/monitoring/whatsapp-alerts.yml';
-const alerts = readFileSync(alertsPath, 'utf8').replaceAll('\r\n', '\n');
-const alertsTests = readFileSync('deploy/monitoring/whatsapp-alerts.test.yml', 'utf8').replaceAll(
-  '\r\n',
-  '\n'
-);
-const metrics = readFileSync('apps/api/src/observability/metrics.ts', 'utf8');
-const runbook = readFileSync('docs/operations/whatsapp.md', 'utf8');
+const alerts = readSource(alertsPath);
+const alertsTests = readSource('deploy/monitoring/whatsapp-alerts.test.yml');
+const metrics = readSource('apps/api/src/observability/metrics.ts');
+const runbook = readSource('docs/operations/whatsapp.md');
 
 const expectedAlerts = [
   'WhatsAppGatewayUnavailable',
@@ -30,11 +30,11 @@ function ruleBlock(source, name, nextName) {
 }
 
 test('WhatsApp Prometheus rules define the documented eight operational alerts', () => {
-  const names = [...alerts.matchAll(/^      - alert: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name);
+  const names = [...alerts.matchAll(/^ {6}- alert: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name);
   assert.deepEqual(names, expectedAlerts);
   const testedAlerts = [
     ...new Set(
-      [...alertsTests.matchAll(/^        alertname: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name)
+      [...alertsTests.matchAll(/^ {8}alertname: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name)
     ),
   ];
   assert.deepEqual(
@@ -42,16 +42,16 @@ test('WhatsApp Prometheus rules define the documented eight operational alerts',
     expectedAlerts,
     'Every production alert must have a promtool test'
   );
-  assert.match(alerts, /^groups:\r?\n  - name: moonwitness\.whatsapp$/mu);
+  assert.match(alerts, /^groups:\r?\n {2}- name: moonwitness\.whatsapp$/mu);
 
   for (const [index, name] of names.entries()) {
     const block = ruleBlock(alerts, name, names[index + 1]);
-    assert.match(block, /^        expr: /mu, `${name} must define an expression`);
-    assert.match(block, /^        for: (?:\d+)(?:s|m|h)$/mu, `${name} must debounce firing`);
-    assert.match(block, /^          severity: (?:critical|warning)$/mu);
-    assert.match(block, /^          component: whatsapp$/mu);
-    assert.match(block, /^          summary: .+$/mu);
-    assert.match(block, /^          description: .+$/mu);
+    assert.match(block, /^ {8}expr: /mu, `${name} must define an expression`);
+    assert.match(block, /^ {8}for: (?:\d+)(?:s|m|h)$/mu, `${name} must debounce firing`);
+    assert.match(block, /^ {10}severity: (?:critical|warning)$/mu);
+    assert.match(block, /^ {10}component: whatsapp$/mu);
+    assert.match(block, /^ {10}summary: .+$/mu);
+    assert.match(block, /^ {10}description: .+$/mu);
 
     const metricNames = [...new Set(block.match(/\bmoonwitness_whatsapp_[a-z0-9_]+\b/gu) ?? [])];
     for (const metric of metricNames) {

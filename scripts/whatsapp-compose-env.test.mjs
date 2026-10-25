@@ -9,7 +9,7 @@ function serviceBlock(source, name) {
   const start = source.search(new RegExp(`^  ${name}:\\s*$`, 'mu'));
   assert.notEqual(start, -1, `Compose must define ${name}`);
   const remainder = source.slice(start + 1);
-  const nextService = remainder.search(/^  [A-Za-z0-9_-]+:\s*$/mu);
+  const nextService = remainder.search(/^ {2}[A-Za-z0-9_-]+:\s*$/mu);
   return source.slice(start, nextService === -1 ? undefined : start + 1 + nextService);
 }
 
@@ -42,26 +42,35 @@ test('local dev and start commands include the API, Board, outbox, jobs worker, 
       expectedScripts,
       `${mode} must start the WhatsApp outbox and attachment reconciliation scheduler`
     );
-    assert.deepEqual(localServiceScripts[mode].map(([packageName]) => packageName), [
-      '@moonwitness/api',
-      '@moonwitness/api',
-      '@moonwitness/api',
-      '@moonwitness/api',
-      '@moonwitness/board',
-    ]);
+    assert.deepEqual(
+      localServiceScripts[mode].map(([packageName]) => packageName),
+      [
+        '@moonwitness/api',
+        '@moonwitness/api',
+        '@moonwitness/api',
+        '@moonwitness/api',
+        '@moonwitness/board',
+      ]
+    );
   }
 });
 
 test('production WhatsApp gateway validation runs only in API and outbox processes', () => {
   const source = (file) => readFileSync(file, 'utf8');
   assert.doesNotMatch(source('apps/api/src/config/env.ts'), /validateWhatsAppProductionConfig/u);
-  assert.match(source('apps/api/src/server.ts'), /validateWhatsAppProductionConfig\(process\.env\)/u);
+  assert.match(
+    source('apps/api/src/server.ts'),
+    /validateWhatsAppProductionConfig\(process\.env\)/u
+  );
   assert.match(
     source('apps/api/src/commands/outbox-worker.ts'),
     /validateWhatsAppProductionConfig\(process\.env\)/u
   );
   for (const file of ['jobs-worker.ts', 'jobs-scheduler.ts']) {
-    assert.doesNotMatch(source(`apps/api/src/commands/${file}`), /validateWhatsAppProductionConfig/u);
+    assert.doesNotMatch(
+      source(`apps/api/src/commands/${file}`),
+      /validateWhatsAppProductionConfig/u
+    );
   }
 });
 
