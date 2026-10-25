@@ -142,6 +142,8 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   let editedMessageContent = 'A sent reply';
   let messageDeleted = false;
   let holdMessageResponse = false;
+  let failContactMessageReads = false;
+  let contactMessageAttempts = 0;
   let releaseMessageResponse: (() => void) | null = null;
   const forwardDestinationQueries: Array<{ archived: string | null; offset: string | null }> = [];
   await page.route('**/whatsapp/conversations*', (route) => {
@@ -602,6 +604,29 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
       },
     });
   });
+  // Keep the pane in its error state until the user explicitly retries; otherwise
+  // the query's automatic retry can hide the error before the assertion observes it.
+  await page.route('**/whatsapp/conversations/43/messages*', async (route) => {
+    contactMessageAttempts += 1;
+    if (failContactMessageReads) {
+      return route.fulfill({ status: 503, json: { success: false, error: 'temporary failure' } });
+    }
+    return route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            id: 500,
+            direction: 'inbound',
+            content: 'Loaded after retry',
+            status: 'received',
+            message_type: 'text',
+            create_date: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+  });
   await page.route('**/whatsapp/conversations/100/messages*', (route) =>
     route.fulfill({ json: { success: true, data: [] } })
   );
@@ -943,7 +968,18 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   const audioPreview = page.locator('#whatsapp-message-66');
   await expect(audioPreview.locator('audio[controls]')).toBeVisible();
   await expect(audioPreview.getByText('voice.ogg')).toBeVisible();
+  failContactMessageReads = true;
   await page.getByRole('button', { name: /Rani Putri/u }).click();
+  const messagePaneError = page
+    .getByRole('alert')
+    .filter({ hasText: 'Messages could not be loaded.' });
+  await expect(messagePaneError).toBeVisible({ timeout: 20_000 });
+  const failedMessageAttempts = contactMessageAttempts;
+  expect(failedMessageAttempts).toBeGreaterThan(0);
+  failContactMessageReads = false;
+  await messagePaneError.getByRole('button', { name: 'Retry messages' }).click();
+  await expect(page.locator('#whatsapp-message-500')).toBeVisible();
+  expect(contactMessageAttempts).toBe(failedMessageAttempts + 1);
   await expect(page.getByText('Rani Finance', { exact: true })).toBeVisible();
   await expect(
     page.locator('span.block').getByText('+628111222333', { exact: true })
