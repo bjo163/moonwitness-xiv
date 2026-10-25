@@ -4,10 +4,14 @@ import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  mintConceptProfileReviewDecision,
   validateConceptProfileWithEvidence,
   validateConceptProfileTextualObservations,
   type CanonicalConceptPassage,
+  type ConceptProfileReviewDecision,
+  type MintConceptProfileReviewInput,
   type TrustedConceptEvidenceResolution,
+  type TrustedConceptProfileReviewContext,
 } from '../src/index.js';
 
 const requireKnowledgeDependency = createRequire(
@@ -48,6 +52,42 @@ const resolution = (
   access: 'readable',
   ...overrides,
 });
+
+const reviewedProfileId = 'mw:concept-profile:mercy-context-a';
+
+const acceptedReview = (
+  overrides: Partial<MintConceptProfileReviewInput> = {}
+): ConceptProfileReviewDecision =>
+  mintConceptProfileReviewDecision({
+    id: 'mw:concept-profile-review:review-1',
+    company_id: '4',
+    reviewer_id: '9',
+    profile_id: reviewedProfileId,
+    profile_digest: 'a'.repeat(64),
+    reviewed_version: 1,
+    reviewed_digest: 'b'.repeat(64),
+    outcome: 'accepted',
+    decided_at: '2026-10-25T00:00:00Z',
+    rationale: 'Synthetic reviewed decision for the fixture profile.',
+    ...overrides,
+  });
+
+const reviewContext = (
+  resolve: TrustedConceptProfileReviewContext['resolve']
+): TrustedConceptProfileReviewContext => ({ company_id: '4', resolve });
+
+const onlyIssue = async (
+  document: unknown,
+  context: TrustedConceptProfileReviewContext
+): Promise<string | undefined> => {
+  const result = await validateConceptProfileWithEvidence(
+    document,
+    async () => resolution(),
+    context
+  );
+  if (result.valid) throw new Error('expected the profile document to be rejected');
+  return result.issues[0]?.code;
+};
 
 const profile = (id: string, tradition: string, text: string) => ({
   id: `mw:concept-profile:${id}`,
@@ -170,6 +210,74 @@ describe('scoped concept profiles', () => {
         },
       ],
     });
+  });
+
+  it('accepts an interpretation once a minted accepted decision for its profile is supplied', async () => {
+    await expect(
+      validateConceptProfileWithEvidence(
+        acceptedProfileDocument(),
+        async () => resolution(),
+        reviewContext(async () => acceptedReview())
+      )
+    ).resolves.toEqual({ valid: true, issues: [] });
+  });
+
+  it('refuses a review decision that was not minted by the trusted store', async () => {
+    const forged = JSON.parse(JSON.stringify(acceptedReview())) as ConceptProfileReviewDecision;
+    expect(
+      await onlyIssue(
+        acceptedProfileDocument(),
+        reviewContext(async () => forged)
+      )
+    ).toBe('profile_review_unattested');
+    expect(
+      await onlyIssue(
+        acceptedProfileDocument(),
+        reviewContext(async () => acceptedReview({ company_id: '7' }))
+      )
+    ).toBe('profile_review_unattested');
+  });
+
+  it('refuses a decision belonging to another profile or a rejecting outcome', async () => {
+    expect(
+      await onlyIssue(
+        acceptedProfileDocument(),
+        reviewContext(async () =>
+          acceptedReview({
+            profile_id: 'mw:concept-profile:mercy-context-b',
+            id: 'mw:concept-profile-review:review-2',
+          })
+        )
+      )
+    ).toBe('profile_review_identity_mismatch');
+    expect(
+      await onlyIssue(
+        acceptedProfileDocument(),
+        reviewContext(async () => acceptedReview({ outcome: 'rejected' }))
+      )
+    ).toBe('profile_review_rejected');
+  });
+
+  it('stays pending without a decision and fails closed when the resolver breaks', async () => {
+    const pending = await validateConceptProfileWithEvidence(
+      acceptedProfileDocument(),
+      async () => resolution(),
+      reviewContext(async () => null)
+    );
+    expect(pending.valid).toBe(false);
+    if (!pending.valid) {
+      expect(pending.issues[0]?.code).toBe('profile_review_pending');
+      expect(pending.issues[0]?.message).toBe('no review decision exists for this concept profile');
+    }
+
+    expect(
+      await onlyIssue(
+        acceptedProfileDocument(),
+        reviewContext(async () => {
+          throw new Error('synthetic review store failure');
+        })
+      )
+    ).toBe('profile_review_resolver_failure');
   });
 
   it('fails closed for missing and mismatched canonical evidence', async () => {

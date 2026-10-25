@@ -1,6 +1,6 @@
 # Generated model and addon reference
 
-Source fingerprint: `252fbc51c05c6c09474d516e38360601671ec0ff03d68c1ac2e649f461186e5d`. Seed values and field defaults are intentionally omitted.
+Source fingerprint: `5ad081cfe81add85b5d3e272cf8f3d3bd596742c566f4d4fe4e56dda585e5d26`. Seed values and field defaults are intentionally omitted.
 
 ## Addon `auth`
 
@@ -287,12 +287,21 @@ Models: 4; declared views: 0; menu entries: 0; seed rows: 1.
 
 ## Addon `knowledge`
 
-Version: `1.6.0`; dependencies: `base`.
+Version: `1.7.0`; dependencies: `base`.
 
-Models: 15; declared views: 3; menu entries: 3; seed rows: 26.
+Models: 16; declared views: 3; menu entries: 3; seed rows: 26.
 
 | Model                                           | Table                                            | Field                         | Kind      | Required | Optional | Default    | Relation                           |
 | ----------------------------------------------- | ------------------------------------------------ | ----------------------------- | --------- | -------- | -------- | ---------- | ---------------------------------- |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `decided_at`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `outcome`                     | enum      | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `profile_digest`              | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `profile_id`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `rationale`                   | text      | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `reviewed_digest`             | string    | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `reviewed_version`            | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.concept_profile_review_decision`     | `knowledge_concept_profile_review_decisions`     | `reviewer`                    | belongsTo | Yes      | No       | No         | `base.user`                        |
 | `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
 | `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `concept_id`                  | string    | Yes      | No       | No         | —                                  |
 | `knowledge.concept_profile_version`             | `knowledge_concept_profile_versions`             | `profile_digest`              | string    | Yes      | No       | No         | —                                  |

@@ -6,6 +6,10 @@ import {
 } from '@moonwitness/knowledge';
 import conceptProfileSchema from '../../../ontology/domains/concept-profile.schema.json' with { type: 'json' };
 import { validateResearchEvidenceReference, type ResearchEvidenceReference } from './evidence.js';
+import {
+  isConceptProfileReviewDecisionForCompany,
+  type ConceptProfileReviewDecision,
+} from './concept-profile-review.js';
 
 export type ConceptProfileReviewStatus = 'accepted' | 'rejected' | 'unreviewed' | 'conflicting';
 export type ConceptProfileEvidenceAccess = 'readable' | 'denied';
@@ -22,6 +26,19 @@ export interface TrustedConceptEvidenceResolution {
 }
 
 export type TrustedConceptEvidenceResolver = (evidenceId: string) => Promise<unknown>;
+
+/**
+ * Trusted server-side resolver for one exact profile's review decision. Implementations must read
+ * the persisted decision and re-verify it against the stored version it reviewed; only a decision
+ * returned by that read carries the brand this package requires. Never build it from request fields.
+ */
+export type TrustedConceptProfileReviewResolver = (profileId: string) => Promise<unknown>;
+
+/** The reviewing tenant whose persisted decisions may authorize an accepted interpretation. */
+export interface TrustedConceptProfileReviewContext {
+  company_id: string;
+  resolve: TrustedConceptProfileReviewResolver;
+}
 
 export interface CanonicalConceptPassage {
   source_id: string;
@@ -59,15 +76,19 @@ export function validateConceptProfile(value: unknown): KnowledgeValidationResul
 }
 
 /**
- * Validate a profile document and verify evidence for every accepted
- * interpretation. This cannot approve the profile interpretation itself:
- * without a separate decision bound to the exact profile digest, accepted
- * interpretations remain pending even when their Assertion evidence is accepted.
- * Resolver exceptions and incomplete/contradictory review or access states fail closed.
+ * Validate a profile document and verify evidence for every accepted interpretation.
+ *
+ * Without a `profileReview` context this cannot approve a profile interpretation at all: accepted
+ * interpretations stay pending even when their Assertion evidence is accepted. With one, an
+ * interpretation is approved only by a decision minted from the trusted review store of this
+ * company — and that store is where the binding to the exact canonical profile digest is checked,
+ * because the persisted digest comes from the store's canonical JSON writer, not the snapshot used
+ * here. Resolver exceptions and incomplete/contradictory review or access states fail closed.
  */
 export async function validateConceptProfileWithEvidence(
   value: unknown,
-  resolveTrustedEvidence: TrustedConceptEvidenceResolver
+  resolveTrustedEvidence: TrustedConceptEvidenceResolver,
+  profileReview?: TrustedConceptProfileReviewContext
 ): Promise<ConceptProfileValidationResult> {
   const structural = validateSchema(value);
   if (!structural.valid) {
@@ -102,6 +123,7 @@ export async function validateConceptProfileWithEvidence(
   }
   const document = snapshot as {
     profiles: Array<{
+      id: string;
       interpretations: Array<{
         status: string;
         evidence_ids: string[];
@@ -124,6 +146,7 @@ export async function validateConceptProfileWithEvidence(
       interpretation.status === 'accepted'
         ? [
             {
+              profileId: profile.id,
               path: `/profiles/${profileIndex}/interpretations/${interpretationIndex}/status`,
             },
           ]
@@ -243,14 +266,65 @@ export async function validateConceptProfileWithEvidence(
       ],
     };
   }
-  issues.push(
-    ...pendingProfileReviews.map(({ path }) => ({
-      path,
-      code: 'profile_review_pending',
-      message:
-        'accepted profile interpretations require a separate decision bound to the exact profile digest',
-    }))
-  );
+  for (const { profileId, path } of pendingProfileReviews) {
+    if (!profileReview) {
+      issues.push({
+        path,
+        code: 'profile_review_pending',
+        message:
+          'accepted profile interpretations require a separate decision bound to the exact profile digest',
+      });
+      continue;
+    }
+    let rawDecision: unknown;
+    try {
+      rawDecision = await profileReview.resolve(profileId);
+    } catch {
+      issues.push({
+        path,
+        code: 'profile_review_resolver_failure',
+        message: 'trusted profile review resolver failed',
+      });
+      continue;
+    }
+    if (rawDecision === null) {
+      issues.push({
+        path,
+        code: 'profile_review_pending',
+        message: 'no review decision exists for this concept profile',
+      });
+      continue;
+    }
+    const decision = rawDecision as unknown as ConceptProfileReviewDecision;
+    if (
+      !isRecord(rawDecision) ||
+      decision.kind !== 'ConceptProfileReviewDecision' ||
+      !isConceptProfileReviewDecisionForCompany(decision, profileReview.company_id)
+    ) {
+      issues.push({
+        path,
+        code: 'profile_review_unattested',
+        message:
+          'profile review decision was not minted by the trusted review store of this company',
+      });
+      continue;
+    }
+    if (decision.profile_id !== profileId) {
+      issues.push({
+        path,
+        code: 'profile_review_identity_mismatch',
+        message: 'profile review decision belongs to a different concept profile',
+      });
+      continue;
+    }
+    if (decision.outcome !== 'accepted') {
+      issues.push({
+        path,
+        code: 'profile_review_rejected',
+        message: 'the review decision for this concept profile did not accept it',
+      });
+    }
+  }
   return issues.length ? { valid: false, issues } : { valid: true, issues: [] };
 }
 

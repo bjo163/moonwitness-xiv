@@ -168,6 +168,34 @@ export const ConceptProfileVersion = defineModel('knowledge.concept_profile_vers
   },
 });
 
+/**
+ * Append-only, tenant-scoped review decision for one exact stored concept profile version, bound to
+ * the canonical digest of the document that decision authorizes. Concept profile interpretations are
+ * tenant state, so their review history lives here and never in the canon-only graph release events.
+ */
+export const ConceptProfileReviewDecision = defineModel(
+  'knowledge.concept_profile_review_decision',
+  {
+    table: 'knowledge_concept_profile_review_decisions',
+    order: 'company_id asc, profile_id asc, id asc',
+    unique: [['company', 'profile_digest', 'reviewer']],
+    fields: {
+      company: fields.belongsTo(Company, { required: true }),
+      profile_id: fields.string({
+        required: true,
+        pattern: '^mw:concept-profile:[a-z0-9][a-z0-9._-]{0,179}$',
+      }),
+      profile_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+      reviewed_version: fields.integer({ required: true }),
+      reviewed_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+      outcome: fields.enum(['accepted', 'rejected'], { required: true }),
+      reviewer: fields.belongsTo(User, { required: true }),
+      decided_at: fields.string({ required: true }),
+      rationale: fields.text({ required: true, hidden: true }),
+    },
+  }
+);
+
 /** Immutable tenant-scoped INTERNAL citation-only textual alignment candidate version. */
 export const TextualAlignmentCandidateVersion = defineModel(
   'knowledge.textual_alignment_candidate_version',

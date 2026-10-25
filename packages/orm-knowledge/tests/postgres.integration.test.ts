@@ -21,7 +21,9 @@ import {
   readOwnedSyntheticWitness,
   appendOwnedSyntheticWitnessCorrection,
   readResearchReviewHistory,
+  recordConceptProfileReviewDecision,
   resolveConceptProfileEvidence,
+  resolveConceptProfileReviewDecision,
   readTextualAlignmentCandidateVersion,
   readStoryVersion,
   syntheticWitnessSubjectRefSha256,
@@ -616,6 +618,55 @@ postgresDescribe('knowledge addon PostgreSQL integration', () => {
         profileId: 'mw:concept-profile:pg-synthetic-profile',
       })
     ).rejects.toThrow('unavailable in this company context');
+    await db('partners').insert({
+      name: 'Synthetic PostgreSQL profile reviewer',
+      company_id: companyId,
+      is_company: false,
+    });
+    await db('users').insert({
+      login: 'pg-profile-reviewer',
+      partner_id: (
+        await db('partners').where({ name: 'Synthetic PostgreSQL profile reviewer' }).first('id')
+      )?.id,
+      role: 'user',
+    });
+    const reviewerId = Number(
+      (await db('users').where({ login: 'pg-profile-reviewer' }).first('id'))?.id
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: companyId,
+      is_default: false,
+    });
+    const pgDecision = await recordConceptProfileReviewDecision(db, {
+      authenticatedReviewer: { userId: reviewerId, companyId, role: 'user' },
+      profileId: 'mw:concept-profile:pg-synthetic-profile',
+      proposalProfile: acceptedDocument.profiles[0],
+      outcome: 'accepted',
+      rationale: 'Synthetic PostgreSQL review of the accepted wording.',
+    });
+    await expect(
+      resolveConceptProfileReviewDecision(db, {
+        authenticatedReader: { userId: reviewerId, companyId, role: 'user' },
+        profileId: pgDecision.profile_id,
+        profileDigest: pgDecision.profile_digest,
+      })
+    ).resolves.toMatchObject({ id: pgDecision.id, outcome: 'accepted' });
+    const decisionRowId = Number(
+      (
+        await db('knowledge_concept_profile_review_decisions')
+          .where({ profile_digest: pgDecision.profile_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_concept_profile_review_decisions')
+        .where({ id: decisionRowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow('Concept profile review decisions are append-only');
+    await expect(
+      db('knowledge_concept_profile_review_decisions').where({ id: decisionRowId }).delete()
+    ).rejects.toThrow('Concept profile review decisions are append-only');
     await expect(
       db('knowledge_concept_profile_versions')
         .where({ profile_id: 'mw:concept-profile:pg-synthetic-profile' })

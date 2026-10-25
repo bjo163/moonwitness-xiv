@@ -4,7 +4,7 @@ export type Operation = 'read' | 'create' | 'write' | 'unlink' | 'action';
 /** Never reachable through the generic API, whatever the role (tokens, sessions, ...). */
 const INTERNAL_PREFIXES = ['auth.', 'base.job', 'base.cron', 'base.outbox_event', 'workflow.'];
 
-/** Sensitive knowledge tables are reachable only through their dedicated scoped API routes. */
+/** Sensitive knowledge tables are reachable only through their dedicated scoped routes or service functions. */
 const NON_GENERIC_MODELS = new Set([
   'knowledge.privacy_revocation',
   'knowledge.privacy_projection',
@@ -14,6 +14,7 @@ const NON_GENERIC_MODELS = new Set([
   'knowledge.story_version',
   'knowledge.story_page_version',
   'knowledge.research_suggestion_version',
+  'knowledge.concept_profile_review_decision',
 ]);
 
 /** Only administrative roles may touch these; ordinary users use dedicated endpoints. */

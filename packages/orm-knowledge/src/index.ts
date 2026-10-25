@@ -6,6 +6,7 @@ export {
   ResearchGraphRelease,
   ResearchReviewEvent,
   ConceptProfileVersion,
+  ConceptProfileReviewDecision,
   TextualAlignmentCandidateVersion,
   ResearchSuggestionVersion,
   StoryVersion,
@@ -38,9 +39,16 @@ export {
   readResearchGraphRelease,
 } from './research-release.js';
 export { resolveConceptProfileEvidence, transitionResearchReview } from './research-review.js';
-export { storeConceptProfiles, readConceptProfileVersion } from './concept-profile-store.js';
+export {
+  storeConceptProfiles,
+  readConceptProfileVersion,
+  recordConceptProfileReviewDecision,
+  resolveConceptProfileReviewDecision,
+} from './concept-profile-store.js';
 export type {
   ReadConceptProfileInput,
+  RecordConceptProfileReviewInput,
+  ResolveConceptProfileReviewInput,
   StoreConceptProfilesInput,
   StoredConceptProfileVersion,
 } from './concept-profile-store.js';

@@ -11,6 +11,8 @@ import { manifest as workflowManifest } from '@moonwitness/orm-workflow';
 import {
   manifest as knowledgeManifest,
   readConceptProfileVersion,
+  recordConceptProfileReviewDecision,
+  resolveConceptProfileReviewDecision,
   storeConceptProfiles,
 } from '../src/index.js';
 
@@ -47,6 +49,71 @@ function input(document: unknown, overrides: Partial<{ userId: number; companyId
     },
     corpusRootDirectory,
     document,
+  };
+}
+
+function acceptedProfile(id: string, scope = 'Synthetic, provisional scope.') {
+  return {
+    ...profile(id, scope),
+    interpretations: [
+      {
+        claim_type: 'human_interpretation',
+        text: 'Synthetic reviewed claim.',
+        status: 'accepted',
+        evidence_ids: ['mw:evidence:synthetic-binding'],
+      },
+    ],
+  };
+}
+
+async function addReviewer(login = 'profile-reviewer'): Promise<number> {
+  await db('partners').insert({
+    name: `Synthetic ${login}`,
+    company_id: companyId,
+    is_company: false,
+  });
+  const partnerId = Number(
+    (
+      await db('partners')
+        .where({ name: `Synthetic ${login}` })
+        .first('id')
+    )?.id
+  );
+  await db('users').insert({ login, partner_id: partnerId, role: 'user' });
+  const reviewerId = Number((await db('users').where({ login }).first('id'))?.id);
+  await db('company_memberships').insert({
+    user_id: reviewerId,
+    company_id: companyId,
+    is_default: false,
+  });
+  return reviewerId;
+}
+
+function review(
+  reviewerId: number,
+  profileId: string,
+  proposalProfile: unknown,
+  overrides: Partial<{
+    outcome: 'accepted' | 'rejected';
+    rationale: string;
+    reviewerCompanyId: number;
+    reviewerRole: 'user' | 'superadmin';
+    reviewedVersion: number;
+  }> = {}
+) {
+  return {
+    authenticatedReviewer: {
+      userId: reviewerId,
+      companyId: overrides.reviewerCompanyId ?? companyId,
+      role: overrides.reviewerRole ?? ('user' as const),
+    },
+    profileId,
+    ...(overrides.reviewedVersion === undefined
+      ? {}
+      : { reviewedVersion: overrides.reviewedVersion }),
+    proposalProfile,
+    outcome: overrides.outcome ?? ('accepted' as const),
+    rationale: overrides.rationale ?? 'Synthetic independent review of the stored version.',
   };
 }
 
@@ -306,5 +373,161 @@ describe('company-scoped immutable concept profile versions', () => {
       )
     ).rejects.toThrow(/evidence is missing or unreadable/u);
     expect(await db('knowledge_concept_profile_versions')).toHaveLength(0);
+  });
+});
+
+describe('profile-digest review decisions', () => {
+  it('binds an accepted decision to the stored version someone other than the author reviewed', async () => {
+    const proposed = acceptedProfile('binding-accepted');
+    await storeConceptProfiles(
+      db,
+      input({ format: 'moonwitness-concept-profiles/v1', profiles: [profile('binding-accepted')] })
+    );
+    const reviewerId = await addReviewer();
+    await expect(
+      recordConceptProfileReviewDecision(
+        db,
+        review(userId, proposed.id, proposed, { reviewerRole: 'superadmin' })
+      )
+    ).rejects.toThrow(/someone other than the version author/u);
+    expect(await db('knowledge_concept_profile_review_decisions')).toHaveLength(0);
+
+    const decision = await recordConceptProfileReviewDecision(
+      db,
+      review(reviewerId, proposed.id, proposed)
+    );
+    expect(decision).toMatchObject({
+      kind: 'ConceptProfileReviewDecision',
+      profile_id: proposed.id,
+      reviewed_version: 1,
+      outcome: 'accepted',
+      reviewer_id: String(reviewerId),
+    });
+    const resolved = await resolveConceptProfileReviewDecision(db, {
+      authenticatedReader: { userId: reviewerId, companyId, role: 'user' },
+      profileId: proposed.id,
+      profileDigest: decision.profile_digest,
+    });
+    expect(resolved).toMatchObject({ id: decision.id, profile_digest: decision.profile_digest });
+    await expect(
+      resolveConceptProfileReviewDecision(db, {
+        authenticatedReader: { userId: reviewerId, companyId, role: 'user' },
+        profileId: proposed.id,
+        profileDigest: 'f'.repeat(64),
+      })
+    ).resolves.toBeNull();
+  });
+
+  it('refuses a decision without a stored version, a schema-invalid proposal, or a blank rationale', async () => {
+    const reviewerId = await addReviewer();
+    const proposed = acceptedProfile('binding-unstored');
+    await expect(
+      recordConceptProfileReviewDecision(db, review(reviewerId, proposed.id, proposed))
+    ).rejects.toThrow(/must bind a stored version/u);
+
+    const stored = acceptedProfile('binding-checked');
+    await storeConceptProfiles(
+      db,
+      input({ format: 'moonwitness-concept-profiles/v1', profiles: [profile('binding-checked')] })
+    );
+    await expect(
+      recordConceptProfileReviewDecision(
+        db,
+        review(reviewerId, stored.id, { ...stored, concept_id: 'mw:concept' })
+      )
+    ).rejects.toThrow(/schema check/u);
+    await expect(
+      recordConceptProfileReviewDecision(db, review(reviewerId, 'mw:concept-profile:other', stored))
+    ).rejects.toThrow(/does not match the reviewed profile id/u);
+    await expect(
+      recordConceptProfileReviewDecision(
+        db,
+        review(reviewerId, stored.id, stored, { rationale: '  ' })
+      )
+    ).rejects.toThrow(/bounded rationale/u);
+    expect(await db('knowledge_concept_profile_review_decisions')).toHaveLength(0);
+  });
+
+  it('replays one reviewer’s decision idempotently and refuses a contradictory second outcome', async () => {
+    const proposed = acceptedProfile('binding-idempotent');
+    await storeConceptProfiles(
+      db,
+      input({
+        format: 'moonwitness-concept-profiles/v1',
+        profiles: [profile('binding-idempotent')],
+      })
+    );
+    const reviewerId = await addReviewer();
+    const first = await recordConceptProfileReviewDecision(
+      db,
+      review(reviewerId, proposed.id, proposed)
+    );
+    const replay = await recordConceptProfileReviewDecision(
+      db,
+      review(reviewerId, proposed.id, proposed)
+    );
+    expect(replay).toMatchObject({ id: first.id, outcome: 'accepted' });
+    expect(await db('knowledge_concept_profile_review_decisions')).toHaveLength(1);
+    await expect(
+      recordConceptProfileReviewDecision(
+        db,
+        review(reviewerId, proposed.id, proposed, { outcome: 'rejected' })
+      )
+    ).rejects.toThrow(/already recorded/u);
+    expect(await db('knowledge_concept_profile_review_decisions')).toHaveLength(1);
+  });
+
+  it('keeps decisions append-only and invisible to another company', async () => {
+    const proposed = acceptedProfile('binding-tenant');
+    await storeConceptProfiles(
+      db,
+      input({ format: 'moonwitness-concept-profiles/v1', profiles: [profile('binding-tenant')] })
+    );
+    const reviewerId = await addReviewer();
+    const decision = await recordConceptProfileReviewDecision(
+      db,
+      review(reviewerId, proposed.id, proposed)
+    );
+    const otherCompanyId = Number(
+      await db('companies').insert({
+        name: 'Separate concept profile tenant',
+        timezone: 'UTC',
+        active: true,
+      })
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: otherCompanyId,
+      is_default: false,
+    });
+    await expect(
+      resolveConceptProfileReviewDecision(db, {
+        authenticatedReader: { userId: reviewerId, companyId: otherCompanyId, role: 'user' },
+        profileId: proposed.id,
+        profileDigest: decision.profile_digest,
+      })
+    ).resolves.toBeNull();
+    await expect(
+      recordConceptProfileReviewDecision(
+        db,
+        review(reviewerId, proposed.id, proposed, { reviewerCompanyId: otherCompanyId })
+      )
+    ).rejects.toThrow(/must bind a stored version/u);
+
+    const rowId = Number(
+      (
+        await db('knowledge_concept_profile_review_decisions')
+          .where({ profile_digest: decision.profile_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_concept_profile_review_decisions')
+        .where({ id: rowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      db('knowledge_concept_profile_review_decisions').where({ id: rowId }).delete()
+    ).rejects.toThrow(/append-only/u);
   });
 });

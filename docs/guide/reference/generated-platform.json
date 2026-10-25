@@ -3169,9 +3169,109 @@
     },
     {
       "name": "knowledge",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "depends": ["base"],
       "models": [
+        {
+          "name": "knowledge.concept_profile_review_decision",
+          "table": "knowledge_concept_profile_review_decisions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "decided_at",
+              "kind": "string",
+              "column": "decided_at",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "outcome",
+              "kind": "enum",
+              "column": "outcome",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "values": ["accepted", "rejected"]
+            },
+            {
+              "name": "profile_digest",
+              "kind": "string",
+              "column": "profile_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "profile_id",
+              "kind": "string",
+              "column": "profile_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "rationale",
+              "kind": "text",
+              "column": "rationale",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewed_digest",
+              "kind": "string",
+              "column": "reviewed_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewed_version",
+              "kind": "integer",
+              "column": "reviewed_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewer",
+              "kind": "belongsTo",
+              "column": "reviewer_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            }
+          ],
+          "uniqueConstraints": [["company", "profile_digest", "reviewer"]]
+        },
         {
           "name": "knowledge.concept_profile_version",
           "table": "knowledge_concept_profile_versions",
@@ -6585,5 +6685,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "252fbc51c05c6c09474d516e38360601671ec0ff03d68c1ac2e649f461186e5d"
+  "generatedFromSha256": "5ad081cfe81add85b5d3e272cf8f3d3bd596742c566f4d4fe4e56dda585e5d26"
 }

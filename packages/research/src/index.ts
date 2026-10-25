@@ -98,7 +98,19 @@ export {
   type TrustedConceptEvidenceResolution,
   type TrustedConceptEvidenceResolver,
   type TrustedConceptPassageResolver,
+  type TrustedConceptProfileReviewContext,
+  type TrustedConceptProfileReviewResolver,
 } from './concept-profile.js';
+export {
+  authorizesConceptProfile,
+  isAttestedConceptProfileReviewDecision,
+  isConceptProfileReviewDecisionForCompany,
+  mintConceptProfileReviewDecision,
+  type ConceptProfileReviewAuthority,
+  type ConceptProfileReviewDecision,
+  type ConceptProfileReviewOutcome,
+  type MintConceptProfileReviewInput,
+} from './concept-profile-review.js';
 export {
   projectTextualAlignmentCandidate,
   type TextualAlignmentCandidate,

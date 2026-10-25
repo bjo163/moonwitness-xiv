@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "addons": ["auth", "base", "jobs", "notification"],
   "generatedFrom": "core addon manifests and model field metadata; no seed values included",
-  "sourceSha256": "5d6908379f7bfb52a6bd04741bb82034340a16ff87a2e7a4a928e61f0dd4c924",
+  "sourceSha256": "7b4e34dba094d25564f9d8404e8340d0923cb2afba4986aab4251aef8e7aadeb",
   "models": [
     {
       "name": "auth.refresh_token",
@@ -119,6 +119,10 @@
     {
       "name": "integration.webhook_endpoint",
       "table": "integration_webhook_endpoints"
+    },
+    {
+      "name": "knowledge.concept_profile_review_decision",
+      "table": "knowledge_concept_profile_review_decisions"
     },
     {
       "name": "knowledge.concept_profile_version",
@@ -500,6 +504,20 @@
       "from": "integration.webhook_endpoint",
       "field": "company",
       "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.concept_profile_review_decision",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.concept_profile_review_decision",
+      "field": "reviewer",
+      "to": "base.user",
       "cardinality": "N:1",
       "kind": "belongsTo"
     },

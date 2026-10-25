@@ -17,6 +17,7 @@ import {
   manifest as knowledgeManifest,
   readActiveResearchGraphRelease,
   readResearchReviewHistory,
+  recordConceptProfileReviewDecision,
   ResearchGraphRecord,
   resolveConceptProfileEvidence,
   storeConceptProfiles,
@@ -358,6 +359,84 @@ describe('transactional research review service', () => {
       })
     ).rejects.toThrow(/exact profile-digest review binding/u);
     expect(await db('knowledge_concept_profile_versions')).toHaveLength(0);
+  });
+
+  it('stores an accepted interpretation only after a second actor binds its exact profile digest', async () => {
+    const started = await startReviewWorkflow();
+    await transitionResearchReview(db, reviewInput(started.id));
+    const profileId = 'mw:concept-profile:accepted-with-digest-decision';
+    const candidate = {
+      id: profileId,
+      concept_id: 'mw:concept:synthetic-review-scope',
+      tradition: 'Synthetic test tradition',
+      interpretive_scope: 'Synthetic profile review binding boundary.',
+      epistemic_status: 'provisional',
+      uncertainty: { level: 'high', note: 'Synthetic fixture only.' },
+      interpretations: [
+        {
+          claim_type: 'human_interpretation',
+          text: 'Synthetic candidate claim.',
+          status: 'candidate',
+          evidence_ids: [],
+        },
+      ],
+    };
+    const accepted = {
+      ...candidate,
+      interpretations: [
+        {
+          claim_type: 'human_interpretation',
+          text: 'Synthetic accepted interpretation.',
+          status: 'accepted',
+          evidence_ids: [evidenceId],
+        },
+      ],
+    };
+    const storeInput = (profile: unknown, actorId = superadminId) => ({
+      authenticatedActor: { userId: actorId, companyId, role: 'superadmin' as const },
+      corpusRootDirectory,
+      document: { format: 'moonwitness-concept-profiles/v1', profiles: [profile] },
+    });
+    await storeConceptProfiles(db, storeInput(candidate));
+
+    await db('partners').insert({
+      name: 'Synthetic profile reviewer',
+      company_id: companyId,
+      is_company: false,
+    });
+    const partnerId = Number(
+      (await db('partners').where({ name: 'Synthetic profile reviewer' }).first('id'))?.id
+    );
+    await db('users').insert({ login: 'profile-reviewer', partner_id: partnerId, role: 'user' });
+    const reviewerId = Number(
+      (await db('users').where({ login: 'profile-reviewer' }).first('id'))?.id
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: companyId,
+      is_default: false,
+    });
+
+    const decision = await recordConceptProfileReviewDecision(db, {
+      authenticatedReviewer: { userId: reviewerId, companyId, role: 'user' },
+      profileId,
+      proposalProfile: accepted,
+      outcome: 'accepted',
+      rationale: 'Synthetic independent review of the accepted wording.',
+    });
+    expect(decision).toMatchObject({ profile_id: profileId, outcome: 'accepted' });
+
+    const [stored] = await storeConceptProfiles(db, storeInput(accepted));
+    expect(stored).toMatchObject({ profileId, version: 2, visibility: 'INTERNAL' });
+
+    const reworded = {
+      ...accepted,
+      interpretations: [{ ...accepted.interpretations[0]!, text: 'Reworded after the review.' }],
+    };
+    await expect(storeConceptProfiles(db, storeInput(reworded))).rejects.toThrow(
+      /exact profile-digest review binding/u
+    );
+    expect(await db('knowledge_concept_profile_versions')).toHaveLength(2);
   });
 
   it('keeps canonical evidence unreviewed before a matching independent decision exists', async () => {

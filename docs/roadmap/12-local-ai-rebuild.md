@@ -305,6 +305,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K4-004 — Semantic RUH/HIZAB concept scope and mappings
 
+- Status: in progress; typed profiles, immutable company-scoped `INTERNAL` versions, the exact-sample observation bridge, a single-version authenticated read route, and since 2026-10-25 an append-only profile-digest review binding that admits an `accepted` interpretation only when a re-verified decision for that exact canonical digest was recorded by someone other than the version author. Source-backed RUH/HIZAB mappings, any HTTP write route, and the reviewer-role, withdrawal, and rationale-retention policy remain open. See [K4-004 evidence](evidence/K4-004.md).
 - Priority: P0; risk: normal.
 - Depends on: `K4-002`, `K2-004`.
 - File scope: `ontology/domains/`, `research/profiles/`.
