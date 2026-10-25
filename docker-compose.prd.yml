@@ -10,7 +10,10 @@
 # the health routes to the api service, so one HTTPS reverse proxy in front of BOARD_PORT is enough.
 # All published ports are loopback-bound; nothing else is reachable from the network.
 
-name: moonwitness-prd
+# NOTE: no top-level `name:` on purpose. Coolify derives the compose project name (and therefore
+# the `<project>_default` network) from the resource itself; overriding it detaches these services
+# from the network where the provider database lives and internal hostnames like the Postgres alias
+# stop resolving (getaddrinfo ENOTFOUND).
 
 x-app-environment: &app-environment
   NODE_ENV: production
