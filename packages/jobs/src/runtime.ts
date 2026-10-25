@@ -508,6 +508,17 @@ export interface SchedulerOptions {
   limit?: number;
 }
 
+/**
+ * A stored cron whose payload can never produce a job, as distinct from a transient storage failure: the
+ * registered handler rejects it, or it is not JSON. Only this class disarms a cron.
+ */
+class CronPayloadRejection extends Error {
+  constructor(cron: { code: string; handler: string }) {
+    super(`Cron "${cron.code}" payload was rejected by handler "${cron.handler}"`);
+    this.name = 'CronPayloadRejection';
+  }
+}
+
 export async function enqueueDueCrons(options: SchedulerOptions = {}): Promise<number> {
   const now = options.now ?? new Date();
   const limit = options.limit ?? 50;
@@ -518,74 +529,92 @@ export async function enqueueDueCrons(options: SchedulerOptions = {}): Promise<n
     .limit(limit);
   let enqueued = 0;
   for (const cron of due) {
-    await Cron.transaction(async (trx) => {
-      let lockQuery = Cron.query(trx).findById(cron.id).forUpdate();
-      if (supportsSkipLocked(Cron)) lockQuery = lockQuery.skipLocked();
-      const locked = await lockQuery;
-      if (!locked || !locked.enabled || locked.next_run_at > now.toISOString()) return;
-      const occurrences: Date[] = [];
-      const iterator = CronExpressionParser.parse(locked.cron_expression, {
-        currentDate: new Date(new Date(locked.next_run_at).getTime() - 1000),
-        tz: locked.timezone,
-      });
-      for (let index = 0; index < 10_000; index += 1) {
-        const occurrence = iterator.next().toDate();
-        if (occurrence > now) break;
-        occurrences.push(occurrence);
-      }
-      if (occurrences.length === 0) return;
-      const policy = locked.misfire_policy;
-      const selected =
-        policy === 'skip'
-          ? []
-          : policy === 'coalesce'
-            ? [occurrences[0]]
-            : occurrences.slice(0, Math.max(1, locked.max_catch_up));
-      const currentlyRunning = await Job.query(trx)
-        .where({ cron_id: locked.id, status: 'running' })
-        .first();
-      const queued = await Job.query(trx).where({ cron_id: locked.id, status: 'queued' });
-      if (locked.concurrency_policy === 'forbid' && (currentlyRunning || queued.length > 0)) {
-        selected.length = 0;
-      } else if (locked.concurrency_policy === 'replace') {
-        if (currentlyRunning) {
-          await Job.query(trx).findById(currentlyRunning.id).patch({ cancel_requested: true });
-        }
-        for (const pending of queued) {
-          await Job.query(trx).findById(pending.id).patch({ status: 'cancelled' });
-        }
-      }
-      const selectedKeys = new Set(selected.map((date) => date.toISOString()));
-      for (const occurrence of occurrences) {
-        if (!selectedKeys.has(occurrence.toISOString())) continue;
-        const scheduleKey = `cron:${locked.id}:${occurrence.toISOString()}`;
-        const existing = await Job.query(trx).findOne({ schedule_key: scheduleKey });
-        if (existing) continue;
-        const payload: unknown = JSON.parse(locked.payload);
-        const registered = handlers.get(locked.handler);
-        if (!registered || registered.version !== locked.handler_version) continue;
-        registered.parse(payload);
-        await Job.query(trx).insert({
-          handler: locked.handler,
-          handler_version: locked.handler_version,
-          payload: locked.payload,
-          company_id: locked.company_id,
-          requested_by_id: locked.requested_by_id,
-          cron_id: locked.id,
-          schedule_key: scheduleKey,
-          available_at: now.toISOString(),
-          max_attempts: 5,
+    try {
+      await Cron.transaction(async (trx) => {
+        let lockQuery = Cron.query(trx).findById(cron.id).forUpdate();
+        if (supportsSkipLocked(Cron)) lockQuery = lockQuery.skipLocked();
+        const locked = await lockQuery;
+        if (!locked || !locked.enabled || locked.next_run_at > now.toISOString()) return;
+        const occurrences: Date[] = [];
+        const iterator = CronExpressionParser.parse(locked.cron_expression, {
+          currentDate: new Date(new Date(locked.next_run_at).getTime() - 1000),
+          tz: locked.timezone,
         });
-        enqueued += 1;
-      }
-      const nextExpression = CronExpressionParser.parse(locked.cron_expression, {
-        currentDate: now,
-        tz: locked.timezone,
+        for (let index = 0; index < 10_000; index += 1) {
+          const occurrence = iterator.next().toDate();
+          if (occurrence > now) break;
+          occurrences.push(occurrence);
+        }
+        if (occurrences.length === 0) return;
+        const policy = locked.misfire_policy;
+        const selected =
+          policy === 'skip'
+            ? []
+            : policy === 'coalesce'
+              ? [occurrences[0]]
+              : occurrences.slice(0, Math.max(1, locked.max_catch_up));
+        const currentlyRunning = await Job.query(trx)
+          .where({ cron_id: locked.id, status: 'running' })
+          .first();
+        const queued = await Job.query(trx).where({ cron_id: locked.id, status: 'queued' });
+        if (locked.concurrency_policy === 'forbid' && (currentlyRunning || queued.length > 0)) {
+          selected.length = 0;
+        } else if (locked.concurrency_policy === 'replace') {
+          if (currentlyRunning) {
+            await Job.query(trx).findById(currentlyRunning.id).patch({ cancel_requested: true });
+          }
+          for (const pending of queued) {
+            await Job.query(trx).findById(pending.id).patch({ status: 'cancelled' });
+          }
+        }
+        const selectedKeys = new Set(selected.map((date) => date.toISOString()));
+        for (const occurrence of occurrences) {
+          if (!selectedKeys.has(occurrence.toISOString())) continue;
+          const scheduleKey = `cron:${locked.id}:${occurrence.toISOString()}`;
+          const existing = await Job.query(trx).findOne({ schedule_key: scheduleKey });
+          if (existing) continue;
+          const registered = handlers.get(locked.handler);
+          if (!registered || registered.version !== locked.handler_version) continue;
+          let payload: unknown;
+          try {
+            payload = JSON.parse(locked.payload);
+          } catch {
+            throw new CronPayloadRejection(locked);
+          }
+          try {
+            registered.parse(payload);
+          } catch {
+            throw new CronPayloadRejection(locked);
+          }
+          await Job.query(trx).insert({
+            handler: locked.handler,
+            handler_version: locked.handler_version,
+            payload: locked.payload,
+            company_id: locked.company_id,
+            requested_by_id: locked.requested_by_id,
+            cron_id: locked.id,
+            schedule_key: scheduleKey,
+            available_at: now.toISOString(),
+            max_attempts: 5,
+          });
+          enqueued += 1;
+        }
+        const nextExpression = CronExpressionParser.parse(locked.cron_expression, {
+          currentDate: now,
+          tz: locked.timezone,
+        });
+        await Cron.query(trx).findById(locked.id).patch({
+          next_run_at: nextExpression.next().toDate().toISOString(),
+        });
       });
-      await Cron.query(trx).findById(locked.id).patch({
-        next_run_at: nextExpression.next().toDate().toISOString(),
-      });
-    });
+    } catch (error) {
+      if (!(error instanceof CronPayloadRejection)) throw error;
+      await Cron.query().findById(cron.id).patch({ enabled: false });
+      console.error(
+        `${error.message}. Disarmed so one broken row cannot stall the queue or exit the scheduler; ` +
+          'correct its payload and re-enable it to resume.'
+      );
+    }
   }
   return enqueued;
 }
