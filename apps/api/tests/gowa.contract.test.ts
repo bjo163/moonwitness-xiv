@@ -34,4 +34,28 @@ describe.skipIf(!enabled)('live GoWA contract', () => {
     },
     15_000
   );
+
+  // Asserts only scalar counts so chat identifiers never appear in failure output.
+  it.skipIf(!contractDeviceId)(
+    'pages device chats by offset without repeating identifiers across pages',
+    async () => {
+      const first = await gowaRequest<{ data?: Array<{ jid?: string }> }>(
+        '/chats?limit=50&offset=0&archived=false',
+        { deviceId: contractDeviceId }
+      );
+      const second = await gowaRequest<{ data?: Array<{ jid?: string }> }>(
+        '/chats?limit=50&offset=50&archived=false',
+        { deviceId: contractDeviceId }
+      );
+      const firstChats = first.data ?? [];
+      const secondChats = second.data ?? [];
+      const firstIds = new Set(firstChats.map((chat) => chat.jid));
+      const secondIds = new Set(secondChats.map((chat) => chat.jid));
+      expect(firstIds.size).toBe(firstChats.length);
+      expect(secondIds.size).toBe(secondChats.length);
+      const overlap = secondChats.filter((chat) => firstIds.has(chat.jid)).length;
+      expect(overlap).toBe(0);
+    },
+    20_000
+  );
 });
