@@ -180,6 +180,18 @@ and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `
 these boundaries. Compose does not filter outbound network destinations, so enforce any egress
 allowlist for the hosted GoWA endpoint at the container host or network firewall.
 
+### Verified hosted state — 25 October 2026
+
+Read-only probes using the primary checkout's configured credentials returned HTTP 200 from GoWA
+`/health`, `/app/info`, `/devices`, and `/devices/moonwitness-company-1/status`. GoWA reports
+`v9.6.0`, one device, and `is_connected=true`/`is_logged_in=true`. The device webhook endpoint
+returns HTTP 200 but has no callback URL or subscribed events. The local API reports the account as
+connected and `webhook_configured=false`; the public API returns HTTP 200 from `/health/ready` but
+HTTP 404 from `/whatsapp/readyz`. Therefore this snapshot proves a live linked GoWA session, but
+inbound/receipt callbacks and public API WhatsApp deployment are not active. Do not configure the
+GoWA callback to the public API until that deployment exposes the WhatsApp route and is verified
+over HTTPS.
+
 ## Full WhatsApp restore order
 
 Treat a WhatsApp recovery as one coordinated set: PostgreSQL (account/device mapping, inbox,
@@ -224,10 +236,10 @@ drill remains unproven and is tracked separately under P0-25, P2-15, and P4-37 i
 The version check is exact-string matching, not a claim that neighboring releases are compatible.
 The current matrix is:
 
-| GoWA version      | API readiness       | Evidence and limit                                                                                                                                                                                                                                                                                                      |
-| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `v9.6.0`          | Accepted by default | Authenticated live `/health` and `/app/info` contract passed 2/2 on 25 October 2026; a fresh `/app/info` check returned HTTP 200 and exact `v9.6.0`. The hosted `/devices` response is still `results: null`, so QR pairing, session persistence, media delivery, and messages have not been verified on a real device. |
-| Any other version | Rejected by default | No other GoWA version has a compatibility result in this repository. Setting `WHATSAPP_GATEWAY_EXPECTED_VERSION` changes the exact readiness comparison only; it is not evidence that the API features work with that release.                                                                                          |
+| GoWA version      | API readiness       | Evidence and limit                                                                                                                                                                                                                                                                                                                                             |
+| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v9.6.0`          | Accepted by default | Authenticated read-only probes on 25 October 2026 returned HTTP 200 from `/health`, `/app/info`, `/devices`, and the stable device status endpoint. `/devices` listed `moonwitness-company-1`, which reported connected/logged-in. The webhook remains unconfigured; session restart, callbacks, and new send/receive behavior are not proven by these probes. |
+| Any other version | Rejected by default | No other GoWA version has a compatibility result in this repository. Setting `WHATSAPP_GATEWAY_EXPECTED_VERSION` changes the exact readiness comparison only; it is not evidence that the API features work with that release.                                                                                                                                 |
 
 Before an upgrade, record the current GoWA image digest/tag from the deployment host, API release/commit,
 and configured expected version. Take a backup of GoWA's own persistent data and prove that the
