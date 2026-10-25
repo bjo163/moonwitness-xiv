@@ -79,6 +79,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let deviceExists = false;
   let deviceLookupReturnsInternalError = false;
   let providerConnected = false;
+  let providerStatusUnavailable = false;
   let onDeviceStatusRequest: (() => void) | null = null;
   let deviceStatusGate: Promise<void> | null = null;
   let qrExpired = false;
@@ -319,6 +320,7 @@ describe('WhatsApp API GoWA bridge', () => {
     deviceExists = false;
     deviceLookupReturnsInternalError = false;
     providerConnected = false;
+    providerStatusUnavailable = false;
     onDeviceStatusRequest = null;
     deviceStatusGate = null;
     qrExpired = false;
@@ -448,6 +450,7 @@ describe('WhatsApp API GoWA bridge', () => {
       if (/^\/devices\/[^/]+\/status$/u.test(url.pathname)) {
         onDeviceStatusRequest?.();
         if (deviceStatusGate) await deviceStatusGate;
+        if (providerStatusUnavailable) return json({ message: 'temporary status outage' }, 503);
         return json({
           device_id: 'moonwitness-company-' + companyId,
           is_connected: providerConnected,
@@ -1844,6 +1847,34 @@ describe('WhatsApp API GoWA bridge', () => {
           .then((r) => r?.count)
       )
     ).toBe(1);
+  });
+
+  it('keeps a scannable QR visible while GoWA status checks are temporarily unavailable', async () => {
+    const connected = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+    expect(connected.statusCode).toBe(202);
+    providerStatusUnavailable = true;
+
+    const account = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(account.json().data).toMatchObject({
+      status: 'qr',
+      qr_code: 'data:image/png;base64,cXItaW1hZ2U=',
+      last_error: null,
+    });
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      status: 'qr',
+      last_error: null,
+    });
   });
 
   it('does not let a slow account poll overwrite a newer pairing QR', async () => {

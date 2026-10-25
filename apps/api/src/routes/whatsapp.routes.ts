@@ -1548,6 +1548,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
     let phoneNumber = account.phone_number;
     let lastError = account.last_error;
     let qrCode: string | null = null;
+    let accountReadStep = 'device_status';
     // Account status is also changed by the connect flow. Avoid letting a slow
     // provider status lookup overwrite a newer QR/connection state.
     const patchIfUnchanged = async (values: Record<string, unknown>) => {
@@ -1588,6 +1589,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           });
         } else if (account.qr_code) {
           try {
+            accountReadStep = 'qr_image';
             const image = await gowaBinary(gowaOriginPath(account.qr_code));
             qrCode = `data:${image.headers.get('content-type') || 'image/png'};base64,${Buffer.from(await image.arrayBuffer()).toString('base64')}`;
             status = 'qr';
@@ -1608,12 +1610,45 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         }
       } catch (error) {
         if (!(error instanceof GowaError && error.statusCode === 404)) {
-          status = 'error';
-          await patchIfUnchanged({
-            status,
-            last_error: 'WhatsApp gateway is temporarily unavailable',
-          });
-          lastError = 'WhatsApp gateway is temporarily unavailable';
+          if (
+            account.status !== 'error' ||
+            account.last_error !== 'WhatsApp gateway is temporarily unavailable'
+          ) {
+            req.log.warn(
+              {
+                accountReadStep,
+                upstreamStatus: error instanceof GowaError ? error.statusCode : undefined,
+                upstreamCode: error instanceof GowaError ? error.upstreamCode : undefined,
+              },
+              'WhatsApp account refresh failed'
+            );
+          }
+          if (account.qr_code) {
+            try {
+              // A temporary status endpoint failure should not hide a QR that
+              // GoWA can still serve for pairing.
+              const image = await gowaBinary(gowaOriginPath(account.qr_code));
+              qrCode = `data:${image.headers.get('content-type') || 'image/png'};base64,${Buffer.from(await image.arrayBuffer()).toString('base64')}`;
+              status = 'qr';
+              phoneNumber = null;
+              lastError = null;
+              await patchIfUnchanged({ status, phone_number: null, last_error: null });
+            } catch {
+              status = 'error';
+              await patchIfUnchanged({
+                status,
+                last_error: 'WhatsApp gateway is temporarily unavailable',
+              });
+              lastError = 'WhatsApp gateway is temporarily unavailable';
+            }
+          } else {
+            status = 'error';
+            await patchIfUnchanged({
+              status,
+              last_error: 'WhatsApp gateway is temporarily unavailable',
+            });
+            lastError = 'WhatsApp gateway is temporarily unavailable';
+          }
         } else {
           status = 'disconnected';
           await patchIfUnchanged({ status, qr_code: null, phone_number: null, last_error: null });
