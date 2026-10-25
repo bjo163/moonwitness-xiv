@@ -2067,6 +2067,50 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(qrLoginCount).toBe(1);
   });
 
+  it('returns safe, actionable pairing diagnostics for GoWA authentication and timeout failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'secret upstream detail' }), { status: 401 })
+      )
+    );
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(unauthorized.statusCode).toBe(502);
+    expect(unauthorized.json().error).toContain('GoWA menolak autentikasi');
+    expect(unauthorized.json().error).toContain('tahap: device_lookup, HTTP 401');
+    expect(unauthorized.json().error).not.toContain('secret upstream detail');
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      status: 'error',
+      last_error: unauthorized.json().error,
+    });
+
+    await db('whatsapp_accounts').where({ company_id: companyId }).del();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const error = new Error('network timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      })
+    );
+    const timeout = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(timeout.statusCode).toBe(502);
+    expect(timeout.json().error).toContain('GoWA tidak merespons sebelum batas waktu');
+    expect(timeout.json().error).toContain('tahap: device_lookup');
+    expect(timeout.json().error).not.toContain('network timeout');
+  });
+
   it('recognizes an existing device from the GoWA v9.6 device list response', async () => {
     deviceExists = true;
     deviceLookupReturnsInternalError = true;
@@ -2150,8 +2194,38 @@ describe('WhatsApp API GoWA bridge', () => {
     const gatewayDown = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
     expect(gatewayDown.json().data).toMatchObject({
       status: 'error',
-      last_error: 'WhatsApp gateway is temporarily unavailable',
+      last_error: expect.stringContaining('GoWA tidak dapat dijangkau'),
     });
+    expect(gatewayDown.json().data.last_error).toContain('tahap: device_status');
+  });
+
+  it('keeps account polling diagnostics actionable without exposing GoWA response details', async () => {
+    await db('whatsapp_accounts').insert({
+      company_id: companyId,
+      status: 'connected',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'internal provider detail' }), { status: 401 })
+      )
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      status: 'error',
+      last_error: expect.stringContaining('GoWA menolak autentikasi'),
+    });
+    expect(response.json().data.last_error).toContain('tahap: device_status, HTTP 401');
+    expect(response.json().data.last_error).not.toContain('internal provider detail');
   });
 
   it('keeps ordinary company members read-only unless the WhatsApp action grants are present', async () => {

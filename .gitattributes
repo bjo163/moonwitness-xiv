@@ -3,5 +3,8 @@ apps/whatsapp/vendor/** whitespace=-blank-at-eol,-blank-at-eof
 apps/ui-catalog/tests/catalog.spec.ts-snapshots/*.txt text eol=lf
 # Corpus bytes are content-addressed; an eol filter would break every pinned digest.
 corpus/** -text
+# This provenance manifest is pinned by its exact Git blob digest in local retrieval.
+# Keep its metadata bytes LF-normalized on Windows as well as Unix.
+corpus/manifests/tanzil-quran-text-v1.1-uthmani-q7-46.json text eol=lf
 # The docs generator emits LF and its checker compares raw bytes, so these must check out as LF everywhere.
 docs/guide/reference/** text eol=lf
