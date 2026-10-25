@@ -80,6 +80,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let deviceLookupReturnsInternalError = false;
   let deviceListUsesV96Shape = false;
   let providerConnected = false;
+  let providerLoggedIn: boolean | null = null;
   let providerStatusUnavailable = false;
   let providerStatusMissing = false;
   let onDeviceStatusRequest: (() => void) | null = null;
@@ -323,6 +324,7 @@ describe('WhatsApp API GoWA bridge', () => {
     deviceLookupReturnsInternalError = false;
     deviceListUsesV96Shape = false;
     providerConnected = false;
+    providerLoggedIn = null;
     providerStatusUnavailable = false;
     providerStatusMissing = false;
     onDeviceStatusRequest = null;
@@ -471,8 +473,8 @@ describe('WhatsApp API GoWA bridge', () => {
         return json({
           device_id: 'moonwitness-company-' + companyId,
           is_connected: providerConnected,
-          is_logged_in: providerConnected,
-          jid: providerConnected ? '6281234567890@s.whatsapp.net' : '',
+          is_logged_in: providerLoggedIn ?? providerConnected,
+          jid: (providerLoggedIn ?? providerConnected) ? '6281234567890@s.whatsapp.net' : '',
         });
       }
       if (/^\/devices\/[^/]+\/login$/u.test(url.pathname)) {
@@ -1892,6 +1894,69 @@ describe('WhatsApp API GoWA bridge', () => {
       status: 'qr',
       last_error: null,
     });
+  });
+
+  it('recovers the same linked account after disconnecting, reconnecting, and a gateway outage', async () => {
+    const headers = { authorization: 'Bearer test' };
+    const pairing = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers,
+      payload: {},
+    });
+    expect(pairing.statusCode).toBe(202);
+    expect(pairing.json().data.status).toBe('qr');
+
+    const original = await db('whatsapp_accounts').where({ company_id: companyId }).first();
+    expect(original).toMatchObject({
+      status: 'qr',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    providerConnected = true;
+    providerLoggedIn = true;
+    const connected = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
+    expect(connected.json().data).toMatchObject({
+      status: 'connected',
+      phone_number: '6281234567890',
+    });
+
+    providerConnected = false;
+    const reconnecting = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
+    expect(reconnecting.json().data).toMatchObject({
+      status: 'reconnecting',
+      phone_number: '6281234567890',
+      qr_code: null,
+    });
+
+    providerStatusUnavailable = true;
+    const gatewayDown = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
+    expect(gatewayDown.json().data).toMatchObject({
+      status: 'error',
+      last_error: expect.stringContaining('tahap: device_status, HTTP 503'),
+    });
+
+    providerStatusUnavailable = false;
+    providerConnected = true;
+    const recovered = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
+    expect(recovered.json().data).toMatchObject({
+      id: original.id,
+      status: 'connected',
+      phone_number: '6281234567890',
+      qr_code: null,
+    });
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      id: original.id,
+      status: 'connected',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    expect(
+      await db('whatsapp_accounts').where({ company_id: companyId }).count({ count: '*' }).first()
+    ).toMatchObject({
+      count: 1,
+    });
+    expect(deviceCreateCount).toBe(1);
   });
 
   it('reports an expired QR when status is unavailable and its image has expired', async () => {
