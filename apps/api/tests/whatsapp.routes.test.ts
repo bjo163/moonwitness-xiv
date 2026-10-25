@@ -1854,6 +1854,7 @@ describe('WhatsApp API GoWA bridge', () => {
       url: '/whatsapp/account',
       headers: { authorization: 'Bearer test' },
     });
+    expect(account.headers['cache-control']).toBe('no-store');
     expect(account.json().data).toMatchObject({
       status: 'qr',
       qr_code: 'data:image/png;base64,cXItaW1hZ2U=',

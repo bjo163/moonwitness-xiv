@@ -1601,6 +1601,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
   });
 
   app.get('/whatsapp/account', async (req, reply) => {
+    reply.header('Cache-Control', 'no-store');
     const companyId = requireCompany(req, reply);
     if (!companyId) return;
     const account = await WhatsappAccount.query().findOne({ company_id: companyId });
