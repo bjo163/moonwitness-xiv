@@ -154,6 +154,16 @@ export {
   type TrustedSuggestionResolver,
 } from './suggestion-envelope.js';
 export {
+  authorizesResearchSuggestion,
+  isAttestedResearchSuggestionReviewDecision,
+  isResearchSuggestionReviewDecisionForCompany,
+  mintResearchSuggestionReviewDecision,
+  type MintResearchSuggestionReviewInput,
+  type ResearchSuggestionReviewAuthority,
+  type ResearchSuggestionReviewDecision,
+  type ResearchSuggestionReviewOutcome,
+} from './research-suggestion-review.js';
+export {
   createPrivacyRevocationPlan,
   decidePrivacyRetention,
   decideSensitiveRecordAccess,

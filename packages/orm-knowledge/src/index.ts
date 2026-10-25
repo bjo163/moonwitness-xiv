@@ -10,6 +10,7 @@ export {
   TextualAlignmentCandidateVersion,
   TextualAlignmentCandidateReviewDecision,
   ResearchSuggestionVersion,
+  ResearchSuggestionReviewDecision,
   StoryVersion,
   StoryPageVersion,
   WitnessCorrection,
@@ -62,12 +63,16 @@ export {
 export {
   listResearchSuggestionVersions,
   readResearchSuggestionVersion,
+  recordResearchSuggestionReviewDecision,
   researchSuggestionListMaxLimit,
+  resolveResearchSuggestionReviewDecision,
   storeResearchSuggestions,
 } from './research-suggestion-store.js';
 export type {
   ListResearchSuggestionInput,
   ReadResearchSuggestionInput,
+  RecordResearchSuggestionReviewInput,
+  ResolveResearchSuggestionReviewInput,
   ResearchSuggestionListItem,
   ResearchSuggestionListPage,
   StoreResearchSuggestionsInput,

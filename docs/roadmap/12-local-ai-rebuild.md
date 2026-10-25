@@ -462,6 +462,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K7-004 — Staging-only structured suggestion workflow
 
+- Status: in progress; strict envelope, transaction-bound tenant-scoped `INTERNAL`/`unreviewed` storage, a revalidating single-candidate read, the bounded identity listing, restricted generic-API denial, and since 2026-10-25 an append-only suggestion-digest review binding in which a reviewer who did not store the version records an accepted or rejected verdict for one exact canonical digest, re-verified against storage on every read. An accepted verdict admits the model output for the tenant's own follow-up work only: the reviewed version stays `INTERNAL` and `unreviewed` and no canonical record is written. Any HTTP review surface, the PostgreSQL append-only gate on the new table, the reviewer-role, withdrawal and rationale-retention policy, the remaining privacy review, and model-specific evaluation under K7-006 remain open. This work landed in `packages/research/` and `packages/orm-knowledge/`, not in the `packages/local-ai/` scope named below. See [K7-004 evidence](evidence/K7-004.md).
 - Priority: P0; risk: normal.
 - Depends on: `K7-003`, `K3-005`.
 - File scope: `packages/local-ai/`, `apps/api/`.

@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import {
+  mintResearchSuggestionReviewDecision,
   validateResearchSuggestionEnvelope,
   validateResearchSuggestionEnvelopeWithResolver,
   type ResearchSuggestion,
   type ResearchSuggestionEnvelope,
+  type ResearchSuggestionReviewDecision,
   type TrustedSuggestionResolver,
 } from '@moonwitness/research';
 import type { Knex } from 'knex';
@@ -371,5 +373,237 @@ export async function readResearchSuggestionVersion(
       suggestion: validatedSuggestion,
       idempotent: false,
     };
+  });
+}
+
+interface StoredSuggestionReviewRow {
+  readonly id: number | string;
+  readonly company_id: number | string;
+  readonly suggestion_id: string;
+  readonly suggestion_digest: string;
+  readonly reviewed_version: number | string;
+  readonly outcome: string;
+  readonly reviewer_id: number | string;
+  readonly decided_at: string;
+  readonly rationale: string;
+}
+
+/**
+ * Re-verify a stored decision against the suggestion version it reviewed, then mint it, so only this
+ * read path produces a decision object. A reviewer who stored the reviewed version, a missing version,
+ * bytes that no longer match the bound digest, or a row that no longer satisfies the INTERNAL
+ * unreviewed envelope yields nothing authorizing.
+ */
+async function mintStoredSuggestionReviewDecision(
+  db: Knex | Knex.Transaction,
+  row: StoredSuggestionReviewRow
+): Promise<ResearchSuggestionReviewDecision | null> {
+  const reviewed = await db('knowledge_research_suggestion_versions')
+    .where({
+      company_id: row.company_id,
+      suggestion_id: row.suggestion_id,
+      version: Number(row.reviewed_version),
+    })
+    .first('suggestion_digest', 'suggestion_json', 'recorded_by_id');
+  if (!reviewed) return null;
+  if (String(reviewed.suggestion_digest) !== String(row.suggestion_digest)) return null;
+  if (Number(reviewed.recorded_by_id) === Number(row.reviewer_id)) return null;
+  const suggestionJson = String(reviewed.suggestion_json);
+  if (digest(suggestionJson) !== String(row.suggestion_digest)) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(suggestionJson) as unknown;
+  } catch {
+    return null;
+  }
+  const suggestion = value as Partial<ResearchSuggestion>;
+  const shape = validateResearchSuggestionEnvelope({
+    format: 'mw-local-ai-suggestion-envelope/v1',
+    suggestions: [value],
+  });
+  if (
+    canonicalResearchJson(value) !== suggestionJson ||
+    !shape.valid ||
+    suggestion.id !== row.suggestion_id ||
+    suggestion.visibility !== 'INTERNAL' ||
+    suggestion.status !== 'unreviewed'
+  ) {
+    return null;
+  }
+  return mintResearchSuggestionReviewDecision({
+    id: `mw:suggestion-review:${String(row.id)}`,
+    company_id: String(row.company_id),
+    suggestion_id: String(row.suggestion_id),
+    suggestion_digest: String(row.suggestion_digest),
+    reviewed_version: Number(row.reviewed_version),
+    outcome: String(row.outcome) as 'accepted' | 'rejected',
+    reviewer_id: String(row.reviewer_id),
+    decided_at: String(row.decided_at),
+    rationale: String(row.rationale),
+  });
+}
+
+async function readAcceptedSuggestionReviewDecision(
+  db: Knex | Knex.Transaction,
+  companyId: number,
+  suggestionId: string,
+  suggestionDigest: string
+): Promise<ResearchSuggestionReviewDecision | null> {
+  const row = (await db('knowledge_research_suggestion_review_decisions')
+    .where({
+      company_id: companyId,
+      suggestion_id: suggestionId,
+      suggestion_digest: suggestionDigest,
+      outcome: 'accepted',
+    })
+    .orderBy('id', 'desc')
+    .first()) as StoredSuggestionReviewRow | undefined;
+  if (!row) return null;
+  return mintStoredSuggestionReviewDecision(db, row);
+}
+
+export interface RecordResearchSuggestionReviewInput {
+  readonly authenticatedReviewer: AuthenticatedResearchReviewer;
+  readonly suggestionId: string;
+  readonly reviewedVersion?: number;
+  readonly outcome: 'accepted' | 'rejected';
+  readonly rationale: string;
+}
+
+/**
+ * Record one human review of a stored suggestion version, bound to the canonical digest of the
+ * suggestion bytes actually read from storage. The reviewer must not be the actor who stored it, and
+ * recording admits nothing canonically: the reviewed version stays INTERNAL and unreviewed.
+ */
+export async function recordResearchSuggestionReviewDecision(
+  db: Knex,
+  input: RecordResearchSuggestionReviewInput
+): Promise<ResearchSuggestionReviewDecision> {
+  const requestedActor = input.authenticatedReviewer;
+  const actor = {
+    userId: requestedActor.userId,
+    companyId: requestedActor.companyId,
+    role: requestedActor.role,
+  };
+  if (
+    !validActor(actor) ||
+    !suggestionIdPattern.test(input.suggestionId) ||
+    (input.reviewedVersion !== undefined &&
+      (!Number.isSafeInteger(input.reviewedVersion) || input.reviewedVersion < 1))
+  ) {
+    fail('Research suggestion review context is invalid');
+  }
+  if (input.outcome !== 'accepted' && input.outcome !== 'rejected') {
+    fail('Research suggestion review outcome must be accepted or rejected');
+  }
+  const rationale = typeof input.rationale === 'string' ? input.rationale.trim() : '';
+  if (!rationale || rationale.length > 4000) {
+    fail('Research suggestion review needs a bounded rationale');
+  }
+
+  return db.transaction(async (trx) => {
+    await assertActiveCompanyActor(trx, actor);
+    await trx('companies').where({ id: actor.companyId }).forUpdate().first('id');
+    const versionQuery = trx('knowledge_research_suggestion_versions').where({
+      company_id: actor.companyId,
+      suggestion_id: input.suggestionId,
+    });
+    if (input.reviewedVersion !== undefined) {
+      versionQuery.andWhere({ version: input.reviewedVersion });
+    }
+    const reviewed = (await versionQuery.orderBy('version', 'desc').first()) as
+      | {
+          version: number | string;
+          suggestion_digest: string;
+          suggestion_json: string;
+          recorded_by_id: number | string;
+        }
+      | undefined;
+    if (!reviewed) fail('Research suggestion review must bind a stored version');
+    if (Number(reviewed.recorded_by_id) === actor.userId) {
+      fail('Research suggestion review must come from someone other than the actor who stored it');
+    }
+    const suggestionDigest = String(reviewed.suggestion_digest);
+    if (digest(String(reviewed.suggestion_json)) !== suggestionDigest) {
+      fail('Reviewed research suggestion version failed integrity verification');
+    }
+    const prior = (await trx('knowledge_research_suggestion_review_decisions')
+      .where({
+        company_id: actor.companyId,
+        suggestion_digest: suggestionDigest,
+        reviewer_id: actor.userId,
+      })
+      .first()) as StoredSuggestionReviewRow | undefined;
+    if (prior) {
+      if (
+        String(prior.outcome) !== input.outcome ||
+        Number(prior.reviewed_version) !== Number(reviewed.version)
+      ) {
+        fail(
+          'A different research suggestion review is already recorded for this digest and reviewer'
+        );
+      }
+      const replay = await mintStoredSuggestionReviewDecision(trx, prior);
+      if (!replay) fail('Stored research suggestion review failed its own integrity check');
+      return replay;
+    }
+    await trx('knowledge_research_suggestion_review_decisions').insert({
+      company_id: actor.companyId,
+      suggestion_id: input.suggestionId,
+      suggestion_digest: suggestionDigest,
+      reviewed_version: Number(reviewed.version),
+      outcome: input.outcome,
+      reviewer_id: actor.userId,
+      decided_at: new Date().toISOString(),
+      rationale,
+    });
+    const stored = (await trx('knowledge_research_suggestion_review_decisions')
+      .where({
+        company_id: actor.companyId,
+        suggestion_digest: suggestionDigest,
+        reviewer_id: actor.userId,
+      })
+      .first()) as StoredSuggestionReviewRow | undefined;
+    const minted = await mintStoredSuggestionReviewDecision(
+      trx,
+      stored as StoredSuggestionReviewRow
+    );
+    if (!minted) fail('Research suggestion review decision failed its own integrity check');
+    return minted;
+  });
+}
+
+export interface ResolveResearchSuggestionReviewInput {
+  readonly authenticatedReader: AuthenticatedResearchReviewer;
+  readonly suggestionId: string;
+  readonly suggestionDigest: string;
+}
+
+/** Read the accepted decision for one exact canonical suggestion digest, within the reader's company. */
+export async function resolveResearchSuggestionReviewDecision(
+  db: Knex,
+  input: ResolveResearchSuggestionReviewInput
+): Promise<ResearchSuggestionReviewDecision | null> {
+  const requestedActor = input.authenticatedReader;
+  const actor = {
+    userId: requestedActor.userId,
+    companyId: requestedActor.companyId,
+    role: requestedActor.role,
+  };
+  if (
+    !validActor(actor) ||
+    !suggestionIdPattern.test(input.suggestionId) ||
+    !/^[a-f0-9]{64}$/.test(input.suggestionDigest)
+  ) {
+    fail('Research suggestion review read context is invalid');
+  }
+  return db.transaction(async (trx) => {
+    await assertActiveCompanyActor(trx, actor);
+    return readAcceptedSuggestionReviewDecision(
+      trx,
+      actor.companyId,
+      input.suggestionId,
+      input.suggestionDigest
+    );
   });
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import knex, { type Knex } from 'knex';
 import { installAddons } from '@moonwitness/orm';
 import { manifest as baseManifest } from '@moonwitness/orm-base';
+import { isAttestedResearchSuggestionReviewDecision } from '@moonwitness/research';
 import { jobsManifest } from '@moonwitness/jobs';
 import { manifest as notificationManifest } from '@moonwitness/orm-notification';
 import { manifest as workflowManifest } from '@moonwitness/orm-workflow';
@@ -10,6 +11,8 @@ import {
   manifest,
   listResearchSuggestionVersions,
   readResearchSuggestionVersion,
+  recordResearchSuggestionReviewDecision,
+  resolveResearchSuggestionReviewDecision,
   storeResearchSuggestions,
 } from '../src/index.js';
 import { canonicalResearchJson } from '../src/research-release.js';
@@ -121,6 +124,298 @@ function resolverForTransaction(trx: Knex.Transaction) {
 }
 
 const actor = () => ({ userId, companyId, role: 'superadmin' as const });
+
+async function addReviewer(login = 'suggestion-reviewer'): Promise<number> {
+  await db('partners').insert({
+    name: `Synthetic ${login}`,
+    company_id: companyId,
+    is_company: false,
+  });
+  const partnerId = Number(
+    (
+      await db('partners')
+        .where({ name: `Synthetic ${login}` })
+        .first('id')
+    )?.id
+  );
+  await db('users').insert({ login, partner_id: partnerId, role: 'user' });
+  const reviewerId = Number((await db('users').where({ login }).first('id'))?.id);
+  await db('company_memberships').insert({
+    user_id: reviewerId,
+    company_id: companyId,
+    is_default: false,
+  });
+  return reviewerId;
+}
+
+function review(
+  reviewerId: number,
+  suggestionId: string,
+  overrides: Partial<{
+    outcome: 'accepted' | 'rejected';
+    rationale: string;
+    reviewedVersion: number;
+    reviewerCompanyId: number;
+    reviewerRole: 'user' | 'superadmin';
+  }> = {}
+) {
+  return {
+    authenticatedReviewer: {
+      userId: reviewerId,
+      companyId: overrides.reviewerCompanyId ?? companyId,
+      role: overrides.reviewerRole ?? ('user' as const),
+    },
+    suggestionId,
+    ...(overrides.reviewedVersion === undefined
+      ? {}
+      : { reviewedVersion: overrides.reviewedVersion }),
+    outcome: overrides.outcome ?? ('accepted' as const),
+    rationale:
+      overrides.rationale ?? 'Checked the extractive passage and the citation-only boundary.',
+  };
+}
+
+function reader(reviewerId: number, reviewerCompanyId = companyId) {
+  return {
+    authenticatedReader: {
+      userId: reviewerId,
+      companyId: reviewerCompanyId,
+      role: 'user' as const,
+    },
+  };
+}
+
+describe('suggestion-digest review decisions', () => {
+  it('binds an accepted decision to a stored version the reviewer did not store', async () => {
+    const [stored] = await storeResearchSuggestions(db, {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    });
+    const suggestionId = stored!.suggestionId;
+    await expect(
+      recordResearchSuggestionReviewDecision(
+        db,
+        review(userId, suggestionId, { reviewerRole: 'superadmin' })
+      )
+    ).rejects.toThrow(/someone other than the actor who stored it/u);
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(0);
+
+    const reviewerId = await addReviewer();
+    const decision = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, suggestionId)
+    );
+    expect(decision).toMatchObject({
+      kind: 'ResearchSuggestionReviewDecision',
+      suggestion_id: suggestionId,
+      suggestion_digest: stored!.digest,
+      reviewed_version: 1,
+      outcome: 'accepted',
+      reviewer_id: String(reviewerId),
+    });
+    expect(
+      isAttestedResearchSuggestionReviewDecision(decision, {
+        company_id: String(companyId),
+        reviewer_id: String(reviewerId),
+      })
+    ).toBe(true);
+    await expect(
+      resolveResearchSuggestionReviewDecision(db, {
+        ...reader(reviewerId),
+        suggestionId,
+        suggestionDigest: stored!.digest,
+      })
+    ).resolves.toMatchObject({ id: decision.id });
+    await expect(
+      resolveResearchSuggestionReviewDecision(db, {
+        ...reader(reviewerId),
+        suggestionId,
+        suggestionDigest: 'f'.repeat(64),
+      })
+    ).resolves.toBeNull();
+
+    // Accepting admits the candidate for follow-up work only: the stored version is untouched.
+    expect(
+      await db('knowledge_research_suggestion_versions')
+        .where({ version: 1 })
+        .first('visibility', 'status')
+    ).toMatchObject({ visibility: 'INTERNAL', status: 'unreviewed' });
+    await expect(
+      readResearchSuggestionVersion(db, {
+        authenticatedReader: actor(),
+        suggestionId,
+        resolverForTransaction,
+      })
+    ).resolves.toMatchObject({ status: 'unreviewed' });
+    expect(await db('knowledge_research_graph_records')).toHaveLength(0);
+  });
+
+  it('pins a decision to one version, so an appended version needs a decision of its own', async () => {
+    const input = {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    };
+    const [first] = await storeResearchSuggestions(db, input);
+    await storeResearchSuggestions(db, {
+      ...input,
+      envelope: envelope(suggestion('Synthetic revised extractive passage.')),
+    });
+    const reviewerId = await addReviewer();
+    const pinned = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, first!.suggestionId, { reviewedVersion: 1 })
+    );
+    expect(pinned.reviewed_version).toBe(1);
+    expect(pinned.suggestion_digest).toBe(first!.digest);
+    const latest = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, first!.suggestionId, { outcome: 'rejected' })
+    );
+    expect(latest).toMatchObject({ reviewed_version: 2, outcome: 'rejected' });
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(2);
+  });
+
+  it('refuses a decision without a stored version, a blank rationale, or a forged row shape', async () => {
+    const reviewerId = await addReviewer();
+    await expect(
+      recordResearchSuggestionReviewDecision(db, review(reviewerId, 'mw:suggestion:never-stored'))
+    ).rejects.toThrow(/must bind a stored version/u);
+    const [stored] = await storeResearchSuggestions(db, {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    });
+    await expect(
+      recordResearchSuggestionReviewDecision(
+        db,
+        review(reviewerId, stored!.suggestionId, { rationale: '   ' })
+      )
+    ).rejects.toThrow(/bounded rationale/u);
+    await expect(
+      recordResearchSuggestionReviewDecision(db, {
+        ...review(reviewerId, stored!.suggestionId),
+        suggestionId: 'suggestion:synthetic-summary',
+      })
+    ).rejects.toThrow(/review context is invalid/u);
+    await expect(
+      recordResearchSuggestionReviewDecision(db, {
+        ...review(reviewerId, stored!.suggestionId),
+        outcome: 'promoted' as 'accepted',
+      })
+    ).rejects.toThrow(/accepted or rejected/u);
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(0);
+  });
+
+  it('replays one reviewer’s decision idempotently and refuses a contradictory second outcome', async () => {
+    const [stored] = await storeResearchSuggestions(db, {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    });
+    const reviewerId = await addReviewer();
+    const first = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, stored!.suggestionId)
+    );
+    const replay = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, stored!.suggestionId)
+    );
+    expect(replay).toMatchObject({ id: first.id, outcome: 'accepted' });
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(1);
+    await expect(
+      recordResearchSuggestionReviewDecision(
+        db,
+        review(reviewerId, stored!.suggestionId, { outcome: 'rejected' })
+      )
+    ).rejects.toThrow(/already recorded/u);
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(1);
+  });
+
+  it('keeps decisions append-only and invisible to another company', async () => {
+    const [stored] = await storeResearchSuggestions(db, {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    });
+    const reviewerId = await addReviewer();
+    const decision = await recordResearchSuggestionReviewDecision(
+      db,
+      review(reviewerId, stored!.suggestionId)
+    );
+    const otherCompanyId = Number(
+      await db('companies').insert({
+        name: 'Separate suggestion tenant',
+        timezone: 'UTC',
+        active: true,
+      })
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: otherCompanyId,
+      is_default: false,
+    });
+    await expect(
+      resolveResearchSuggestionReviewDecision(db, {
+        ...reader(reviewerId, otherCompanyId),
+        suggestionId: stored!.suggestionId,
+        suggestionDigest: decision.suggestion_digest,
+      })
+    ).resolves.toBeNull();
+    await expect(
+      recordResearchSuggestionReviewDecision(
+        db,
+        review(reviewerId, stored!.suggestionId, { reviewerCompanyId: otherCompanyId })
+      )
+    ).rejects.toThrow(/must bind a stored version/u);
+
+    const rowId = Number(
+      (
+        await db('knowledge_research_suggestion_review_decisions')
+          .where({ suggestion_digest: decision.suggestion_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_research_suggestion_review_decisions')
+        .where({ id: rowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      db('knowledge_research_suggestion_review_decisions').where({ id: rowId }).delete()
+    ).rejects.toThrow(/append-only/u);
+  });
+
+  it('yields nothing authorizing for a stored row that leaves canonical envelope form', async () => {
+    const [stored] = await storeResearchSuggestions(db, {
+      authenticatedActor: actor(),
+      envelope: envelope(),
+      resolverForTransaction,
+    });
+    const reviewerId = await addReviewer();
+    await recordResearchSuggestionReviewDecision(db, review(reviewerId, stored!.suggestionId));
+
+    const forgedId = 'mw:suggestion:forged-review-shape';
+    // Key order differs from canonical form while the digest still matches the stored bytes.
+    const forgedJson = JSON.stringify({ ...suggestion(), id: forgedId });
+    await db('knowledge_research_suggestion_versions').insert({
+      company_id: companyId,
+      suggestion_id: forgedId,
+      version: 1,
+      visibility: 'INTERNAL',
+      status: 'unreviewed',
+      suggestion_json: forgedJson,
+      suggestion_digest: sha256(forgedJson),
+      recorded_by_id: userId,
+    });
+    await expect(
+      recordResearchSuggestionReviewDecision(db, review(reviewerId, forgedId))
+    ).rejects.toThrow(/failed its own integrity check/u);
+    expect(await db('knowledge_research_suggestion_review_decisions')).toHaveLength(1);
+  });
+});
 
 beforeEach(async () => {
   db = knex({

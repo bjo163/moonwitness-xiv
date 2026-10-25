@@ -1,6 +1,6 @@
 # Generated model and addon reference
 
-Source fingerprint: `a8db045879f4dfd8e38ac737209220eaf83fe4b56423a9ec2e0adc1053ee743f`. Seed values and field defaults are intentionally omitted.
+Source fingerprint: `538936c8d12dbeb8672d13edccfcb26a03ba590a94d754c8a97fd9e9c615afdc`. Seed values and field defaults are intentionally omitted.
 
 ## Addon `auth`
 
@@ -287,9 +287,9 @@ Models: 4; declared views: 0; menu entries: 0; seed rows: 1.
 
 ## Addon `knowledge`
 
-Version: `1.8.0`; dependencies: `base`.
+Version: `1.9.0`; dependencies: `base`.
 
-Models: 17; declared views: 3; menu entries: 3; seed rows: 26.
+Models: 18; declared views: 3; menu entries: 3; seed rows: 26.
 
 | Model                                                   | Table                                                    | Field                         | Kind      | Required | Optional | Default    | Relation                           |
 | ------------------------------------------------------- | -------------------------------------------------------- | ----------------------------- | --------- | -------- | -------- | ---------- | ---------------------------------- |
@@ -355,6 +355,14 @@ Models: 17; declared views: 3; menu entries: 3; seed rows: 26.
 | `knowledge.research_review_event`                       | `knowledge_research_review_events`                       | `subject_revision`            | integer   | Yes      | No       | No         | —                                  |
 | `knowledge.research_review_event`                       | `knowledge_research_review_events`                       | `workflow_event_sequence`     | integer   | Yes      | No       | No         | —                                  |
 | `knowledge.research_review_event`                       | `knowledge_research_review_events`                       | `workflow_instance_id`        | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `decided_at`                  | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `outcome`                     | enum      | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `rationale`                   | text      | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `reviewed_version`            | integer   | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `reviewer`                    | belongsTo | Yes      | No       | No         | `base.user`                        |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `suggestion_digest`           | string    | Yes      | No       | No         | —                                  |
+| `knowledge.research_suggestion_review_decision`         | `knowledge_research_suggestion_review_decisions`         | `suggestion_id`               | string    | Yes      | No       | No         | —                                  |
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `company`                     | belongsTo | Yes      | No       | No         | `base.company`                     |
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `recorded_by`                 | belongsTo | Yes      | No       | No         | `base.user`                        |
 | `knowledge.research_suggestion_version`                 | `knowledge_research_suggestion_versions`                 | `status`                      | enum      | No       | Yes      | [redacted] | —                                  |

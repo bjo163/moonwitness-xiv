@@ -16,6 +16,7 @@ const NON_GENERIC_MODELS = new Set([
   'knowledge.research_suggestion_version',
   'knowledge.concept_profile_review_decision',
   'knowledge.textual_alignment_candidate_review_decision',
+  'knowledge.research_suggestion_review_decision',
 ]);
 
 /** Only administrative roles may touch these; ordinary users use dedicated endpoints. */

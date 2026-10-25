@@ -6,6 +6,8 @@ import { manifest as baseManifest } from '@moonwitness/orm-base';
 import { manifest as knowledgeManifest } from '../src/manifest.js';
 import {
   readResearchSuggestionVersion,
+  recordResearchSuggestionReviewDecision,
+  resolveResearchSuggestionReviewDecision,
   storeResearchSuggestions,
 } from '../src/research-suggestion-store.js';
 
@@ -232,6 +234,55 @@ postgresDescribe('research suggestion PostgreSQL integration', () => {
         .where({ suggestion_id: 'mw:suggestion:postgres-integration' })
         .delete()
     ).rejects.toThrow('Knowledge research suggestions are append-only');
+    await db('partners').insert({
+      name: 'Synthetic PostgreSQL suggestion reviewer',
+      company_id: companyId,
+      is_company: false,
+    });
+    await db('users').insert({
+      login: 'pg-suggestion-reviewer',
+      partner_id: (
+        await db('partners').where({ name: 'Synthetic PostgreSQL suggestion reviewer' }).first('id')
+      )?.id,
+      role: 'user',
+    });
+    const reviewerId = Number(
+      (await db('users').where({ login: 'pg-suggestion-reviewer' }).first('id'))?.id
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: companyId,
+      is_default: false,
+    });
+    const decision = await recordResearchSuggestionReviewDecision(db, {
+      authenticatedReviewer: { userId: reviewerId, companyId, role: 'user' },
+      suggestionId: 'mw:suggestion:postgres-integration',
+      outcome: 'accepted',
+      rationale: 'Synthetic PostgreSQL review of the citation-only candidate.',
+    });
+    expect(decision).toMatchObject({ reviewed_version: 3, reviewer_id: String(reviewerId) });
+    await expect(
+      resolveResearchSuggestionReviewDecision(db, {
+        authenticatedReader: { userId: reviewerId, companyId, role: 'user' },
+        suggestionId: decision.suggestion_id,
+        suggestionDigest: decision.suggestion_digest,
+      })
+    ).resolves.toMatchObject({ id: decision.id });
+    const decisionRowId = Number(
+      (
+        await db('knowledge_research_suggestion_review_decisions')
+          .where({ suggestion_digest: decision.suggestion_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_research_suggestion_review_decisions')
+        .where({ id: decisionRowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow('Research suggestion review decisions are append-only');
+    await expect(
+      db('knowledge_research_suggestion_review_decisions').where({ id: decisionRowId }).delete()
+    ).rejects.toThrow('Research suggestion review decisions are append-only');
     await db('test_research_evidence_access')
       .where({ evidence_id: 'mw:evidence:postgres-synthetic' })
       .update({ active: false, readable: false });

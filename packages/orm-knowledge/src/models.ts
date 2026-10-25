@@ -239,6 +239,33 @@ export const ResearchSuggestionVersion = defineModel('knowledge.research_suggest
 });
 
 /**
+ * Immutable, tenant-scoped human review of one exact stored local-AI suggestion version. An accepted
+ * outcome admits the model output for the tenant's own follow-up work; it grants no canonical write and
+ * leaves the reviewed suggestion version `INTERNAL` and `unreviewed`.
+ */
+export const ResearchSuggestionReviewDecision = defineModel(
+  'knowledge.research_suggestion_review_decision',
+  {
+    table: 'knowledge_research_suggestion_review_decisions',
+    order: 'company_id asc, suggestion_id asc, id asc',
+    unique: [['company', 'suggestion_digest', 'reviewer']],
+    fields: {
+      company: fields.belongsTo(Company, { required: true }),
+      suggestion_id: fields.string({
+        required: true,
+        pattern: '^mw:suggestion:[a-z0-9][a-z0-9._-]{0,179}$',
+      }),
+      suggestion_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+      reviewed_version: fields.integer({ required: true }),
+      outcome: fields.enum(['accepted', 'rejected'], { required: true }),
+      reviewer: fields.belongsTo(User, { required: true }),
+      decided_at: fields.string({ required: true }),
+      rationale: fields.text({ required: true, hidden: true }),
+    },
+  }
+);
+
+/**
  * Immutable, tenant-scoped review of one exact textual alignment candidate version. An accepted
  * outcome admits the pairing as a parallel to carry; it cannot widen the candidate's own
  * interpretation boundary, which lives inside the reviewed bytes this row binds.

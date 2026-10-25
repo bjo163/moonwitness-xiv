@@ -3169,7 +3169,7 @@
     },
     {
       "name": "knowledge",
-      "version": "1.8.0",
+      "version": "1.9.0",
       "depends": ["base"],
       "models": [
         {
@@ -3878,6 +3878,96 @@
             ["idempotency_key"],
             ["workflow_event_sequence", "workflow_instance_id"]
           ]
+        },
+        {
+          "name": "knowledge.research_suggestion_review_decision",
+          "table": "knowledge_research_suggestion_review_decisions",
+          "fields": [
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "decided_at",
+              "kind": "string",
+              "column": "decided_at",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "outcome",
+              "kind": "enum",
+              "column": "outcome",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "values": ["accepted", "rejected"]
+            },
+            {
+              "name": "rationale",
+              "kind": "text",
+              "column": "rationale",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewed_version",
+              "kind": "integer",
+              "column": "reviewed_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewer",
+              "kind": "belongsTo",
+              "column": "reviewer_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            },
+            {
+              "name": "suggestion_digest",
+              "kind": "string",
+              "column": "suggestion_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "suggestion_id",
+              "kind": "string",
+              "column": "suggestion_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            }
+          ],
+          "uniqueConstraints": [["company", "reviewer", "suggestion_digest"]]
         },
         {
           "name": "knowledge.research_suggestion_version",
@@ -6775,5 +6865,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "a8db045879f4dfd8e38ac737209220eaf83fe4b56423a9ec2e0adc1053ee743f"
+  "generatedFromSha256": "538936c8d12dbeb8672d13edccfcb26a03ba590a94d754c8a97fd9e9c615afdc"
 }
