@@ -1,16 +1,23 @@
 import { defineModel, fields } from '@moonwitness/orm';
 import { Company } from '@moonwitness/orm-base';
 
+export const WHATSAPP_ACCOUNT_STATUSES = [
+  'disconnected',
+  'connecting',
+  'qr',
+  'qr_expired',
+  'connected',
+  'reconnecting',
+  'error',
+] as const;
+
 export const WhatsappAccount = defineModel('whatsapp.account', {
   table: 'whatsapp_accounts',
   order: 'id asc',
   unique: [['company']],
   fields: {
     company: fields.belongsTo(Company, { required: true }),
-    status: fields.enum(
-      ['disconnected', 'connecting', 'qr', 'qr_expired', 'connected', 'reconnecting', 'error'],
-      { required: true, default: 'disconnected' }
-    ),
+    status: fields.enum(WHATSAPP_ACCOUNT_STATUSES, { required: true, default: 'disconnected' }),
     phone_number: fields.string(),
     gateway_device_id: fields.string({ hidden: true }),
     qr_code: fields.text({ hidden: true, sensitive: true }),

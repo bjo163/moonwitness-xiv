@@ -14,6 +14,7 @@ import {
   WhatsappMessage,
   WhatsappStatus,
   WhatsappUploadTicket,
+  WHATSAPP_ACCOUNT_STATUSES,
 } from './models.js';
 
 const models = [
@@ -40,9 +41,34 @@ const userFacingModels = [
 export const whatsappManifest = defineAddon({
   // Preserve the installed addon identity and seed IDs used by earlier builds.
   name: 'orm-whatsapp',
-  version: '1.13.0',
+  version: '1.14.0',
   depends: ['base'],
   models: [...models],
+  setup: async (trx) => {
+    // The ORM creates enum checks for new tables, but does not update existing checks when an
+    // enum grows. Repair this constraint idempotently so older databases can store qr_expired.
+    if (trx.client.config.client !== 'pg') return;
+    const result = (await trx.raw(
+      `SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = to_regclass(?) AND conname = ?`,
+      ['whatsapp_accounts', 'whatsapp_accounts_status_check']
+    )) as { rows?: { definition?: string }[] };
+    const definition = result.rows?.[0]?.definition;
+    if (definition?.includes("'qr_expired'")) return;
+
+    const statusValues = WHATSAPP_ACCOUNT_STATUSES.map(
+      (status) => `'${status.replaceAll("'", "''")}'`
+    ).join(', ');
+    await trx.raw(
+      'ALTER TABLE "whatsapp_accounts" DROP CONSTRAINT IF EXISTS "whatsapp_accounts_status_check"'
+    );
+    await trx.raw(
+      `ALTER TABLE "whatsapp_accounts"
+       ADD CONSTRAINT "whatsapp_accounts_status_check"
+       CHECK ("status" IN (${statusValues}))`
+    );
+  },
   data: userFacingModels.flatMap((model) => [
     seed(ModelAccess, `orm-whatsapp.access_user_read_${model.modelName.replaceAll('.', '_')}`, {
       group: ref('base.group_user'),
