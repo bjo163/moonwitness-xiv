@@ -1693,16 +1693,23 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
           </section>
         </div>
       )}
-      {(accountQuery.isError || conversationsQuery.isError || messagesQuery.isError) && (
+      {(accountQuery.isError ||
+        (connected && (conversationsQuery.isError || messagesQuery.isError))) && (
         <div
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-pink p-3 text-sm dark:text-black"
         >
           <p>
-            WhatsApp data could not be refreshed.
-            {conversationsQuery.data && lastInboxSyncLabel
-              ? ` Showing inbox data last updated at ${lastInboxSyncLabel}.`
-              : ' No inbox data is available yet.'}
+            {accountQuery.isError
+              ? accountQuery.data
+                ? 'Connection status could not be refreshed. Showing the last known status.'
+                : 'WhatsApp connection status could not be loaded.'
+              : 'WhatsApp data could not be refreshed.'}
+            {accountQuery.isError
+              ? ''
+              : conversationsQuery.data && lastInboxSyncLabel
+                ? ` Showing inbox data last updated at ${lastInboxSyncLabel}.`
+                : ' No inbox data is available yet.'}
           </p>
           <Button
             type="button"

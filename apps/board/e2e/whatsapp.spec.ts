@@ -2459,6 +2459,41 @@ test('pauses WhatsApp account polling while the Board tab is hidden', async ({ p
   await expect.poll(() => accountPolls, { timeout: 5000 }).toBeGreaterThan(1);
 });
 
+test('keeps stale inbox errors out of the WhatsApp pairing state', async ({ page }) => {
+  let accountStatus = 'connected';
+  await page.route('**/whatsapp/account', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: accountStatus,
+          qr_code: accountStatus === 'qr' ? 'pairing-test-qr' : null,
+          permissions: { manage: true, createConversation: true, send: true },
+        },
+      },
+    })
+  );
+  await page.route('**/whatsapp/conversations**', (route) =>
+    route.fulfill({ status: 503, json: { success: false, error: 'temporary inbox outage' } })
+  );
+
+  await page.goto('/login');
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+  await page.goto('/board/whatsapp');
+
+  const refreshError = page
+    .getByRole('alert')
+    .filter({ hasText: 'WhatsApp data could not be refreshed.' });
+  await expect(refreshError).toBeVisible();
+
+  accountStatus = 'qr';
+  await expect(page.getByAltText('WhatsApp connection QR code')).toBeVisible({ timeout: 6000 });
+  await expect(refreshError).toHaveCount(0);
+});
+
 test('guides the user to connect a WhatsApp account before opening the inbox', async ({
   page,
 }, testInfo) => {
