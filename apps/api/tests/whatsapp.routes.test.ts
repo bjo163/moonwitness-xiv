@@ -2194,8 +2194,38 @@ describe('WhatsApp API GoWA bridge', () => {
     const gatewayDown = await app.inject({ method: 'GET', url: '/whatsapp/account', headers });
     expect(gatewayDown.json().data).toMatchObject({
       status: 'error',
-      last_error: 'WhatsApp gateway is temporarily unavailable',
+      last_error: expect.stringContaining('GoWA tidak dapat dijangkau'),
     });
+    expect(gatewayDown.json().data.last_error).toContain('tahap: device_status');
+  });
+
+  it('keeps account polling diagnostics actionable without exposing GoWA response details', async () => {
+    await db('whatsapp_accounts').insert({
+      company_id: companyId,
+      status: 'connected',
+      gateway_device_id: `moonwitness-company-${companyId}`,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'internal provider detail' }), { status: 401 })
+      )
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      status: 'error',
+      last_error: expect.stringContaining('GoWA menolak autentikasi'),
+    });
+    expect(response.json().data.last_error).toContain('tahap: device_status, HTTP 401');
+    expect(response.json().data.last_error).not.toContain('internal provider detail');
   });
 
   it('keeps ordinary company members read-only unless the WhatsApp action grants are present', async () => {

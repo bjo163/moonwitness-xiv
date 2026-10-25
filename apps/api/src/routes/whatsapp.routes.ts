@@ -798,6 +798,33 @@ function requireWhatsAppAction(
   return false;
 }
 
+function whatsappGatewayFailure(error: unknown, step: string): string {
+  const upstreamStatus = error instanceof GowaError ? error.statusCode : undefined;
+  const upstreamCode =
+    error instanceof GowaError &&
+    error.upstreamCode &&
+    /^[a-z0-9_-]{1,40}$/iu.test(error.upstreamCode)
+      ? error.upstreamCode
+      : undefined;
+  const category =
+    upstreamStatus === 401 || upstreamStatus === 403
+      ? 'GoWA menolak autentikasi. Periksa username dan password gateway.'
+      : upstreamStatus === 404
+        ? 'Device atau endpoint GoWA tidak ditemukan.'
+        : upstreamStatus === 429
+          ? 'GoWA sedang membatasi permintaan. Coba lagi sebentar.'
+          : upstreamStatus !== undefined && upstreamStatus >= 500
+            ? 'GoWA mengalami gangguan sementara. Coba lagi sebentar.'
+            : error instanceof Error && error.name === 'TimeoutError'
+              ? 'GoWA tidak merespons sebelum batas waktu.'
+              : upstreamStatus === undefined
+                ? 'GoWA tidak dapat dijangkau. Periksa URL dan jaringan API.'
+                : 'Permintaan GoWA ditolak.';
+  return `${category} (tahap: ${step}${upstreamStatus === undefined ? '' : `, HTTP ${upstreamStatus}`}${
+    upstreamCode ? `, kode ${upstreamCode}` : ''
+  }).`;
+}
+
 function whatsappPermissions(auth: {
   role: string;
   groupPermissions: readonly { model_name: string; create: boolean; write: boolean }[];
@@ -1627,11 +1654,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           });
         }
       } catch (error) {
+        const safeFailure = whatsappGatewayFailure(error, accountReadStep);
         if (!(error instanceof GowaError && error.statusCode === 404)) {
-          if (
-            account.status !== 'error' ||
-            account.last_error !== 'WhatsApp gateway is temporarily unavailable'
-          ) {
+          if (account.status !== 'error' || account.last_error !== safeFailure) {
             req.log.warn(
               {
                 accountReadStep,
@@ -1664,9 +1689,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
                 status = 'error';
                 await patchIfUnchanged({
                   status,
-                  last_error: 'WhatsApp gateway is temporarily unavailable',
+                  last_error: whatsappGatewayFailure(qrError, accountReadStep),
                 });
-                lastError = 'WhatsApp gateway is temporarily unavailable';
+                lastError = whatsappGatewayFailure(qrError, accountReadStep);
               }
             }
           } else {
@@ -1679,9 +1704,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               status = 'error';
               await patchIfUnchanged({
                 status,
-                last_error: 'WhatsApp gateway is temporarily unavailable',
+                last_error: safeFailure,
               });
-              lastError = 'WhatsApp gateway is temporarily unavailable';
+              lastError = safeFailure;
             }
           }
         } else {
@@ -1905,23 +1930,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       } catch (error) {
         const upstreamStatus = error instanceof GowaError ? error.statusCode : undefined;
         const upstreamCode = error instanceof GowaError ? error.upstreamCode : undefined;
-        const failureCategory =
-          upstreamStatus === 401 || upstreamStatus === 403
-            ? 'GoWA menolak autentikasi. Periksa username dan password gateway.'
-            : upstreamStatus === 404
-              ? 'Device atau endpoint GoWA tidak ditemukan.'
-              : upstreamStatus === 429
-                ? 'GoWA sedang membatasi permintaan. Coba lagi sebentar.'
-                : upstreamStatus !== undefined && upstreamStatus >= 500
-                  ? 'GoWA mengalami gangguan sementara. Coba lagi sebentar.'
-                  : error instanceof Error && error.name === 'TimeoutError'
-                    ? 'GoWA tidak merespons sebelum batas waktu.'
-                    : upstreamStatus === undefined
-                      ? 'GoWA tidak dapat dijangkau. Periksa URL dan jaringan API.'
-                      : 'Permintaan pairing ditolak GoWA.';
-        const safeFailure = `${failureCategory} (tahap: ${pairingStep}${
-          upstreamStatus === undefined ? '' : `, HTTP ${upstreamStatus}`
-        }${upstreamCode ? `, kode ${upstreamCode}` : ''}).`;
+        const safeFailure = whatsappGatewayFailure(error, pairingStep);
         req.log.warn(
           {
             pairingStep,
