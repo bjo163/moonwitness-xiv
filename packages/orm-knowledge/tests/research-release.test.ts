@@ -382,4 +382,107 @@ describe('canonical PostgreSQL-compatible research release pilot', () => {
     ).rejects.toMatchObject({ code: 'INVALID_EVENT_PAYLOAD' });
     expect(await db('knowledge_research_active_releases')).toHaveLength(0);
   });
+
+  it('refuses to activate a release whose only defect is a tenant-bound record', async () => {
+    const canon = await db.transaction((trx) => createResearchGraphRelease(trx, releaseInput));
+    await db.transaction((trx) =>
+      activateResearchGraphRelease(trx, {
+        corpusKey: releaseInput.corpusKey,
+        releaseDigest: canon.releaseDigest,
+        expectedCurrentReleaseDigest: null,
+        activatedAt: '2026-10-16T00:00:00.000Z',
+      })
+    );
+
+    const tenantBound = await db.transaction((trx) =>
+      createResearchGraphRelease(trx, {
+        ...releaseInput,
+        records: releaseInput.records.map((record) =>
+          record.key === assertionId
+            ? {
+                ...record,
+                content: {
+                  ...assertionContent(1, 'Synthetic graph assertion.'),
+                  company_id: 12,
+                  owner_company_id: 12,
+                },
+              }
+            : record
+        ),
+      })
+    );
+
+    await expect(
+      db.transaction((trx) =>
+        activateResearchGraphRelease(trx, {
+          corpusKey: releaseInput.corpusKey,
+          releaseDigest: tenantBound.releaseDigest,
+          expectedCurrentReleaseDigest: canon.releaseDigest,
+          activatedAt: '2026-10-16T00:01:00.000Z',
+        })
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_EVENT_PAYLOAD' });
+
+    const stillActive = await db.transaction((trx) =>
+      readActiveResearchGraphRelease(trx, releaseInput.corpusKey)
+    );
+    expect(stillActive?.releaseDigest).toBe(canon.releaseDigest);
+    expect(await db('knowledge_research_active_releases')).toHaveLength(1);
+
+    // Raw bytes stay readable because they are content-addressed; the guard is that no corpus ever
+    // resolves to them. Even a pointer written behind the activation check yields a null active read.
+    const tenantRow = await db('knowledge_research_graph_releases')
+      .where({ release_digest: tenantBound.releaseDigest })
+      .first('id');
+    await db('knowledge_research_active_releases').update({ release_id: tenantRow.id });
+    const forced = await db.transaction((trx) =>
+      readActiveResearchGraphRelease(trx, releaseInput.corpusKey)
+    );
+    expect(forced).toBeNull();
+  });
+
+  it('keeps one global active pointer per corpus and no company binding on the release tables', async () => {
+    for (const table of [
+      'knowledge_research_graph_releases',
+      'knowledge_research_graph_records',
+      'knowledge_research_active_releases',
+    ]) {
+      expect(await db.schema.hasColumn(table, 'company_id')).toBe(false);
+      expect(await db.schema.hasColumn(table, 'company')).toBe(false);
+    }
+
+    const first = await db.transaction((trx) => createResearchGraphRelease(trx, releaseInput));
+    const second = await db.transaction((trx) =>
+      createResearchGraphRelease(trx, {
+        ...releaseInput,
+        records: releaseInput.records.map((record) =>
+          record.key === assertionId
+            ? { ...record, content: assertionContent(2, 'Revised synthetic claim.') }
+            : record
+        ),
+      })
+    );
+    await db.transaction((trx) =>
+      activateResearchGraphRelease(trx, {
+        corpusKey: releaseInput.corpusKey,
+        releaseDigest: first.releaseDigest,
+        expectedCurrentReleaseDigest: null,
+        activatedAt: '2026-10-16T00:00:00.000Z',
+      })
+    );
+    await db.transaction((trx) =>
+      activateResearchGraphRelease(trx, {
+        corpusKey: releaseInput.corpusKey,
+        releaseDigest: second.releaseDigest,
+        expectedCurrentReleaseDigest: first.releaseDigest,
+        activatedAt: '2026-10-16T00:01:00.000Z',
+      })
+    );
+
+    expect(await db('knowledge_research_active_releases')).toHaveLength(1);
+    const active = await db.transaction((trx) =>
+      readActiveResearchGraphRelease(trx, releaseInput.corpusKey)
+    );
+    expect(active?.releaseDigest).toBe(second.releaseDigest);
+  });
 });
