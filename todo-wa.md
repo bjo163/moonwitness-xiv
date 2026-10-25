@@ -32,8 +32,15 @@ Format list/status berbeda tetapi konsisten dengan envelope GoWA; regression tes
 mengenali kedua bentuk identifier dan tidak membuat device duplikat saat detail endpoint gagal.
 GET `/devices/moonwitness-company-1/webhook` HTTP 200 menunjukkan `webhook_url` dan
 `webhook_events` kosong; `.env` checkout utama juga tidak memiliki webhook URL/secret. QR yang expired sebelumnya berhasil di-refresh dari Board (POST 202). Request
-`/whatsapp/connect` sebelumnya pernah 502; log checkout saat itu hanya mencatat request completed
-tanpa pairing-step warning, jadi akar sebab percobaan lama tidak dapat ditentukan. Media uji yang
+`/whatsapp/connect` menghasilkan HTTP 502 pada 25 Oktober 2026 00:49:54Z; `/whatsapp/account`
+setelahnya tetap HTTP 200. Log API hanya berisi status request, tanpa tahap pairing atau kode
+upstream, sehingga langkah penyebab tidak dapat dipastikan secara retrospektif. Instrumentasi
+`pairingStep` dan status/kode upstream ditambahkan setelah insiden; API perlu dimulai ulang agar
+proses lama memuat instrumentasi tersebut. Proses API lokal kini sudah dimulai ulang (09:33 WIB)
+dan `/whatsapp/readyz` menjawab HTTP 200 (`reachable`). Pemeriksaan sekarang menunjukkan row akun tersimpan
+`connected` (device `moonwitness-company-1`, diperbarui 02:19:55Z), dan GoWA v9.6.0 sehat serta
+`is_connected=true`/`is_logged_in=true`; insiden telah pulih, tetapi tidak membuktikan apakah
+penyebab awalnya timeout atau respons provider sesaat. Media uji yang
 tersimpan memberi HTTP 503 saat dibuka dari Board. ClamAV lokal kini menjawab PONG dan synthetic
 scan menghasilkan clean; worktree tidak memiliki `.env`, sedangkan `.env` checkout utama memilih
 S3 dan object uji tidak ditemukan pada folder lokal worktree. Konfigurasi storage proses API ini
