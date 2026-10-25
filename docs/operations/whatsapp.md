@@ -62,6 +62,8 @@ and restore procedures.
 200 when reachable or 503 when unavailable. This check is separate from `/readyz`, so a GoWA
 outage does not take the API itself out of service. The authenticated `/whatsapp/account` endpoint
 reports a logged-out device as `disconnected` and a failed gateway request as `error`.
+The public readiness response also exposes only the boolean `webhook_configured`; `/metrics`
+exports `moonwitness_whatsapp_webhook_configured` and Prometheus warns when callbacks are disabled.
 
 Pairing, failed pairing, disconnect, queued sends, retries, and successful media access append
 privacy-safe records to `audit_logs`. WhatsApp audit metadata contains the company scope and action
@@ -334,7 +336,7 @@ The API readiness probe checks PostgreSQL and attachment storage. Local storage 
 syncs, and removes a one-byte probe file; S3 readiness checks the configured bucket. A disconnected
 account alert also fires for intentionally disconnected accounts, so silence it during planned
 unpairing. The rules are checked with the pinned Prometheus 2.55.1 `promtool`; the test fixture
-asserts all seven alerts fire on matching metrics and that stale outbox age without active events
+asserts all eight alerts fire on matching metrics and that stale outbox age without active events
 does not page:
 
 ```powershell

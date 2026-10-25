@@ -10,6 +10,7 @@ const runbook = readFileSync('docs/operations/whatsapp.md', 'utf8');
 
 const expectedAlerts = [
   'WhatsAppGatewayUnavailable',
+  'WhatsAppWebhookNotConfigured',
   'WhatsAppAccountDisconnected',
   'WhatsAppPairingQrExpired',
   'WhatsAppOutboxStalled',
@@ -25,7 +26,7 @@ function ruleBlock(source, name, nextName) {
   return source.slice(start, next < 0 ? undefined : next);
 }
 
-test('WhatsApp Prometheus rules define the documented seven operational alerts', () => {
+test('WhatsApp Prometheus rules define the documented eight operational alerts', () => {
   const names = [...alerts.matchAll(/^      - alert: ([A-Za-z0-9_]+)$/gmu)].map(([, name]) => name);
   assert.deepEqual(names, expectedAlerts);
   const testedAlerts = [
