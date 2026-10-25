@@ -585,7 +585,7 @@ Referensi model, field, relasi, akses, environment, dan endpoint yang dihasilkan
 
 ## Generated workspace reference
 
-Monorepo version: `1.0.0-rc.1` · metadata fingerprint: `5ad081cfe81add85b5d3e272cf8f3d3bd596742c566f4d4fe4e56dda585e5d26`.
+Monorepo version: `1.0.0-rc.1` · metadata fingerprint: `a8db045879f4dfd8e38ac737209220eaf83fe4b56423a9ec2e0adc1053ee743f`.
 
 | App/package                     | Kind    | Version      | Workspace scripts                                                                                                                                                                                                                                |
 | ------------------------------- | ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

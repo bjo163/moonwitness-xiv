@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
+  mintTextualAlignmentCandidateReviewDecision,
   projectTextualAlignmentCandidate,
   type TextualAlignmentCandidate,
+  type TextualAlignmentCandidateReviewDecision,
   type TextualAlignmentPassageResolver,
 } from '@moonwitness/research';
 import type { Knex } from 'knex';
@@ -333,5 +335,211 @@ export async function readTextualAlignmentCandidateVersion(
       candidate: candidate as TextualAlignmentCandidate,
       idempotent: false,
     };
+  });
+}
+
+interface StoredCandidateReviewRow {
+  readonly id: number | string;
+  readonly company_id: number | string;
+  readonly candidate_id: string;
+  readonly candidate_digest: string;
+  readonly reviewed_version: number | string;
+  readonly outcome: string;
+  readonly reviewer_id: number | string;
+  readonly decided_at: string;
+  readonly rationale: string;
+}
+
+/**
+ * Re-verify a stored decision against the candidate version it reviewed, then mint it, so only this
+ * read path produces a decision object. A reviewer who submitted the reviewed version, a missing
+ * version, stored bytes that no longer match the bound digest, or a version that no longer satisfies
+ * the citation-only projection yields nothing authorizing.
+ */
+async function mintStoredCandidateReviewDecision(
+  db: Knex | Knex.Transaction,
+  row: StoredCandidateReviewRow
+): Promise<TextualAlignmentCandidateReviewDecision | null> {
+  const reviewed = await db('knowledge_textual_alignment_candidate_versions')
+    .where({
+      company_id: row.company_id,
+      candidate_id: row.candidate_id,
+      version: Number(row.reviewed_version),
+    })
+    .first('candidate_digest', 'candidate_json', 'recorded_by_id');
+  if (!reviewed) return null;
+  if (String(reviewed.candidate_digest) !== String(row.candidate_digest)) return null;
+  if (Number(reviewed.recorded_by_id) === Number(row.reviewer_id)) return null;
+  const candidateJson = String(reviewed.candidate_json);
+  if (digest(candidateJson) !== String(row.candidate_digest)) return null;
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(candidateJson) as unknown;
+  } catch {
+    return null;
+  }
+  if (!isProjectedCandidate(candidate)) return null;
+  return mintTextualAlignmentCandidateReviewDecision({
+    id: `mw:textual-alignment-candidate-review:${String(row.id)}`,
+    company_id: String(row.company_id),
+    candidate_id: String(row.candidate_id),
+    candidate_digest: String(row.candidate_digest),
+    reviewed_version: Number(row.reviewed_version),
+    outcome: String(row.outcome) as 'accepted' | 'rejected',
+    reviewer_id: String(row.reviewer_id),
+    decided_at: String(row.decided_at),
+    rationale: String(row.rationale),
+  });
+}
+
+async function readAcceptedCandidateReviewDecision(
+  db: Knex | Knex.Transaction,
+  companyId: number,
+  candidateId: string,
+  candidateDigest: string
+): Promise<TextualAlignmentCandidateReviewDecision | null> {
+  const row = (await db('knowledge_textual_alignment_candidate_review_decisions')
+    .where({
+      company_id: companyId,
+      candidate_id: candidateId,
+      candidate_digest: candidateDigest,
+      outcome: 'accepted',
+    })
+    .orderBy('id', 'desc')
+    .first()) as StoredCandidateReviewRow | undefined;
+  if (!row) return null;
+  return mintStoredCandidateReviewDecision(db, row);
+}
+
+export interface RecordTextualAlignmentCandidateReviewInput {
+  readonly authenticatedReviewer: AuthenticatedResearchReviewer;
+  readonly candidateId: string;
+  readonly reviewedVersion?: number;
+  readonly outcome: 'accepted' | 'rejected';
+  readonly rationale: string;
+}
+
+/**
+ * Record one independent review of a stored candidate version, bound to the canonical digest of the
+ * candidate bytes actually read from storage. The reviewer must not be the actor who stored it.
+ */
+export async function recordTextualAlignmentCandidateReviewDecision(
+  db: Knex,
+  input: RecordTextualAlignmentCandidateReviewInput
+): Promise<TextualAlignmentCandidateReviewDecision> {
+  const actor = input.authenticatedReviewer;
+  if (
+    !validActor(actor) ||
+    !candidateIdPattern.test(input.candidateId) ||
+    (input.reviewedVersion !== undefined &&
+      (!Number.isSafeInteger(input.reviewedVersion) || input.reviewedVersion < 1))
+  ) {
+    fail('Textual alignment candidate review context is invalid');
+  }
+  if (input.outcome !== 'accepted' && input.outcome !== 'rejected') {
+    fail('Textual alignment candidate review outcome must be accepted or rejected');
+  }
+  const rationale = typeof input.rationale === 'string' ? input.rationale.trim() : '';
+  if (!rationale || rationale.length > 4000) {
+    fail('Textual alignment candidate review needs a bounded rationale');
+  }
+
+  return db.transaction(async (trx) => {
+    await assertActiveCompanyActor(trx, actor);
+    await trx('companies').where({ id: actor.companyId }).forUpdate().first('id');
+    const versionQuery = trx('knowledge_textual_alignment_candidate_versions').where({
+      company_id: actor.companyId,
+      candidate_id: input.candidateId,
+    });
+    if (input.reviewedVersion !== undefined) {
+      versionQuery.andWhere({ version: input.reviewedVersion });
+    }
+    const reviewed = (await versionQuery.orderBy('version', 'desc').first()) as
+      | {
+          version: number | string;
+          candidate_digest: string;
+          candidate_json: string;
+          recorded_by_id: number | string;
+        }
+      | undefined;
+    if (!reviewed) fail('Textual alignment candidate review must bind a stored version');
+    if (Number(reviewed.recorded_by_id) === actor.userId) {
+      fail('Textual alignment candidate review must come from someone other than its submitter');
+    }
+    const candidateDigest = String(reviewed.candidate_digest);
+    if (digest(String(reviewed.candidate_json)) !== candidateDigest) {
+      fail('Reviewed textual alignment candidate version failed integrity verification');
+    }
+    const prior = (await trx('knowledge_textual_alignment_candidate_review_decisions')
+      .where({
+        company_id: actor.companyId,
+        candidate_digest: candidateDigest,
+        reviewer_id: actor.userId,
+      })
+      .first()) as StoredCandidateReviewRow | undefined;
+    if (prior) {
+      if (
+        String(prior.outcome) !== input.outcome ||
+        Number(prior.reviewed_version) !== Number(reviewed.version)
+      ) {
+        fail(
+          'A different textual alignment candidate review is already recorded for this digest and reviewer'
+        );
+      }
+      const idempotent = await mintStoredCandidateReviewDecision(trx, prior);
+      if (!idempotent)
+        fail('Stored textual alignment candidate review failed its own integrity check');
+      return idempotent;
+    }
+    await trx('knowledge_textual_alignment_candidate_review_decisions').insert({
+      company_id: actor.companyId,
+      candidate_id: input.candidateId,
+      candidate_digest: candidateDigest,
+      reviewed_version: Number(reviewed.version),
+      outcome: input.outcome,
+      reviewer_id: actor.userId,
+      decided_at: new Date().toISOString(),
+      rationale,
+    });
+    const stored = (await trx('knowledge_textual_alignment_candidate_review_decisions')
+      .where({
+        company_id: actor.companyId,
+        candidate_digest: candidateDigest,
+        reviewer_id: actor.userId,
+      })
+      .first()) as StoredCandidateReviewRow | undefined;
+    const minted = await mintStoredCandidateReviewDecision(trx, stored as StoredCandidateReviewRow);
+    if (!minted) fail('Textual alignment candidate review decision failed its own integrity check');
+    return minted;
+  });
+}
+
+export interface ResolveTextualAlignmentCandidateReviewInput {
+  readonly authenticatedReader: AuthenticatedResearchReviewer;
+  readonly candidateId: string;
+  readonly candidateDigest: string;
+}
+
+/** Read the accepted decision for one exact canonical candidate digest, within the reader company. */
+export async function resolveTextualAlignmentCandidateReviewDecision(
+  db: Knex,
+  input: ResolveTextualAlignmentCandidateReviewInput
+): Promise<TextualAlignmentCandidateReviewDecision | null> {
+  const actor = input.authenticatedReader;
+  if (
+    !validActor(actor) ||
+    !candidateIdPattern.test(input.candidateId) ||
+    !/^[a-f0-9]{64}$/.test(input.candidateDigest)
+  ) {
+    fail('Textual alignment candidate review read context is invalid');
+  }
+  return db.transaction(async (trx) => {
+    await assertActiveCompanyActor(trx, actor);
+    return readAcceptedCandidateReviewDecision(
+      trx,
+      actor.companyId,
+      input.candidateId,
+      input.candidateDigest
+    );
   });
 }

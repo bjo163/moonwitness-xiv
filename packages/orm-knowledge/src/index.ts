@@ -8,6 +8,7 @@ export {
   ConceptProfileVersion,
   ConceptProfileReviewDecision,
   TextualAlignmentCandidateVersion,
+  TextualAlignmentCandidateReviewDecision,
   ResearchSuggestionVersion,
   StoryVersion,
   StoryPageVersion,
@@ -53,8 +54,10 @@ export type {
   StoredConceptProfileVersion,
 } from './concept-profile-store.js';
 export {
-  storeTextualAlignmentCandidates,
   readTextualAlignmentCandidateVersion,
+  recordTextualAlignmentCandidateReviewDecision,
+  resolveTextualAlignmentCandidateReviewDecision,
+  storeTextualAlignmentCandidates,
 } from './textual-alignment-candidate-store.js';
 export {
   listResearchSuggestionVersions,
@@ -71,8 +74,10 @@ export type {
   StoredResearchSuggestionVersion,
 } from './research-suggestion-store.js';
 export type {
-  StoreTextualAlignmentCandidatesInput,
+  RecordTextualAlignmentCandidateReviewInput,
   ReadTextualAlignmentCandidateInput,
+  ResolveTextualAlignmentCandidateReviewInput,
+  StoreTextualAlignmentCandidatesInput,
   StoredTextualAlignmentCandidateVersion,
 } from './textual-alignment-candidate-store.js';
 export { readResearchReviewHistory, validateResearchRelease } from './research-review.js';

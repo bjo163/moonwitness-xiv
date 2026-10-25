@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "addons": ["auth", "base", "jobs", "notification"],
   "generatedFrom": "core addon manifests and model field metadata; no seed values included",
-  "sourceSha256": "7b4e34dba094d25564f9d8404e8340d0923cb2afba4986aab4251aef8e7aadeb",
+  "sourceSha256": "39cd7b87bde339db6abba0b63fc1b689ce0a5658acb02d94a20faa2369edb609",
   "models": [
     {
       "name": "auth.refresh_token",
@@ -167,6 +167,10 @@
     {
       "name": "knowledge.story_version",
       "table": "knowledge_story_versions"
+    },
+    {
+      "name": "knowledge.textual_alignment_candidate_review_decision",
+      "table": "knowledge_textual_alignment_candidate_review_decisions"
     },
     {
       "name": "knowledge.textual_alignment_candidate_version",
@@ -615,6 +619,20 @@
     {
       "from": "knowledge.story_version",
       "field": "recorded_by",
+      "to": "base.user",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.textual_alignment_candidate_review_decision",
+      "field": "company",
+      "to": "base.company",
+      "cardinality": "N:1",
+      "kind": "belongsTo"
+    },
+    {
+      "from": "knowledge.textual_alignment_candidate_review_decision",
+      "field": "reviewer",
       "to": "base.user",
       "cardinality": "N:1",
       "kind": "belongsTo"

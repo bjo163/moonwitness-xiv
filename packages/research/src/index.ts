@@ -120,6 +120,16 @@ export {
   type TextualAlignmentSelector,
 } from './textual-alignment.js';
 export {
+  authorizesTextualAlignmentCandidate,
+  isAttestedTextualAlignmentCandidateReviewDecision,
+  isTextualAlignmentCandidateReviewDecisionForCompany,
+  mintTextualAlignmentCandidateReviewDecision,
+  type MintTextualAlignmentCandidateReviewInput,
+  type TextualAlignmentCandidateReviewAuthority,
+  type TextualAlignmentCandidateReviewDecision,
+  type TextualAlignmentCandidateReviewOutcome,
+} from './textual-alignment-candidate-review.js';
+export {
   validateNarrativePersona,
   type NarrativePersona,
   type NarrativePersonaAlias,

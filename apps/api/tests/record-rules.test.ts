@@ -242,6 +242,7 @@ describe('central access policy', () => {
       'knowledge.story_page_version',
       'knowledge.research_suggestion_version',
       'knowledge.concept_profile_review_decision',
+      'knowledge.textual_alignment_candidate_review_decision',
     ]) {
       const fullWitnessGrant = {
         model_name: model,

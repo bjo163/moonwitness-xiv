@@ -315,6 +315,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K4-005 — Four-tradition cross-reference alignment candidates
 
+- Status: in progress; provenance-checked citation-only projection, immutable company-scoped `INTERNAL` candidate versions, and since 2026-10-25 an append-only candidate-digest review binding in which one reviewer who is not the submitter records an accepted or rejected verdict for one exact stored version, re-verified against storage on every read. An accepted verdict admits the pairing as a parallel worth carrying and cannot widen the candidate's own claim, because the interpretation boundary is inside the reviewed bytes. Actual four-tradition witnesses and per-source rights, any HTTP surface, a consumer of accepted reviews, and the reviewer-role, withdrawal, and rationale-retention policy remain open. See [K4-005 evidence](evidence/K4-005.md).
 - Priority: P0; risk: normal.
 - Depends on: `K4-002`, `K3-004`, `K2-006`.
 - File scope: `packages/research/`, `research/profiles/`.

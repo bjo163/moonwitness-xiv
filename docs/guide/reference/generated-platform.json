@@ -3169,7 +3169,7 @@
     },
     {
       "name": "knowledge",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "depends": ["base"],
       "models": [
         {
@@ -4153,6 +4153,96 @@
             }
           ],
           "uniqueConstraints": [["company", "story_id", "version"]]
+        },
+        {
+          "name": "knowledge.textual_alignment_candidate_review_decision",
+          "table": "knowledge_textual_alignment_candidate_review_decisions",
+          "fields": [
+            {
+              "name": "candidate_digest",
+              "kind": "string",
+              "column": "candidate_digest",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "candidate_id",
+              "kind": "string",
+              "column": "candidate_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "company",
+              "kind": "belongsTo",
+              "column": "company_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.company"
+            },
+            {
+              "name": "decided_at",
+              "kind": "string",
+              "column": "decided_at",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "outcome",
+              "kind": "enum",
+              "column": "outcome",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "values": ["accepted", "rejected"]
+            },
+            {
+              "name": "rationale",
+              "kind": "text",
+              "column": "rationale",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewed_version",
+              "kind": "integer",
+              "column": "reviewed_version",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false
+            },
+            {
+              "name": "reviewer",
+              "kind": "belongsTo",
+              "column": "reviewer_id",
+              "declaredRequired": true,
+              "required": true,
+              "unique": false,
+              "optional": false,
+              "hasDefault": false,
+              "relation": "base.user"
+            }
+          ],
+          "uniqueConstraints": [["candidate_digest", "company", "reviewer"]]
         },
         {
           "name": "knowledge.textual_alignment_candidate_version",
@@ -6685,5 +6775,5 @@
       "path": "/workflows/instances/:id/actions"
     }
   ],
-  "generatedFromSha256": "5ad081cfe81add85b5d3e272cf8f3d3bd596742c566f4d4fe4e56dda585e5d26"
+  "generatedFromSha256": "a8db045879f4dfd8e38ac737209220eaf83fe4b56423a9ec2e0adc1053ee743f"
 }

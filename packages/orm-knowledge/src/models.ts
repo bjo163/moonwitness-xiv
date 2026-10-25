@@ -238,6 +238,33 @@ export const ResearchSuggestionVersion = defineModel('knowledge.research_suggest
   },
 });
 
+/**
+ * Immutable, tenant-scoped review of one exact textual alignment candidate version. An accepted
+ * outcome admits the pairing as a parallel to carry; it cannot widen the candidate's own
+ * interpretation boundary, which lives inside the reviewed bytes this row binds.
+ */
+export const TextualAlignmentCandidateReviewDecision = defineModel(
+  'knowledge.textual_alignment_candidate_review_decision',
+  {
+    table: 'knowledge_textual_alignment_candidate_review_decisions',
+    order: 'company_id asc, candidate_id asc, id asc',
+    unique: [['company', 'candidate_digest', 'reviewer']],
+    fields: {
+      company: fields.belongsTo(Company, { required: true }),
+      candidate_id: fields.string({
+        required: true,
+        pattern: '^mw:textual-alignment-candidate:[a-z0-9][a-z0-9._-]{0,159}$',
+      }),
+      candidate_digest: fields.string({ required: true, pattern: '^[a-f0-9]{64}$' }),
+      reviewed_version: fields.integer({ required: true }),
+      outcome: fields.enum(['accepted', 'rejected'], { required: true }),
+      reviewer: fields.belongsTo(User, { required: true }),
+      decided_at: fields.string({ required: true }),
+      rationale: fields.text({ required: true, hidden: true }),
+    },
+  }
+);
+
 /** Immutable, tenant-scoped INTERNAL snapshot of a story and its ordered pages. */
 export const StoryVersion = defineModel('knowledge.story_version', {
   table: 'knowledge_story_versions',

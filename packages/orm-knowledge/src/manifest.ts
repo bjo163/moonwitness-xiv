@@ -9,6 +9,7 @@ import {
   ConceptProfileVersion,
   ConceptProfileReviewDecision,
   TextualAlignmentCandidateVersion,
+  TextualAlignmentCandidateReviewDecision,
   ResearchSuggestionVersion,
   StoryVersion,
   StoryPageVersion,
@@ -39,6 +40,7 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
     'knowledge_concept_profile_versions',
     'knowledge_concept_profile_review_decisions',
     'knowledge_textual_alignment_candidate_versions',
+    'knowledge_textual_alignment_candidate_review_decisions',
     'knowledge_research_suggestion_versions',
     'knowledge_research_actor_identities',
     'knowledge_privacy_revocations',
@@ -58,6 +60,9 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
       END IF;
       IF TG_TABLE_NAME = 'knowledge_textual_alignment_candidate_versions' THEN
         RAISE EXCEPTION 'Knowledge textual alignment candidates are append-only';
+      END IF;
+      IF TG_TABLE_NAME = 'knowledge_textual_alignment_candidate_review_decisions' THEN
+        RAISE EXCEPTION 'Textual alignment candidate review decisions are append-only';
       END IF;
       IF TG_TABLE_NAME = 'knowledge_research_suggestion_versions' THEN
         RAISE EXCEPTION 'Knowledge research suggestions are append-only';
@@ -89,11 +94,14 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
             ? 'Concept profile review decisions are append-only'
             : table === 'knowledge_textual_alignment_candidate_versions'
               ? 'Knowledge textual alignment candidates are append-only'
-              : table === 'knowledge_research_suggestion_versions'
-                ? 'Knowledge research suggestions are append-only'
-                : table === 'knowledge_story_versions' || table === 'knowledge_story_page_versions'
-                  ? 'Knowledge story versions and pages are append-only'
-                  : 'Knowledge witness records are append-only';
+              : table === 'knowledge_textual_alignment_candidate_review_decisions'
+                ? 'Textual alignment candidate review decisions are append-only'
+                : table === 'knowledge_research_suggestion_versions'
+                  ? 'Knowledge research suggestions are append-only'
+                  : table === 'knowledge_story_versions' ||
+                      table === 'knowledge_story_page_versions'
+                    ? 'Knowledge story versions and pages are append-only'
+                    : 'Knowledge witness records are append-only';
       await trx.raw(
         `CREATE TRIGGER IF NOT EXISTS ${table}_reject_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT, '${errorMessage}'); END`
       );
@@ -106,7 +114,7 @@ const installAppendOnlyGuards: NonNullable<Addon['setup']> = async (trx) => {
 
 export const manifest = defineAddon({
   name: 'knowledge',
-  version: '1.7.0',
+  version: '1.8.0',
   depends: ['base'],
   models: [
     WitnessTestimony,
@@ -119,6 +127,7 @@ export const manifest = defineAddon({
     ConceptProfileVersion,
     ConceptProfileReviewDecision,
     TextualAlignmentCandidateVersion,
+    TextualAlignmentCandidateReviewDecision,
     ResearchSuggestionVersion,
     StoryVersion,
     StoryPageVersion,

@@ -22,9 +22,11 @@ import {
   appendOwnedSyntheticWitnessCorrection,
   readResearchReviewHistory,
   recordConceptProfileReviewDecision,
+  recordTextualAlignmentCandidateReviewDecision,
   resolveConceptProfileEvidence,
   resolveConceptProfileReviewDecision,
   readTextualAlignmentCandidateVersion,
+  resolveTextualAlignmentCandidateReviewDecision,
   readStoryVersion,
   syntheticWitnessSubjectRefSha256,
   type StoryMediaReference,
@@ -775,6 +777,56 @@ postgresDescribe('knowledge addon PostgreSQL integration', () => {
         candidateId: 'mw:textual-alignment-candidate:pg-synthetic-pair',
       })
     ).rejects.toThrow('unavailable in this company context');
+    await db('partners').insert({
+      name: 'Synthetic PostgreSQL alignment reviewer',
+      company_id: companyId,
+      is_company: false,
+    });
+    await db('users').insert({
+      login: 'pg-alignment-reviewer',
+      partner_id: (
+        await db('partners').where({ name: 'Synthetic PostgreSQL alignment reviewer' }).first('id')
+      )?.id,
+      role: 'user',
+    });
+    const alignmentReviewerId = Number(
+      (await db('users').where({ login: 'pg-alignment-reviewer' }).first('id'))?.id
+    );
+    await db('company_memberships').insert({
+      user_id: alignmentReviewerId,
+      company_id: companyId,
+      is_default: false,
+    });
+    const candidateDecision = await recordTextualAlignmentCandidateReviewDecision(db, {
+      authenticatedReviewer: { userId: alignmentReviewerId, companyId, role: 'user' },
+      candidateId: 'mw:textual-alignment-candidate:pg-synthetic-pair',
+      outcome: 'accepted',
+      rationale: 'Synthetic PostgreSQL review of the citation-only pairing.',
+    });
+    await expect(
+      resolveTextualAlignmentCandidateReviewDecision(db, {
+        authenticatedReader: { userId: alignmentReviewerId, companyId, role: 'user' },
+        candidateId: candidateDecision.candidate_id,
+        candidateDigest: candidateDecision.candidate_digest,
+      })
+    ).resolves.toMatchObject({ id: candidateDecision.id, reviewed_version: 2 });
+    const candidateDecisionRowId = Number(
+      (
+        await db('knowledge_textual_alignment_candidate_review_decisions')
+          .where({ candidate_digest: candidateDecision.candidate_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_textual_alignment_candidate_review_decisions')
+        .where({ id: candidateDecisionRowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow('Textual alignment candidate review decisions are append-only');
+    await expect(
+      db('knowledge_textual_alignment_candidate_review_decisions')
+        .where({ id: candidateDecisionRowId })
+        .delete()
+    ).rejects.toThrow('Textual alignment candidate review decisions are append-only');
     await expect(
       db('knowledge_textual_alignment_candidate_versions')
         .where({ candidate_id: 'mw:textual-alignment-candidate:pg-synthetic-pair' })

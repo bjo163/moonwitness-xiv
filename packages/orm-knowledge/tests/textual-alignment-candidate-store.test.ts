@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import knex, { type Knex } from 'knex';
 import { installAddons } from '@moonwitness/orm';
 import { manifest as baseManifest } from '@moonwitness/orm-base';
+import { isAttestedTextualAlignmentCandidateReviewDecision } from '@moonwitness/research';
 import { jobsManifest } from '@moonwitness/jobs';
 import { manifest as notificationManifest } from '@moonwitness/orm-notification';
 import { manifest as workflowManifest } from '@moonwitness/orm-workflow';
 import {
   manifest,
   readTextualAlignmentCandidateVersion,
+  recordTextualAlignmentCandidateReviewDecision,
+  resolveTextualAlignmentCandidateReviewDecision,
   storeTextualAlignmentCandidates,
 } from '../src/index.js';
 import { canonicalResearchJson } from '../src/research-release.js';
@@ -63,6 +66,67 @@ function candidate(note = 'Synthetic only; unresolved review subject.') {
 const resolver = async (evidenceId: string) =>
   passages.find((passage) => passage.evidence_id === evidenceId) ?? null;
 const actor = () => ({ userId, companyId, role: 'superadmin' as const });
+
+async function addReviewer(login = 'candidate-reviewer'): Promise<number> {
+  await db('partners').insert({
+    name: `Synthetic ${login}`,
+    company_id: companyId,
+    is_company: false,
+  });
+  const partnerId = Number(
+    (
+      await db('partners')
+        .where({ name: `Synthetic ${login}` })
+        .first('id')
+    )?.id
+  );
+  await db('users').insert({ login, partner_id: partnerId, role: 'user' });
+  const reviewerId = Number((await db('users').where({ login }).first('id'))?.id);
+  await db('company_memberships').insert({
+    user_id: reviewerId,
+    company_id: companyId,
+    is_default: false,
+  });
+  return reviewerId;
+}
+
+function review(
+  reviewerId: number,
+  candidateId: string,
+  overrides: Partial<{
+    outcome: 'accepted' | 'rejected';
+    rationale: string;
+    reviewedVersion: number;
+    reviewerCompanyId: number;
+    reviewerRole: 'user' | 'superadmin';
+  }> = {}
+) {
+  return {
+    authenticatedReviewer: {
+      userId: reviewerId,
+      companyId: overrides.reviewerCompanyId ?? companyId,
+      role: overrides.reviewerRole ?? ('user' as const),
+    },
+    candidateId,
+    ...(overrides.reviewedVersion === undefined
+      ? {}
+      : { reviewedVersion: overrides.reviewedVersion }),
+    outcome: overrides.outcome ?? 'accepted',
+    rationale:
+      overrides.rationale ??
+      'Checked both provenance-bound passages and the citation-only projection.',
+  };
+}
+
+function reader(reviewerId: number, companyIdOverride = companyId) {
+  return {
+    authenticatedReader: {
+      userId: reviewerId,
+      companyId: companyIdOverride,
+      role: 'user' as const,
+    },
+  };
+}
 
 beforeEach(async () => {
   db = knex({
@@ -190,5 +254,227 @@ describe('tenant-scoped INTERNAL textual alignment candidate versions', () => {
     ).rejects.toThrow(
       'Stored textual alignment candidate failed canonical projection verification'
     );
+  });
+});
+
+describe('candidate-digest review decisions', () => {
+  it('binds an accepted decision to the stored version someone other than the submitter reviewed', async () => {
+    const [stored] = await storeTextualAlignmentCandidates(db, {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    });
+    const candidateId = stored!.candidateId;
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(
+        db,
+        review(userId, candidateId, { reviewerRole: 'superadmin' })
+      )
+    ).rejects.toThrow(/someone other than its submitter/u);
+    expect(await db('knowledge_textual_alignment_candidate_review_decisions')).toHaveLength(0);
+
+    const reviewerId = await addReviewer();
+    const decision = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, candidateId)
+    );
+    expect(decision).toMatchObject({
+      kind: 'TextualAlignmentCandidateReviewDecision',
+      candidate_id: candidateId,
+      candidate_digest: stored!.digest,
+      reviewed_version: 1,
+      outcome: 'accepted',
+      reviewer_id: String(reviewerId),
+    });
+    expect(
+      isAttestedTextualAlignmentCandidateReviewDecision(decision, {
+        company_id: String(companyId),
+        reviewer_id: String(reviewerId),
+      })
+    ).toBe(true);
+    await expect(
+      resolveTextualAlignmentCandidateReviewDecision(db, {
+        ...reader(reviewerId),
+        candidateId,
+        candidateDigest: stored!.digest,
+      })
+    ).resolves.toMatchObject({ id: decision.id });
+    await expect(
+      resolveTextualAlignmentCandidateReviewDecision(db, {
+        ...reader(reviewerId),
+        candidateId,
+        candidateDigest: 'f'.repeat(64),
+      })
+    ).resolves.toBeNull();
+  });
+
+  it('pins a decision to one version, so an appended version needs a decision of its own', async () => {
+    const input = {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    };
+    const [first] = await storeTextualAlignmentCandidates(db, input);
+    await storeTextualAlignmentCandidates(db, {
+      ...input,
+      candidates: [candidate('Different synthetic uncertainty.')],
+    });
+    const reviewerId = await addReviewer();
+    const pinned = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, first!.candidateId, { reviewedVersion: 1 })
+    );
+    expect(pinned.reviewed_version).toBe(1);
+    expect(pinned.candidate_digest).toBe(first!.digest);
+    const latest = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, first!.candidateId, { outcome: 'rejected' })
+    );
+    expect(latest).toMatchObject({ reviewed_version: 2, outcome: 'rejected' });
+  });
+
+  it('refuses a decision without a stored version, a blank rationale, or a forged row shape', async () => {
+    const reviewerId = await addReviewer();
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(
+        db,
+        review(reviewerId, 'mw:textual-alignment-candidate:never-stored')
+      )
+    ).rejects.toThrow(/must bind a stored version/u);
+    await storeTextualAlignmentCandidates(db, {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    });
+    const candidateId = 'mw:textual-alignment-candidate:synthetic-pair';
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(
+        db,
+        review(reviewerId, candidateId, { rationale: '   ' })
+      )
+    ).rejects.toThrow(/bounded rationale/u);
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(db, {
+        ...review(reviewerId, candidateId),
+        candidateId: 'textual-alignment-candidate:synthetic-pair',
+      })
+    ).rejects.toThrow(/review context is invalid/u);
+    expect(await db('knowledge_textual_alignment_candidate_review_decisions')).toHaveLength(0);
+  });
+
+  it('replays one reviewer’s decision idempotently and refuses a contradictory second outcome', async () => {
+    const input = {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    };
+    const [stored] = await storeTextualAlignmentCandidates(db, input);
+    const reviewerId = await addReviewer();
+    const first = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, stored!.candidateId)
+    );
+    const replay = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, stored!.candidateId)
+    );
+    expect(replay).toMatchObject({ id: first.id, outcome: 'accepted' });
+    expect(await db('knowledge_textual_alignment_candidate_review_decisions')).toHaveLength(1);
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(
+        db,
+        review(reviewerId, stored!.candidateId, { outcome: 'rejected' })
+      )
+    ).rejects.toThrow(/already recorded/u);
+    expect(await db('knowledge_textual_alignment_candidate_review_decisions')).toHaveLength(1);
+  });
+
+  it('keeps decisions append-only and invisible to another company', async () => {
+    const [stored] = await storeTextualAlignmentCandidates(db, {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    });
+    const reviewerId = await addReviewer();
+    const decision = await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, stored!.candidateId)
+    );
+    const otherCompanyId = Number(
+      await db('companies').insert({
+        name: 'Separate candidate tenant',
+        timezone: 'UTC',
+        active: true,
+      })
+    );
+    await db('company_memberships').insert({
+      user_id: reviewerId,
+      company_id: otherCompanyId,
+      is_default: false,
+    });
+    await expect(
+      resolveTextualAlignmentCandidateReviewDecision(db, {
+        ...reader(reviewerId, otherCompanyId),
+        candidateId: stored!.candidateId,
+        candidateDigest: decision.candidate_digest,
+      })
+    ).resolves.toBeNull();
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(
+        db,
+        review(reviewerId, stored!.candidateId, { reviewerCompanyId: otherCompanyId })
+      )
+    ).rejects.toThrow(/must bind a stored version/u);
+
+    const rowId = Number(
+      (
+        await db('knowledge_textual_alignment_candidate_review_decisions')
+          .where({ candidate_digest: decision.candidate_digest })
+          .first('id')
+      )?.id
+    );
+    await expect(
+      db('knowledge_textual_alignment_candidate_review_decisions')
+        .where({ id: rowId })
+        .update({ outcome: 'rejected' })
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      db('knowledge_textual_alignment_candidate_review_decisions').where({ id: rowId }).delete()
+    ).rejects.toThrow(/append-only/u);
+  });
+
+  it('yields nothing authorizing for a stored row that breaks the citation-only projection', async () => {
+    const [stored] = await storeTextualAlignmentCandidates(db, {
+      authenticatedActor: actor(),
+      resolvePassage: resolver,
+      candidates: [candidate()],
+    });
+    const reviewerId = await addReviewer();
+    await recordTextualAlignmentCandidateReviewDecision(
+      db,
+      review(reviewerId, stored!.candidateId)
+    );
+    const forged = structuredClone(stored!.candidate) as unknown as {
+      id: string;
+      left: Record<string, unknown>;
+    };
+    const forgedId = 'mw:textual-alignment-candidate:forged-review-shape';
+    forged.id = forgedId;
+    forged.left.selector = { text: 'synthetic full passage must never be reviewed' };
+    const candidateJson = canonicalResearchJson(forged);
+    const candidateDigest = createHash('sha256').update(candidateJson, 'utf8').digest('hex');
+    await db('knowledge_textual_alignment_candidate_versions').insert({
+      company_id: companyId,
+      candidate_id: forgedId,
+      version: 1,
+      visibility: 'INTERNAL',
+      candidate_json: candidateJson,
+      candidate_digest: candidateDigest,
+      recorded_by_id: userId,
+    });
+    await expect(
+      recordTextualAlignmentCandidateReviewDecision(db, review(reviewerId, forgedId))
+    ).rejects.toThrow(/failed its own integrity check/u);
+    expect(await db('knowledge_textual_alignment_candidate_review_decisions')).toHaveLength(1);
   });
 });

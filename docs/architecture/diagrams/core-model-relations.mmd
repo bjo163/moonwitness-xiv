@@ -40,22 +40,23 @@ flowchart LR
   model38["knowledge.research_suggestion_version"]
   model39["knowledge.story_page_version"]
   model40["knowledge.story_version"]
-  model41["knowledge.textual_alignment_candidate_version"]
-  model42["knowledge.witness_correction"]
-  model43["knowledge.witness_interpretation"]
-  model44["knowledge.witness_testimony"]
-  model45["notification.notification"]
-  model46["notification.preference"]
-  model47["notification.template"]
-  model48["organization.department"]
-  model49["organization.membership"]
-  model50["organization.position"]
-  model51["organization.team"]
-  model52["request.purchase"]
-  model53["workflow.approval"]
-  model54["workflow.definition"]
-  model55["workflow.event"]
-  model56["workflow.instance"]
+  model41["knowledge.textual_alignment_candidate_review_decision"]
+  model42["knowledge.textual_alignment_candidate_version"]
+  model43["knowledge.witness_correction"]
+  model44["knowledge.witness_interpretation"]
+  model45["knowledge.witness_testimony"]
+  model46["notification.notification"]
+  model47["notification.preference"]
+  model48["notification.template"]
+  model49["organization.department"]
+  model50["organization.membership"]
+  model51["organization.position"]
+  model52["organization.team"]
+  model53["request.purchase"]
+  model54["workflow.approval"]
+  model55["workflow.definition"]
+  model56["workflow.event"]
+  model57["workflow.instance"]
   model0 -->|user N:1| model26
   model2 -->|assigned_to N:1| model26
   model5 -->|country N:1| model8
@@ -112,38 +113,40 @@ flowchart LR
   model40 -->|company N:1| model6
   model40 -->|recorded_by N:1| model26
   model41 -->|company N:1| model6
-  model41 -->|recorded_by N:1| model26
+  model41 -->|reviewer N:1| model26
+  model42 -->|company N:1| model6
   model42 -->|recorded_by N:1| model26
-  model42 -->|testimony N:1| model44
   model43 -->|recorded_by N:1| model26
-  model43 -->|testimony N:1| model44
-  model44 -->|company N:1| model6
-  model44 -->|created_by N:1| model26
+  model43 -->|testimony N:1| model45
+  model44 -->|recorded_by N:1| model26
+  model44 -->|testimony N:1| model45
   model45 -->|company N:1| model6
-  model45 -->|recipient N:1| model26
-  model45 -->|template N:1| model47
+  model45 -->|created_by N:1| model26
   model46 -->|company N:1| model6
-  model46 -->|user N:1| model26
-  model48 -->|company N:1| model6
-  model48 -->|parent N:1| model48
+  model46 -->|recipient N:1| model26
+  model46 -->|template N:1| model48
+  model47 -->|company N:1| model6
+  model47 -->|user N:1| model26
   model49 -->|company N:1| model6
-  model49 -->|department N:1| model48
-  model49 -->|manager N:1| model49
-  model49 -->|position N:1| model50
-  model49 -->|team N:1| model51
-  model49 -->|user N:1| model26
+  model49 -->|parent N:1| model49
   model50 -->|company N:1| model6
-  model50 -->|department N:1| model48
+  model50 -->|department N:1| model49
+  model50 -->|manager N:1| model50
+  model50 -->|position N:1| model51
+  model50 -->|team N:1| model52
+  model50 -->|user N:1| model26
   model51 -->|company N:1| model6
-  model51 -->|department N:1| model48
-  model51 -->|parent N:1| model51
+  model51 -->|department N:1| model49
   model52 -->|company N:1| model6
-  model52 -->|currency N:1| model11
-  model52 -->|vendor N:1| model18
-  model53 -->|actor N:1| model26
-  model53 -->|instance N:1| model56
-  model55 -->|actor N:1| model26
-  model55 -->|instance N:1| model56
-  model56 -->|company N:1| model6
-  model56 -->|definition N:1| model54
-  model56 -->|started_by N:1| model26
+  model52 -->|department N:1| model49
+  model52 -->|parent N:1| model52
+  model53 -->|company N:1| model6
+  model53 -->|currency N:1| model11
+  model53 -->|vendor N:1| model18
+  model54 -->|actor N:1| model26
+  model54 -->|instance N:1| model57
+  model56 -->|actor N:1| model26
+  model56 -->|instance N:1| model57
+  model57 -->|company N:1| model6
+  model57 -->|definition N:1| model55
+  model57 -->|started_by N:1| model26
