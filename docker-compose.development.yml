@@ -85,5 +85,55 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       clamav: { condition: service_healthy }
+  jobs-worker:
+    build:
+      context: .
+      target: build
+    command: ['pnpm', '--filter', '@moonwitness/api', 'jobs:worker']
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/moonwitness_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      WORKER_HEALTH_HOST: ${WORKER_HEALTH_HOST:-127.0.0.1}
+      JOBS_WORKER_HEALTH_PORT: ${JOBS_WORKER_HEALTH_PORT:-0}
+      WHATSAPP_CLAMAV_URL: tcp://clamav:3310
+      ATTACHMENT_STORAGE_DIR: /var/lib/moonwitness/attachments
+      ATTACHMENT_STORAGE_DRIVER: ${ATTACHMENT_STORAGE_DRIVER:-local}
+      ATTACHMENT_S3_ENDPOINT: ${ATTACHMENT_S3_ENDPOINT:-https://s3.moonwitness.biz.id}
+      ATTACHMENT_S3_REGION: ${ATTACHMENT_S3_REGION:-garage}
+      ATTACHMENT_S3_BUCKET: ${ATTACHMENT_S3_BUCKET:-moonwitness-attachments}
+      ATTACHMENT_S3_ACCESS_KEY: ${ATTACHMENT_S3_ACCESS_KEY:-}
+      ATTACHMENT_S3_SECRET_KEY: ${ATTACHMENT_S3_SECRET_KEY:-}
+      ATTACHMENT_S3_FORCE_PATH_STYLE: ${ATTACHMENT_S3_FORCE_PATH_STYLE:-true}
+    volumes: [whatsapp_dev_attachments:/var/lib/moonwitness/attachments]
+    depends_on:
+      postgres: { condition: service_healthy }
+      clamav: { condition: service_healthy }
+  jobs-scheduler:
+    build:
+      context: .
+      target: build
+    command: ['pnpm', '--filter', '@moonwitness/api', 'jobs:scheduler']
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/moonwitness_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      WORKER_HEALTH_HOST: ${WORKER_HEALTH_HOST:-127.0.0.1}
+      JOBS_SCHEDULER_HEALTH_PORT: ${JOBS_SCHEDULER_HEALTH_PORT:-0}
+      WHATSAPP_CLAMAV_URL: tcp://clamav:3310
+      ATTACHMENT_STORAGE_DIR: /var/lib/moonwitness/attachments
+      ATTACHMENT_STORAGE_DRIVER: ${ATTACHMENT_STORAGE_DRIVER:-local}
+      ATTACHMENT_S3_ENDPOINT: ${ATTACHMENT_S3_ENDPOINT:-https://s3.moonwitness.biz.id}
+      ATTACHMENT_S3_REGION: ${ATTACHMENT_S3_REGION:-garage}
+      ATTACHMENT_S3_BUCKET: ${ATTACHMENT_S3_BUCKET:-moonwitness-attachments}
+      ATTACHMENT_S3_ACCESS_KEY: ${ATTACHMENT_S3_ACCESS_KEY:-}
+      ATTACHMENT_S3_SECRET_KEY: ${ATTACHMENT_S3_SECRET_KEY:-}
+      ATTACHMENT_S3_FORCE_PATH_STYLE: ${ATTACHMENT_S3_FORCE_PATH_STYLE:-true}
+    volumes: [whatsapp_dev_attachments:/var/lib/moonwitness/attachments]
+    depends_on:
+      postgres: { condition: service_healthy }
+      clamav: { condition: service_healthy }
 volumes:
   whatsapp_dev_attachments:

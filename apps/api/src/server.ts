@@ -5,6 +5,8 @@ async function main() {
     // Keep configuration and app imports inside the guarded startup path. ESM
     // evaluates static imports before main() and would otherwise bypass this catch.
     const { config } = await import('./config/env.js');
+    const { validateWhatsAppProductionConfig } = await import('./whatsapp/config.js');
+    validateWhatsAppProductionConfig(process.env);
     const { buildApp } = await import('./app.js');
     const { Registry } = await import('@moonwitness/orm');
     const { verifyDefaultBaseAccounts, verifyRequiredModels } = await import('./startup-checks.js');

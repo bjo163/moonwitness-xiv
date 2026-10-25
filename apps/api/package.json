@@ -13,6 +13,8 @@
     "jobs:worker": "tsx src/commands/jobs-worker.ts",
     "jobs:scheduler": "tsx src/commands/jobs-scheduler.ts",
     "jobs:outbox": "tsx src/commands/outbox-worker.ts",
+    "jobs:worker:built": "node dist/commands/jobs-worker.js",
+    "jobs:scheduler:built": "node dist/commands/jobs-scheduler.js",
     "build": "tsc",
     "start": "node dist/server.js",
     "start:built": "node dist/server.js",
