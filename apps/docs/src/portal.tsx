@@ -61,7 +61,7 @@ const repository = 'https://github.com/bjo163/moonwitness-xiv';
 const sourceRef = import.meta.env.MW_DOCS_SOURCE_REF ?? 'main';
 const applicationVersion = import.meta.env.MW_DOCS_APPLICATION_VERSION;
 const docsChannel = import.meta.env.MW_DOCS_CHANNEL ?? 'preview';
-const uiCatalogPath = '/moonwitness-xiv/components/';
+const uiCatalogPath = `${import.meta.env.BASE_URL}components/`;
 const pages: SearchPageData[] = guideBundle.sections.flatMap((section) =>
   section.items.map((item) => ({
     ...item,

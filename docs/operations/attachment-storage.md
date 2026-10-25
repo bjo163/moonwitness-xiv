@@ -135,6 +135,8 @@ pnpm attachments:reconcile -- --apply --older-than=2026-10-01T00:00:00.000Z --li
 
 `jobs-scheduler` memastikan satu cron `whatsapp.attachments.reconcile` aktif setiap hari pukul 03:17 UTC. `jobs-worker` membuat snapshot referensi lampiran umum dan WhatsApp (pesan, Status, avatar, dan upload ticket yang masih dalam grace period), lalu hanya menghapus object UUID yang tak dirujuk dan lebih tua dari 24 jam. Setiap run dibatasi 1.000 orphan; bila pemindaian terpotong, run harian berikutnya melanjutkan. Snapshot dibatasi 100.000 key dan job gagal tertutup sebelum penghapusan jika ukuran snapshot melewati batas. Storage key tanpa format UUID tidak dihapus. Job hanya membersihkan object yatim; job ini tidak menghapus isi pesan, percakapan, record Status, audit, maupun mengatur retensi/kuota perusahaan.
 
+Default kebijakan WhatsApp saat ini adalah menyimpan pesan dan Status tanpa batas serta tidak menerapkan kuota object per perusahaan. Tidak ada purge record terjadwal. Perubahan kebijakan retensi atau kuota harus mendapat keputusan produk terlebih dahulu dan memerlukan rencana ekspor/pemulihan sebelum purge diaktifkan.
+
 Untuk cleanup manual, jalankan perintah `attachments:reconcile` dalam mode dry-run dan tinjau hasilnya seperti di atas. Cron terjadwal menjalankan scan-delete terpisah yang hanya memakai snapshot referensi, tanpa membaca seluruh byte object hidup untuk checksum. Status run dan ringkasan jumlah scan/orphan/delete tersedia pada riwayat job scheduler.
 
 ## Operasi dan pemulihan

@@ -54,6 +54,7 @@ for (const args of [
     'vitest',
     'run',
     'tests/postgres.integration.test.ts',
+    'tests/whatsapp-attachments-job.postgres.integration.test.ts',
     'tests/postgres.performance.integration.test.ts',
     'tests/local-retrieval.postgres.integration.test.ts',
     'tests/local-ai-suggestion.postgres.integration.test.ts',
