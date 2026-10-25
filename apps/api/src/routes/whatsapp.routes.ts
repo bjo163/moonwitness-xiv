@@ -82,6 +82,7 @@ class MediaTooLargeError extends Error {
 class MediaStorageError extends Error {
   readonly statusCode = 503;
 }
+class MediaStorageObjectMissingError extends MediaStorageError {}
 class MediaIncompleteError extends Error {}
 class MediaEmptyError extends Error {}
 class MediaScanInfectedError extends Error {
@@ -236,7 +237,7 @@ async function scanStoredAttachment(
   const stream = await storage.getStream?.(key);
   if (stream) return scanner.scan(stream);
   const bytes = await storage.get(key);
-  if (!bytes) throw new MediaStorageError('Attachment was not found in storage');
+  if (!bytes) throw new MediaStorageObjectMissingError('Attachment was not found in storage');
   return scanner.scan(Readable.from([bytes]));
 }
 
@@ -6356,11 +6357,19 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           .patch({ media_scan_status: 'clean' });
         message.media_scan_status = 'clean';
       } catch (error) {
-        req.log.error({ error: whatsappLogErrorContext(error) }, 'WhatsApp malware scan failed');
-        return reply.code(503).send({
-          success: false,
-          error: 'Attachment malware scanning is temporarily unavailable',
-        });
+        if (error instanceof MediaStorageObjectMissingError) {
+          // The provider remains the source of truth for media. A stale cache key
+          // should fall through to the GoWA download path below; storage and
+          // scanner failures still fail closed.
+          message.media_key = null;
+          message.media_thumbnail_key = null;
+        } else {
+          req.log.error({ error: whatsappLogErrorContext(error) }, 'WhatsApp malware scan failed');
+          return reply.code(503).send({
+            success: false,
+            error: 'Attachment malware scanning is temporarily unavailable',
+          });
+        }
       }
     }
     let content: Buffer | null = null;
