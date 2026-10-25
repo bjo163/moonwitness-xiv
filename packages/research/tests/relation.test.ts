@@ -259,15 +259,19 @@ describe('reviewed research relation graph', () => {
       conflicts: [],
       created_at: '2026-10-16T01:00:00Z',
     };
-    const decision = recordIdentityDecision(candidate, {
-      id: 'mw:identity-decision:alpha-beta-accepted',
-      kind: 'IdentityReconciliationDecision',
-      outcome: 'accepted',
-      evidence_refs: ['mw:evidence:identity-review'],
-      reviewer_id: 'mw:agent:reviewer',
-      reviewed_at: reviewedAt,
-      preserved_conflict_ids: [],
-    });
+    const decision = recordIdentityDecision(
+      candidate,
+      {
+        id: 'mw:identity-decision:alpha-beta-accepted',
+        kind: 'IdentityReconciliationDecision',
+        outcome: 'accepted',
+        evidence_refs: ['mw:evidence:identity-review'],
+        reviewer_id: 'mw:agent:reviewer',
+        reviewed_at: reviewedAt,
+        preserved_conflict_ids: [],
+      },
+      { company_id: 'company-alpha', reviewer_id: 'mw:agent:reviewer' }
+    );
     const edge = relation({
       predicate: 'explicit_identity_equivalence',
       review_decision_id: decision.id,

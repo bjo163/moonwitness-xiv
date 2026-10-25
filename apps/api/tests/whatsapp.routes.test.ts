@@ -91,6 +91,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerReadBodies: Array<Record<string, unknown>> = [];
   let failReadReceipt = false;
   let failPreviewFetch = false;
+  let failPreviewOffset: number | null = null;
   let failTextSend = false;
   let failTextBeforeAcceptance = false;
   let textSendFailureStatus = 503;
@@ -103,6 +104,8 @@ describe('WhatsApp API GoWA bridge', () => {
   let providerImageSendCount = 0;
   let providerImageMentions: string[] = [];
   let providerVideoSendCount = 0;
+  let providerVideoMentions: string[] = [];
+  let providerFileMentions: string[] = [];
   let providerImageReplyIds: string[] = [];
   let providerAudioSendCount = 0;
   let providerAudioSendFields: string[] = [];
@@ -324,6 +327,7 @@ describe('WhatsApp API GoWA bridge', () => {
     providerReadBodies = [];
     failReadReceipt = false;
     failPreviewFetch = false;
+    failPreviewOffset = null;
     failTextSend = false;
     failTextBeforeAcceptance = false;
     textSendFailureStatus = 503;
@@ -336,6 +340,8 @@ describe('WhatsApp API GoWA bridge', () => {
     providerImageSendCount = 0;
     providerImageMentions = [];
     providerVideoSendCount = 0;
+    providerVideoMentions = [];
+    providerFileMentions = [];
     providerImageReplyIds = [];
     providerAudioSendCount = 0;
     providerAudioSendFields = [];
@@ -550,9 +556,15 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname.startsWith('/chat/') && url.pathname.endsWith('/messages')) {
         providerMessageRequests.push(url);
-        return failPreviewFetch
+        return failPreviewFetch || Number(url.searchParams.get('offset') ?? 0) === failPreviewOffset
           ? json({ message: 'temporary preview failure' }, 503)
-          : json({ data: providerMessages });
+          : json({
+              data: providerMessages.slice(
+                Number(url.searchParams.get('offset') ?? 0),
+                Number(url.searchParams.get('offset') ?? 0) +
+                  Number(url.searchParams.get('limit') ?? 100)
+              ),
+            });
       }
       if (/^\/message\/[^/]+\/read$/u.test(url.pathname) && method === 'POST') {
         providerReadRequests.push(url);
@@ -594,7 +606,9 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname === '/send/video') {
         providerVideoSendCount++;
-        return json({ message_id: 'sent-video-id' });
+        const form = init?.body;
+        providerVideoMentions = form instanceof FormData ? form.getAll('mentions').map(String) : [];
+        return json({ message_id: `sent-video-${providerVideoSendCount}` });
       }
       if (url.pathname === '/send/audio') {
         providerAudioSendCount++;
@@ -610,9 +624,10 @@ describe('WhatsApp API GoWA bridge', () => {
         const form = init?.body;
         if (form instanceof FormData) {
           providerFileSendFields = [...form.keys()];
+          providerFileMentions = form.getAll('mentions').map(String);
           providerFileCaption = String(form.get('caption') ?? '');
         }
-        return json({ message_id: 'sent-file-id' });
+        return json({ message_id: `sent-file-${providerFileSendCount}` });
       }
       if (/^\/message\/.+\/forward$/u.test(url.pathname) && method === 'POST') {
         providerForwardRequests.push({
@@ -853,7 +868,7 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(concurrentStatuses).toContain(201);
     expect(
       concurrentStatuses.every((status) => status === 200 || status === 201 || status === 409)
-    ).toBe(true);
+    ).toBeTruthy();
     expect(providerGroupCreateRequests).toHaveLength(2);
 
     const keyReuse = await app.inject({
@@ -1136,7 +1151,7 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
-    ).toBe(true);
+    ).toBeTruthy();
 
     const announce = await app.inject({
       method: 'POST',
@@ -1151,7 +1166,7 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_announce
-    ).toBe(true);
+    ).toBeTruthy();
 
     const invalid = await app.inject({
       method: 'POST',
@@ -1180,7 +1195,7 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(failed.statusCode).toBe(502);
     expect(
       (await db('whatsapp_conversations').where({ id: group.id }).first()).group_is_locked
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it('manages group participants with company scope and durable idempotency', async () => {
@@ -1340,9 +1355,9 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(left.statusCode).toBe(200);
     expect(left.json().data.left).toBe(true);
     expect(providerGroupLeaveRequests).toEqual([{ group_id: '120363000000002@g.us' }]);
-    expect((await db('whatsapp_conversations').where({ id: group.id }).first()).is_archived).toBe(
-      true
-    );
+    expect(
+      Boolean((await db('whatsapp_conversations').where({ id: group.id }).first()).is_archived)
+    ).toBe(true);
     const leaveReplay = await app.inject({
       method: 'POST',
       url: leaveUrl,
@@ -1501,7 +1516,11 @@ describe('WhatsApp API GoWA bridge', () => {
       })
       .returning(['id']);
     const path = `/whatsapp/conversations/${group.id}/group/avatar`;
-    const first = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const first = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(first.statusCode).toBe(200);
     expect(Buffer.from(first.rawPayload)).toEqual(pngFixture());
     expect(providerAvatarRequests.at(-1)?.searchParams.get('phone')).toBe('120363000000022@g.us');
@@ -1515,7 +1534,11 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(stored.has(saved.group_avatar_key)).toBe(true);
     const cdnFetches = avatarCdnFetchCount;
-    const cached = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const cached = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(cached.statusCode).toBe(200);
     expect(Buffer.from(cached.rawPayload)).toEqual(pngFixture());
     expect(avatarCdnFetchCount).toBe(cdnFetches);
@@ -1542,7 +1565,11 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(foreign.statusCode).toBe(404);
     profileRequestsFail = true;
-    const stale = await app.inject({ method: 'GET', url: path, headers: { authorization: 'Bearer test' } });
+    const stale = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: { authorization: 'Bearer test' },
+    });
     expect(stale.statusCode).toBe(200);
     expect(Buffer.from(stale.rawPayload)).toEqual(pngFixture());
     profileRequestsFail = false;
@@ -2940,6 +2967,150 @@ describe('WhatsApp API GoWA bridge', () => {
     ).toMatchObject({ last_message_sync_at: timestamp });
   });
 
+  it('recovers unread messages across provider pages after webhook delivery was interrupted', async () => {
+    await connectAndMarkReady();
+    const account = await db('whatsapp_accounts').where({ company_id: companyId }).first();
+    const jid = '628444444445@s.whatsapp.net';
+    const previousSync = '2026-10-24T15:00:00.000Z';
+    const latestTime = new Date(Date.parse(previousSync) + 750_000).toISOString();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid,
+        name: 'Interrupted webhook chat',
+        is_group: false,
+        unread_count: 0,
+        last_message_sync_at: previousSync,
+      })
+      .returning(['id']);
+    providerChats = [{ jid, name: 'Interrupted webhook chat', last_message_time: latestTime }];
+    providerMessages = Array.from({ length: 750 }, (_, index) => {
+      const sequence = 750 - index;
+      return {
+        id: `recovered-inbound-${sequence}`,
+        is_from_me: false,
+        media_type: 'text',
+        content: `Recovered message ${sequence}`,
+        timestamp: new Date(Date.parse(previousSync) + sequence * 1_000).toISOString(),
+      };
+    });
+
+    const inbox = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(inbox.statusCode).toBe(200);
+    expect(inbox.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 600 })
+    );
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({
+      history_sync_offset: 600,
+      last_message_sync_at: previousSync,
+    });
+
+    const nextInbox = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(nextInbox.statusCode).toBe(200);
+    expect(nextInbox.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 750 })
+    );
+    expect(providerMessageRequests.map((request) => request.searchParams.get('offset'))).toEqual([
+      '0',
+      '100',
+      '200',
+      '300',
+      '400',
+      '500',
+      '0',
+      '600',
+      '700',
+    ]);
+    await expect(
+      db('whatsapp_messages').where({ company_id: companyId, conversation_id: conversation.id })
+    ).resolves.toHaveLength(750);
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({
+      history_sync_offset: 0,
+      last_message_sync_at: latestTime,
+    });
+  });
+
+  it('retries a failed history page without advancing the unread synchronization cursor', async () => {
+    await connectAndMarkReady();
+    const account = await db('whatsapp_accounts').where({ company_id: companyId }).first();
+    const jid = '628444444446@s.whatsapp.net';
+    const previousSync = '2026-10-24T16:00:00.000Z';
+    const latestTime = new Date(Date.parse(previousSync) + 250_000).toISOString();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: account.id,
+        jid,
+        name: 'History retry chat',
+        is_group: false,
+        unread_count: 0,
+        last_message_sync_at: previousSync,
+      })
+      .returning(['id']);
+    providerChats = [{ jid, name: 'History retry chat', last_message_time: latestTime }];
+    providerMessages = Array.from({ length: 250 }, (_, index) => {
+      const sequence = 250 - index;
+      return {
+        id: `retry-inbound-${sequence}`,
+        is_from_me: false,
+        media_type: 'text',
+        content: `Retry message ${sequence}`,
+        timestamp: new Date(Date.parse(previousSync) + sequence * 1_000).toISOString(),
+      };
+    });
+    failPreviewOffset = 100;
+
+    const failed = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(failed.statusCode).toBe(200);
+    expect(
+      await db('whatsapp_messages').where({
+        company_id: companyId,
+        conversation_id: conversation.id,
+      })
+    ).toHaveLength(0);
+    await expect(
+      db('whatsapp_conversations').where({ id: conversation.id }).first()
+    ).resolves.toMatchObject({ history_sync_offset: 0, last_message_sync_at: previousSync });
+
+    failPreviewOffset = null;
+    const retried = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/conversations?unread=true',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(retried.json().data).toContainEqual(
+      expect.objectContaining({ id: conversation.id, unread_count: 250 })
+    );
+    expect(providerMessageRequests.map((request) => request.searchParams.get('offset'))).toEqual([
+      '0',
+      '100',
+      '0',
+      '100',
+      '200',
+    ]);
+    await expect(
+      db('whatsapp_messages').where({ company_id: companyId, conversation_id: conversation.id })
+    ).resolves.toHaveLength(250);
+  });
+
   it('archives and unarchives company-scoped conversations, and pins them in provider order', async () => {
     await connectAndMarkReady();
     const jid = '628111111111@s.whatsapp.net';
@@ -3501,6 +3672,68 @@ describe('WhatsApp API GoWA bridge', () => {
     );
     expect(providerImageMentions).toEqual(['628111111111']);
 
+    const groupVideoUpload = multipartPayload(
+      { content: 'Video with mention', mentions: JSON.stringify(['628111111111']) },
+      { name: 'group.mp4', mime: 'video/mp4', bytes: Buffer.from('0000ftypisom') }
+    );
+    const groupVideo = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': groupVideoUpload.contentType,
+      },
+      payload: groupVideoUpload.payload,
+    });
+    expect(groupVideo.statusCode, JSON.stringify(groupVideo.json())).toBe(202);
+    const groupVideoEvent = await db('outbox_events')
+      .where({ aggregate_id: groupVideo.json().data.id, event_type: 'whatsapp.message.send' })
+      .first();
+    const groupVideoPayload = JSON.parse(groupVideoEvent.payload) as { mentions: string[] };
+    await dispatchQueuedWhatsAppMessage(
+      groupVideo.json().data.id,
+      companyId,
+      groupVideoEvent.id,
+      storage,
+      undefined,
+      groupVideoPayload.mentions
+    );
+    expect(providerVideoMentions).toEqual(['628111111111']);
+
+    const groupDocumentUpload = multipartPayload(
+      { content: 'Document with mention', mentions: JSON.stringify(['628111111111']) },
+      {
+        name: 'group.pdf',
+        mime: 'application/pdf',
+        bytes: Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'),
+      }
+    );
+    const groupDocument = await app.inject({
+      method: 'POST',
+      url: `/whatsapp/conversations/${groupId}/messages`,
+      headers: {
+        authorization: 'Bearer test',
+        'idempotency-key': randomUUID(),
+        'content-type': groupDocumentUpload.contentType,
+      },
+      payload: groupDocumentUpload.payload,
+    });
+    expect(groupDocument.statusCode, JSON.stringify(groupDocument.json())).toBe(202);
+    const groupDocumentEvent = await db('outbox_events')
+      .where({ aggregate_id: groupDocument.json().data.id, event_type: 'whatsapp.message.send' })
+      .first();
+    const groupDocumentPayload = JSON.parse(groupDocumentEvent.payload) as { mentions: string[] };
+    await dispatchQueuedWhatsAppMessage(
+      groupDocument.json().data.id,
+      companyId,
+      groupDocumentEvent.id,
+      storage,
+      undefined,
+      groupDocumentPayload.mentions
+    );
+    expect(providerFileMentions).toEqual(['628111111111']);
+
     const [imageQuoteTarget] = await db('whatsapp_messages')
       .insert({
         company_id: companyId,
@@ -3626,7 +3859,7 @@ describe('WhatsApp API GoWA bridge', () => {
       .where({ aggregate_id: documentMessageId, event_type: 'whatsapp.message.send' })
       .first();
     await dispatchQueuedWhatsAppMessage(documentMessageId, companyId, documentEvent.id, storage);
-    expect(providerFileSendCount).toBe(1);
+    expect(providerFileSendCount).toBe(2);
     expect(providerFileSendFields).toEqual(['phone', 'caption', 'file']);
     expect(providerFileCaption).toBe('Statement caption');
     expect((await db('whatsapp_messages').where({ id: documentMessageId }).first()).status).toBe(

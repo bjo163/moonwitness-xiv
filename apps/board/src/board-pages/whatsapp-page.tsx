@@ -2345,7 +2345,7 @@ function WhatsappInbox({ inboxPreferenceScope }: { inboxPreferenceScope: string 
                   {(conversation.assigned_user_name ||
                     conversation.assigned_team_name ||
                     conversation.work_state === 'closed') && (
-                    <span className="flex flex-wrap gap-2 text-[10px] text-ink-faint">
+                    <span className="flex flex-wrap gap-2 text-[10px] text-ink">
                       {conversation.assigned_user_name && (
                         <span>Assigned to {conversation.assigned_user_name}</span>
                       )}

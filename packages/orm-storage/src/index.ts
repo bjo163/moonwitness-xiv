@@ -52,6 +52,60 @@ function validateScanOptions(olderThan: Date, limit: number): void {
     throw new Error('limit must be an integer from 1 to 10000');
 }
 
+export interface OrphanPruneResult {
+  readonly scannedEntries: number;
+  readonly scanTruncated: boolean;
+  readonly orphaned: readonly string[];
+  readonly deleted: readonly string[];
+  readonly failures: readonly string[];
+}
+
+/** Delete only old unreferenced objects without reading every referenced object body. */
+export async function pruneOrphanAttachmentStorage(
+  storage: AttachmentStorage,
+  referenceKeys: AsyncIterable<string>,
+  options: ReconcileOptions
+): Promise<OrphanPruneResult> {
+  const limit = options.limit ?? 1000;
+  validateScanOptions(options.olderThan, limit);
+  if (options.apply && options.olderThan.getTime() > Date.now())
+    throw new Error('olderThan must not be in the future when apply is enabled');
+
+  const referenced = new Set<string>();
+  let referenceCount = 0;
+  for await (const key of referenceKeys) {
+    referenceCount += 1;
+    if (referenceCount > limit * 100 || referenced.size > limit * 100)
+      throw new Error('Attachment reconciliation reference snapshot exceeds the safe bound');
+    if (isValidKey(key)) referenced.add(key.toLowerCase());
+  }
+
+  const orphaned: string[] = [];
+  const deleted: string[] = [];
+  const failures: string[] = [];
+  let scannedEntries = 0;
+  let scanTruncated = false;
+  for await (const object of storage.list()) {
+    scannedEntries += 1;
+    if (!object.lastModified || !Number.isFinite(object.lastModified.getTime())) continue;
+    if (object.lastModified.getTime() > options.olderThan.getTime()) continue;
+    if (!isValidKey(object.key) || referenced.has(object.key.toLowerCase())) continue;
+    if (orphaned.length === limit) {
+      scanTruncated = true;
+      break;
+    }
+    orphaned.push(object.key);
+    if (!options.apply) continue;
+    try {
+      await storage.delete(object.key);
+      deleted.push(object.key);
+    } catch {
+      failures.push(object.key);
+    }
+  }
+  return { scannedEntries, scanTruncated, orphaned, deleted, failures };
+}
+
 function objectMetadata(key: string, content: Uint8Array): StoredObjectMetadata {
   return {
     key: validateKey(key),

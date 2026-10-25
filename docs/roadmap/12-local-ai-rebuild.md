@@ -301,7 +301,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 - Deliverable: Explicit Quran-primary profile, candidate divine-attribute relation extraction.
 - Acceptance: No hardcoded list-of-99 as engine truth; every result tied to source and method; historical metrics marked unverified.
 - Verification target: `golden examples, false-positive negatives, reproducibility`. This is a target, not evidence that the command exists or has passed.
-- Evidence: [K4-003](evidence/K4-003.md). The projection enforces the profile's own `method_policy` — a `mw:asma-method:<slug>` identity plus a `major.minor.patch` version — and the candidate id now hashes every persisted, independently variable field, closing an identity collision; the first golden over the reviewed Q7:46 bytes runs through the production entry point at a pinned reproducibility digest. A human-authored Arabic term-discovery method, the K3-005 review rule for persisting a candidate, and any real extraction result remain open and no record is written.
+- Evidence: [K4-003](evidence/K4-003.md). The projection enforces the profile's own `method_policy` — a `mw:asma-method:<slug>` identity plus a `major.minor.patch` version — and the candidate id now hashes every persisted, independently variable field, closing an identity collision; the first golden over the reviewed Q7:46 bytes runs through the production entry point at a pinned reproducibility digest, and the projection now rejects any evidence reference the corpus resolver did not mint. A human-authored Arabic term-discovery method, the K3-005 review rule for persisting a candidate, and any real extraction result remain open and no record is written.
 
 ## K4-004 — Semantic RUH/HIZAB concept scope and mappings
 
@@ -351,13 +351,13 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 
 ## K5-003 — Witness original/correction/provenance domain
 
-- Status: in progress; synthetic ORM addon and ontology contract are implemented. Generic REST/RPC access is denied to every role by the central API policy, and PostgreSQL/SQLite triggers prevent ordinary SQL `UPDATE`/`DELETE`. A read-only owner/company-scoped endpoint now exposes only explicitly synthetic, restricted records to an active superadmin witness steward with company membership. No list or write endpoint exists; legacy unclassified rows remain hidden. Real-data privacy approval remains open, and database owners can still alter or remove triggers, so this is not tamper-proof storage.
+- Status: in progress; synthetic ORM addon and ontology contract are implemented. Generic REST/RPC access is denied to every role by the central API policy, and PostgreSQL/SQLite triggers prevent ordinary SQL `UPDATE`/`DELETE`. A read-only owner/company-scoped endpoint now exposes only explicitly synthetic, restricted records to an active superadmin witness steward with company membership. No list or write endpoint exists; legacy unclassified rows remain hidden. The internal correction append takes a source only through a caller-supplied resolver that verifies its bytes and citation rights, and fails closed without one. Real-data privacy approval remains open, and database owners can still alter or remove triggers, so this is not tamper-proof storage.
 - Priority: P0; risk: privacy-sensitive.
 - Depends on: `K5-001`, `K3-001`.
 - File scope: `packages/orm-knowledge/`, `ontology/domains/`, workspace quality and architecture registries.
 - Deliverable: First-person testimony plus correction chain, separate interpretation and evidence links.
 - Acceptance: Original witness immutable in ordinary workflow; uncertainty/time precision kept; privacy default private.
-- Verification: [K5-003 evidence](evidence/K5-003.md): synthetic SQLite/PostgreSQL addon tests cover seed visibility, source/correction/interpretation ORM and ordinary SQL mutation denial, correction ordering/provenance validation, and addon conformance. API tests verify owner/company isolation, guessed and non-synthetic ID concealment, no list/write surface, and generic REST/RPC denial for all roles. Keep real testimony disabled until workflow-specific privacy/safeguarding approval and any required legal review are recorded.
+- Verification: [K5-003 evidence](evidence/K5-003.md): synthetic SQLite/PostgreSQL addon tests cover seed visibility, source/correction/interpretation ORM and ordinary SQL mutation denial, correction ordering, and the fail-closed source resolver check for byte, rights and citation use, plus addon conformance. API tests verify owner/company isolation, guessed and non-synthetic ID concealment, no list/write surface, and generic REST/RPC denial for all roles. Keep real testimony disabled until workflow-specific privacy/safeguarding approval and any required legal review are recorded.
 
 ## K5-004 — Story, episode, page/media manifest contracts
 
@@ -476,7 +476,7 @@ The source planning bundle is `MOONWITNESS_XI_LOCAL_AI_REBUILD_PLAN_2026-10-15/`
 - Deliverable: Untrusted content handling and human-approved action boundary.
 - Acceptance: Malicious retrieved text cannot alter system rules, run shell, publish, leak secret.
 - Verification target: `OWASP-inspired adversarial fixtures`. This is a target, not evidence that the command exists or has passed.
-- Evidence: [K7-005](evidence/K7-005.md); restricted local API pilot implemented, with a named `LMI-01`…`LMI-13` adapter corpus and a `SCH-01`…`SCH-07` scheduler/generic-write corpus now pinning the action boundary, and with a 97-cell `kind × ceiling × output-shape × tenant state` matrix in `packages/local-ai/tests/suggestion-matrix.test.ts` whose four mutation checks show which guards are load-bearing; model-specific evaluation and one recorded scheduler head-of-line repair decision still open.
+- Evidence: [K7-005](evidence/K7-005.md); restricted local API pilot implemented, with a named `LMI-01`…`LMI-13` adapter corpus and a `SCH-01`…`SCH-07` scheduler/generic-write corpus now pinning the action boundary, with a 97-cell `kind × ceiling × output-shape × tenant state` matrix in `packages/local-ai/tests/suggestion-matrix.test.ts` whose four mutation checks show which guards are load-bearing, and with the output-shape axis re-crossed at the HTTP route over 11 scripted replies where every refusal pins the fixed message, `private, no-store`, no canary or source text in the body and zero stored rows against an accepted-envelope positive control; model-specific evaluation still open, and the scheduler head-of-line crash the corpus found is now contained: a payload its handler rejects disarms that one cron instead of stalling the queue or exiting the scheduler process.
 
 ## K7-006 — Local AI evaluation and model-outage certification
 

@@ -405,6 +405,88 @@ describe('durable job runtime', () => {
     }
   });
 
+  it('disarms a cron whose payload is rejected and keeps scheduling the healthy ones', async () => {
+    const registerHandler = (name: string) =>
+      registerJobHandler({
+        name,
+        version: 1,
+        parse(payload: unknown): { run: true } {
+          if (typeof payload !== 'object' || payload === null || !('run' in payload))
+            throw new Error('run must be true');
+          if (payload.run !== true) throw new Error('run must be true');
+          return { run: true };
+        },
+        async run() {
+          return null;
+        },
+      });
+    const releaseRejected = registerHandler('test.poison');
+    const releaseHealthy = registerHandler('test.healthy');
+    try {
+      const company = await Company.query().findOne({ name: 'MoonWitness' }).throwIfNotFound();
+      const now = new Date('2026-10-03T12:03:00.000Z');
+      const schedule = {
+        company_id: company.id,
+        cron_expression: '* * * * *',
+        timezone: 'UTC',
+        enabled: true,
+        next_run_at: '2026-10-03T12:00:00.000Z',
+        misfire_policy: 'coalesce' as const,
+        concurrency_policy: 'allow' as const,
+        max_catch_up: 3,
+      };
+      const rejected = await Cron.query().insertAndFetch({
+        ...schedule,
+        code: 'test.rejected',
+        name: 'Handler rejects the payload',
+        handler: 'test.poison',
+        payload: '{"run":false}',
+      });
+      const malformed = await Cron.query().insertAndFetch({
+        ...schedule,
+        code: 'test.malformed',
+        name: 'Payload is not JSON',
+        handler: 'test.healthy',
+        payload: '{"run":',
+      });
+      const healthy = await Cron.query().insertAndFetch({
+        ...schedule,
+        code: 'test.healthy',
+        name: 'Valid schedule',
+        handler: 'test.healthy',
+        payload: '{"run":true}',
+      });
+      const unserved = await Cron.query().insertAndFetch({
+        ...schedule,
+        code: 'test.unserved',
+        name: 'Handler version this process does not serve',
+        handler: 'test.healthy',
+        handler_version: 99,
+        payload: '{"run":true}',
+      });
+
+      expect(await enqueueDueCrons({ now })).toBe(1);
+
+      for (const broken of [rejected, malformed]) {
+        const row = await Cron.query().findById(broken.id);
+        expect(row?.enabled).toBe(false);
+        expect(row?.next_run_at).toBe(schedule.next_run_at);
+        expect(await Job.query().where({ cron_id: broken.id })).toHaveLength(0);
+      }
+      const armed = await Cron.query().findById(unserved.id);
+      expect(armed?.enabled).toBe(true);
+      expect(Date.parse(armed?.next_run_at ?? '')).toBeGreaterThan(now.getTime());
+      const advanced = await Cron.query().findById(healthy.id);
+      expect(Date.parse(advanced?.next_run_at ?? '')).toBeGreaterThan(now.getTime());
+      expect(await Job.query().where({ cron_id: healthy.id })).toHaveLength(1);
+
+      expect(await enqueueDueCrons({ now })).toBe(0);
+    } finally {
+      releaseRejected();
+      releaseHealthy();
+    }
+  });
+
   it('coalesces repeated wall-clock cron occurrences across a daylight-saving transition', async () => {
     const unregister = registerJobHandler({
       name: 'test.dst',

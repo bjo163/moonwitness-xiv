@@ -26,8 +26,6 @@ x-app-environment: &app-environment
   LOG_PRETTY: 'false'
   # Point WHATSAPP_GATEWAY_URL at the real GoWA gateway; credentials come from .env.prd.
   WHATSAPP_GATEWAY_URL: ${WHATSAPP_GATEWAY_URL:-https://wa.moonwitness.biz.id}
-  WHATSAPP_GATEWAY_USERNAME: ${WHATSAPP_GATEWAY_USERNAME:?WHATSAPP_GATEWAY_USERNAME missing - set it in .env.prd}
-  WHATSAPP_GATEWAY_PASSWORD: ${WHATSAPP_GATEWAY_PASSWORD:?WHATSAPP_GATEWAY_PASSWORD missing - set it in .env.prd}
   ATTACHMENT_STORAGE_DIR: /var/lib/moonwitness/attachments
   # Garage bucket endpoints are non-secret defaults; the key pair comes from .env.prd.
   # Set ATTACHMENT_STORAGE_DRIVER=local to keep attachments on the local volume instead.
@@ -41,6 +39,14 @@ x-app-environment: &app-environment
   JOB_HANDLERS_MODULE: ${JOB_HANDLERS_MODULE:-}
   OUTBOX_HANDLERS_MODULE: ${OUTBOX_HANDLERS_MODULE:-}
 
+x-whatsapp-gateway-credentials: &whatsapp-gateway-credentials
+  WHATSAPP_GATEWAY_USERNAME: ${WHATSAPP_GATEWAY_USERNAME:?WHATSAPP_GATEWAY_USERNAME missing - set it in .env.prd}
+  WHATSAPP_GATEWAY_PASSWORD: ${WHATSAPP_GATEWAY_PASSWORD:?WHATSAPP_GATEWAY_PASSWORD missing - set it in .env.prd}
+
+x-whatsapp-webhook-environment: &whatsapp-webhook-environment
+  WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
+  WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
+
 services:
   api:
     build:
@@ -52,7 +58,8 @@ services:
     stop_grace_period: 45s
     ports:
       - '127.0.0.1:${API_PORT:-3000}:3000'
-    environment: *app-environment
+    environment:
+      <<: [*app-environment, *whatsapp-gateway-credentials, *whatsapp-webhook-environment]
     volumes:
       - attachments:/var/lib/moonwitness/attachments
 
@@ -88,6 +95,8 @@ services:
     init: true
     stop_grace_period: 30s
     environment: *app-environment
+    volumes:
+      - attachments:/var/lib/moonwitness/attachments
 
   outbox-worker:
     image: moonwitness-api:prd
@@ -95,7 +104,8 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 2m
-    environment: *app-environment
+    environment:
+      <<: [*app-environment, *whatsapp-gateway-credentials]
     volumes:
       - attachments:/var/lib/moonwitness/attachments
 

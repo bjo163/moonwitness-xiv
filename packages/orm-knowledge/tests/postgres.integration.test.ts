@@ -26,6 +26,7 @@ import {
   readStoryVersion,
   syntheticWitnessSubjectRefSha256,
   type StoryMediaReference,
+  type WitnessCorrectionSourceResolver,
   ResearchGraphRecord,
   storeTextualAlignmentCandidates,
   storeStoryVersion,
@@ -35,6 +36,13 @@ import {
   WitnessInterpretation,
   WitnessTestimony,
 } from '../src/index.js';
+
+const resolveCorrectionSource: WitnessCorrectionSourceResolver = async (reference) => ({
+  ...reference,
+  bytes_verified: true,
+  rights_state: 'permitted',
+  allowed_uses: ['read_analyze', 'quote_excerpt'],
+});
 
 const connectionString = process.env.POSTGRES_TEST_URL;
 const postgresDescribe = connectionString ? describe : describe.skip;
@@ -362,6 +370,7 @@ postgresDescribe('knowledge addon PostgreSQL integration', () => {
       sourceDigest: 'f'.repeat(64),
       assertedTimeText: '2026',
       assertedTimePrecision: 'year' as const,
+      resolveSource: resolveCorrectionSource,
     };
     const results = await Promise.allSettled([
       appendOwnedSyntheticWitnessCorrection(db, steward, Number(testimony?.id), input),

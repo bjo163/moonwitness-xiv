@@ -1,3 +1,39 @@
+x-app-environment: &app_environment
+  NODE_ENV: production
+  API_HOST: 0.0.0.0
+  API_PORT: 3000
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the managed PostgreSQL connection URL}
+  JWT_SECRET: ${JWT_SECRET:?Set a persistent random JWT_SECRET of at least 32 characters}
+  SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+  WHATSAPP_GATEWAY_URL: ${WHATSAPP_GATEWAY_URL:?Set the GoWA REST API URL}
+  WHATSAPP_GATEWAY_EXPECTED_VERSION: ${WHATSAPP_GATEWAY_EXPECTED_VERSION:-v9.6.0}
+  WHATSAPP_CLAMAV_URL: tcp://clamav:3310
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_TO_FILE: 'false'
+  LOG_PRETTY: 'false'
+  PRINT_ROUTES: 'false'
+  WORKER_HEALTH_HOST: ${WORKER_HEALTH_HOST:-127.0.0.1}
+  OUTBOX_WORKER_HEALTH_PORT: ${OUTBOX_WORKER_HEALTH_PORT:-0}
+  ATTACHMENT_STORAGE_DIR: ${ATTACHMENT_STORAGE_DIR:-/var/lib/moonwitness/attachments}
+  ATTACHMENT_STORAGE_DRIVER: ${ATTACHMENT_STORAGE_DRIVER:-s3}
+  ATTACHMENT_S3_ENDPOINT: ${ATTACHMENT_S3_ENDPOINT:-https://s3.moonwitness.biz.id}
+  ATTACHMENT_S3_REGION: ${ATTACHMENT_S3_REGION:-garage}
+  ATTACHMENT_S3_BUCKET: ${ATTACHMENT_S3_BUCKET:-moonwitness-attachments}
+  ATTACHMENT_S3_ACCESS_KEY: ${ATTACHMENT_S3_ACCESS_KEY:?Set the Garage bucket key ID (GK...)}
+  ATTACHMENT_S3_SECRET_KEY: ${ATTACHMENT_S3_SECRET_KEY:?Set the Garage bucket key secret}
+  ATTACHMENT_S3_FORCE_PATH_STYLE: ${ATTACHMENT_S3_FORCE_PATH_STYLE:-true}
+  JOB_HANDLERS_MODULE: ${JOB_HANDLERS_MODULE:-}
+  OUTBOX_HANDLERS_MODULE: ${OUTBOX_HANDLERS_MODULE:-}
+
+x-whatsapp-gateway-credentials: &whatsapp_gateway_credentials
+  WHATSAPP_GATEWAY_USERNAME: ${WHATSAPP_GATEWAY_USERNAME:?Set the GoWA Basic Auth username}
+  WHATSAPP_GATEWAY_PASSWORD: ${WHATSAPP_GATEWAY_PASSWORD:?Set the GoWA Basic Auth password}
+
+x-whatsapp-webhook-environment: &whatsapp_webhook_environment
+  WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
+  WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
+
 services:
   clamav:
     image: clamav/clamav-debian:1.5.4
@@ -53,37 +89,8 @@ services:
     stop_grace_period: 45s
     ports:
       - '127.0.0.1:${API_PORT:-3000}:3000'
-    environment: &app_environment
-      NODE_ENV: production
-      API_HOST: 0.0.0.0
-      API_PORT: 3000
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the managed PostgreSQL connection URL}
-      JWT_SECRET: ${JWT_SECRET:?Set a persistent random JWT_SECRET of at least 32 characters}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
-      METRICS_TOKEN: ${METRICS_TOKEN:-}
-      WHATSAPP_GATEWAY_URL: ${WHATSAPP_GATEWAY_URL:?Set the GoWA REST API URL}
-      WHATSAPP_GATEWAY_EXPECTED_VERSION: ${WHATSAPP_GATEWAY_EXPECTED_VERSION:-v9.6.0}
-      WHATSAPP_GATEWAY_USERNAME: ${WHATSAPP_GATEWAY_USERNAME:?Set the GoWA Basic Auth username}
-      WHATSAPP_GATEWAY_PASSWORD: ${WHATSAPP_GATEWAY_PASSWORD:?Set the GoWA Basic Auth password}
-      WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
-      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
-      WHATSAPP_CLAMAV_URL: tcp://clamav:3310
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_TO_FILE: 'false'
-      LOG_PRETTY: 'false'
-      PRINT_ROUTES: 'false'
-      WORKER_HEALTH_HOST: ${WORKER_HEALTH_HOST:-127.0.0.1}
-      OUTBOX_WORKER_HEALTH_PORT: ${OUTBOX_WORKER_HEALTH_PORT:-0}
-      ATTACHMENT_STORAGE_DIR: ${ATTACHMENT_STORAGE_DIR:-/var/lib/moonwitness/attachments}
-      ATTACHMENT_STORAGE_DRIVER: ${ATTACHMENT_STORAGE_DRIVER:-s3}
-      ATTACHMENT_S3_ENDPOINT: ${ATTACHMENT_S3_ENDPOINT:-https://s3.moonwitness.biz.id}
-      ATTACHMENT_S3_REGION: ${ATTACHMENT_S3_REGION:-garage}
-      ATTACHMENT_S3_BUCKET: ${ATTACHMENT_S3_BUCKET:-moonwitness-attachments}
-      ATTACHMENT_S3_ACCESS_KEY: ${ATTACHMENT_S3_ACCESS_KEY:?Set the Garage bucket key ID (GK...)}
-      ATTACHMENT_S3_SECRET_KEY: ${ATTACHMENT_S3_SECRET_KEY:?Set the Garage bucket key secret}
-      ATTACHMENT_S3_FORCE_PATH_STYLE: ${ATTACHMENT_S3_FORCE_PATH_STYLE:-true}
-      JOB_HANDLERS_MODULE: ${JOB_HANDLERS_MODULE:-}
-      OUTBOX_HANDLERS_MODULE: ${OUTBOX_HANDLERS_MODULE:-}
+    environment:
+      <<: [*app_environment, *whatsapp_gateway_credentials, *whatsapp_webhook_environment]
     volumes:
       - type: volume
         source: whatsapp_attachments
@@ -118,6 +125,8 @@ services:
     healthcheck:
       disable: true
     environment: *app_environment
+    volumes:
+      - whatsapp_attachments:/var/lib/moonwitness/attachments
 
   jobs-scheduler:
     image: moonwitness-api:production
@@ -134,6 +143,8 @@ services:
     healthcheck:
       disable: true
     environment: *app_environment
+    volumes:
+      - whatsapp_attachments:/var/lib/moonwitness/attachments
 
   outbox-worker:
     image: moonwitness-api:production
@@ -149,7 +160,8 @@ services:
     stop_grace_period: 2m
     healthcheck:
       disable: true
-    environment: *app_environment
+    environment:
+      <<: [*app_environment, *whatsapp_gateway_credentials]
 
 volumes:
   whatsapp_attachments:

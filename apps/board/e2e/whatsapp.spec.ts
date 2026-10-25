@@ -828,6 +828,52 @@ test('company WhatsApp inbox displays chats and sends a reply', async ({ page },
   }, initialThemeIsDark);
   await expect(page.getByRole('img', { name: 'Project group WhatsApp group photo' })).toBeVisible();
   await page.getByRole('button', { name: 'Mention participants' }).click();
+  const mentionPicker = page.getByRole('group', { name: 'Mention picker' });
+  await expect(mentionPicker).toBeVisible();
+  const mentionViewport = page.viewportSize();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp mention picker WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dimensions = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        dimensions.document,
+        `WhatsApp mention picker overflows at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(dimensions.viewport);
+      const pickerBounds = await mentionPicker.boundingBox();
+      if (!pickerBounds) throw new Error('WhatsApp mention picker has no visible bounds');
+      expect(pickerBounds.x + pickerBounds.width).toBeLessThanOrEqual(dimensions.viewport);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-mentions-${theme}-${width}.png`),
+      });
+    }
+  }
+  if (mentionViewport) await page.setViewportSize(mentionViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, initialThemeIsDark);
   await page.getByRole('button', { name: '@Rani Finance' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Mention preview (1/100): @Rani Finance' })
@@ -1575,7 +1621,10 @@ test('internal notes stay outside the WhatsApp message timeline', async ({ page 
   }
 });
 
-test('creates labels, applies them to a conversation, and filters the inbox', async ({ page }) => {
+test('creates labels, applies them to a conversation, and filters the inbox', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -1664,6 +1713,53 @@ test('creates labels, applies them to a conversation, and filters the inbox', as
   await page.getByRole('button', { name: 'Priority', exact: true }).click();
   await expect(page.getByRole('button', { name: /Target conversation/u })).toBeVisible();
   await expect(page.getByRole('button', { name: /Untagged conversation/u })).toHaveCount(0);
+  const originalViewport = page.viewportSize();
+  const originalThemeIsDark = await page
+    .locator('html')
+    .evaluate((element) => element.classList.contains('dark'));
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp label filter WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dimensions = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        dimensions.document,
+        `WhatsApp label filter overflows at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(dimensions.viewport);
+      const filterButton = await page
+        .getByRole('button', { name: 'Priority', exact: true })
+        .boundingBox();
+      if (!filterButton) throw new Error('Priority label filter has no visible bounds');
+      expect(filterButton.x + filterButton.width).toBeLessThanOrEqual(dimensions.viewport);
+      await page.screenshot({ path: testInfo.outputPath(`whatsapp-label-${theme}-${width}.png`) });
+    }
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, originalThemeIsDark);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Priority', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -1677,7 +1773,8 @@ test('creates labels, applies them to a conversation, and filters the inbox', as
 
 test('assigns conversations to agents and teams and closes or reopens queue items', async ({
   page,
-}) => {
+}, testInfo) => {
+  test.setTimeout(90_000);
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
   await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
@@ -1843,6 +1940,60 @@ test('assigns conversations to agents and teams and closes or reopens queue item
   await page.getByRole('button', { name: 'Reopen chat' }).click();
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect(page.getByRole('button', { name: /My open conversation/u })).toBeVisible();
+  await page.getByRole('button', { name: /My open conversation/u }).click();
+  const assignChatButton = page.getByRole('button', { name: 'Assign chat' });
+  if ((await assignChatButton.getAttribute('aria-expanded')) !== 'true') {
+    await assignChatButton.click();
+  }
+  const assignmentPanel = page.getByRole('region', { name: 'Assign conversation' });
+  await expect(assignmentPanel).toBeVisible();
+  const originalViewport = page.viewportSize();
+  const originalThemeIsDark = await page
+    .locator('html')
+    .evaluate((element) => element.classList.contains('dark'));
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((nextTheme) => {
+      document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+      window.localStorage.setItem('mw-theme', nextTheme);
+    }, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const accessibility = await new AxeBuilder({ page })
+      .include('main')
+      .exclude('iframe')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(
+      accessibility.violations.map(({ id, impact, help, nodes }) => ({
+        id,
+        impact,
+        help,
+        nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+      })),
+      `WhatsApp assignment panel WCAG audit failed in ${theme} theme`
+    ).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dimensions = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(
+        dimensions.document,
+        `WhatsApp assignment panel overflows at ${width}px in ${theme} theme`
+      ).toBeLessThanOrEqual(dimensions.viewport);
+      const panelBounds = await assignmentPanel.boundingBox();
+      if (!panelBounds) throw new Error('WhatsApp assignment panel has no visible bounds');
+      expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(dimensions.viewport);
+      await page.screenshot({
+        path: testInfo.outputPath(`whatsapp-assignment-${theme}-${width}.png`),
+      });
+    }
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.evaluate((theme) => {
+    document.documentElement.classList.toggle('dark', theme);
+    window.localStorage.setItem('mw-theme', theme ? 'dark' : 'light');
+  }, originalThemeIsDark);
 });
 
 test('connect shows QR, media is sent, and failures preserve the draft', async ({ page }) => {

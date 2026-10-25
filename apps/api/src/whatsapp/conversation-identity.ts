@@ -10,6 +10,7 @@ type ConversationRow = {
   is_pinned: boolean | number;
   is_archived: boolean | number;
   unread_count: number;
+  history_sync_offset?: number | null;
   last_message?: string | null;
   last_message_at?: string | null;
   last_message_sync_at?: string | null;
@@ -128,6 +129,16 @@ export async function mergeWhatsappConversations(
   const removeHasLaterMessage = removeTime !== null && (keepTime === null || removeTime > keepTime);
   const keepSyncTime = validTime(keep.last_message_sync_at);
   const removeSyncTime = validTime(remove.last_message_sync_at);
+  const pendingHistorySync =
+    Number(keep.history_sync_offset ?? 0) > 0
+      ? keep
+      : Number(remove.history_sync_offset ?? 0) > 0
+        ? remove
+        : null;
+  const newerSync =
+    removeSyncTime !== null && (keepSyncTime === null || removeSyncTime > keepSyncTime)
+      ? remove
+      : keep;
   const name = keep.name === keep.jid && remove.name !== remove.jid ? remove.name : keep.name;
   await trx('whatsapp_conversations')
     .where({ company_id: companyId, id: keepConversationId })
@@ -147,9 +158,15 @@ export async function mergeWhatsappConversations(
       ...(removeHasLaterMessage
         ? { last_message: remove.last_message, last_message_at: remove.last_message_at }
         : {}),
-      ...(removeSyncTime !== null && (keepSyncTime === null || removeSyncTime > keepSyncTime)
-        ? { last_message_sync_at: remove.last_message_sync_at }
-        : {}),
+      ...(pendingHistorySync
+        ? {
+            last_message_sync_at: pendingHistorySync.last_message_sync_at ?? null,
+            history_sync_offset: Number(pendingHistorySync.history_sync_offset ?? 0),
+          }
+        : {
+            last_message_sync_at: newerSync.last_message_sync_at ?? null,
+            history_sync_offset: 0,
+          }),
       write_date: new Date().toISOString(),
     });
 

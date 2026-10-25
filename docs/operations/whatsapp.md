@@ -30,9 +30,9 @@ cache and outbound delivery/read status. Messages are sent through GoWA's REST e
 group chats and media.
 
 To enable webhooks, set `WHATSAPP_WEBHOOK_URL` to the public HTTPS origin of this API and set
-`WHATSAPP_WEBHOOK_SECRET` to a random secret of at least 32 characters. Compose development and
-production pass both values to the API and worker containers; configure them in `.env` or the
-deployment environment. The API sets a device-specific callback when the company connects. GoWA
+`WHATSAPP_WEBHOOK_SECRET` to a random secret of at least 32 characters. Development and production
+Compose pass both values to the API only; configure them in `.env` or the deployment secret store.
+The API sets a device-specific callback when the company connects. GoWA
 must be able to reach this origin over HTTPS. The callback verifies GoWA's `X-Hub-Signature-256`
 HMAC against the raw request body and checks the GoWA `session_id` against the mapped device.
 Leave both values unset to use REST polling only. Do not use a localhost URL for a hosted GoWA
@@ -172,9 +172,99 @@ paired sessions and its own persistent storage. The API expects GoWA `v9.6.0` by
 will report the gateway not ready if `/app/info` returns another version; review compatibility
 and set `WHATSAPP_GATEWAY_EXPECTED_VERSION` as part of an intentional GoWA upgrade.
 
-The API makes outbound REST calls to GoWA. Device-specific webhooks are optional; the Board inbox
-keeps polling GoWA's chat REST API as a recovery path. No shared internal token is used between
-services.
+The API makes GoWA calls for account control, QR, and inbox reads; the outbox worker sends queued
+messages and Status updates. Device-specific webhooks are optional; the Board inbox keeps polling
+GoWA's chat REST API as a recovery path. Production Compose passes GoWA Basic Auth only to `api`
+and `outbox-worker`; the webhook HMAC secret is passed only to `api`. `board`, `jobs-worker`, and
+`jobs-scheduler` receive neither secret. Both production Compose variants have a contract test for
+these boundaries. Compose does not filter outbound network destinations, so enforce any egress
+allowlist for the hosted GoWA endpoint at the container host or network firewall.
+
+## Full WhatsApp restore order
+
+Treat a WhatsApp recovery as one coordinated set: PostgreSQL (account/device mapping, inbox,
+outbox, and audit metadata), the configured attachment store (message media, thumbnails, and
+cached profile images), and GoWA's own persistent device/session data. The GoWA deployment is
+external to this Compose project, so identify its actual volume or bind mount and backup method
+from that deployment before an incident; do not assume a volume name from this repository.
+
+1. Declare a maintenance window. Stop the API and all database writers (`outbox-worker`,
+   `jobs-worker`, and `jobs-scheduler`), pause webhook delivery at GoWA, and stop the GoWA
+   container only when its own documented backup method requires a stopped filesystem. Do not
+   allow queued sends to run against a partially restored data set.
+2. Select backups that belong to the same recovery point. Record timestamps, API commit, exact
+   GoWA image digest/version, expected GoWA version, attachment driver/bucket, and identifiers of
+   the database/object/session backups. If the backups are from incompatible points or any one
+   component is missing, stop; do not combine unrelated snapshots and claim session recovery.
+3. Restore GoWA's persistent data with the GoWA deployment's documented procedure and the matching
+   image digest. Keep the restored service isolated from production until its storage is verified.
+4. Restore the PostgreSQL dump to a new/isolated database, and restore the matching attachment
+   bucket or local volume to an isolated target. Never overwrite the live database or bucket during
+   a drill. Follow the detailed object-store checks in
+   [attachment storage operations](./attachment-storage.md#operasi-dan-pemulihan).
+5. Before enabling writers, verify database readiness and account/company/device mappings; check
+   that the expected GoWA version matches the restored image; run `attachments:reconcile` in
+   dry-run mode and investigate missing/corrupt references. Do not delete orphan candidates as
+   part of restore validation.
+6. Start GoWA and confirm authenticated `/health`, `/app/info`, and the expected device/session
+   state. Then start the API against the restored database and attachment target, verify
+   `/whatsapp/readyz`, and confirm Board shows the expected account only in its company scope.
+7. Inspect queued, `sending`, and `unknown` outbound messages before resuming `outbox-worker`.
+   Resolve ambiguous sends against GoWA history or manually; never blindly replay them. Resume
+   webhook delivery, workers, and scheduling only after the database, GoWA session, and media
+   checks pass. Verify receipt, inbox sync, and an approved test send/receive end to end.
+
+If GoWA's session backup is absent or cannot be restored, follow the QR pairing recovery path in
+this runbook and treat it as a new linked-device session; do not claim that the old session was
+recovered. This procedure defines the order and safety checks only. A full coordinated restore
+drill remains unproven and is tracked separately under P0-25, P2-15, and P4-37 in `todo-wa.md`.
+
+## GoWA compatibility and rollback
+
+The version check is exact-string matching, not a claim that neighboring releases are compatible.
+The current matrix is:
+
+| GoWA version      | API readiness       | Evidence and limit                                                                                                                                                                                                                                                                                                      |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v9.6.0`          | Accepted by default | Authenticated live `/health` and `/app/info` contract passed 2/2 on 25 October 2026; a fresh `/app/info` check returned HTTP 200 and exact `v9.6.0`. The hosted `/devices` response is still `results: null`, so QR pairing, session persistence, media delivery, and messages have not been verified on a real device. |
+| Any other version | Rejected by default | No other GoWA version has a compatibility result in this repository. Setting `WHATSAPP_GATEWAY_EXPECTED_VERSION` changes the exact readiness comparison only; it is not evidence that the API features work with that release.                                                                                          |
+
+Before an upgrade, record the current GoWA image digest/tag from the deployment host, API release/commit,
+and configured expected version. Take a backup of GoWA's own persistent data and prove that the
+backup can be read and restored before changing versions; this prerequisite is tracked in
+`todo-wa.md` P0-25. Keep the previous image digest and the matching pre-upgrade backup together.
+
+Test the candidate GoWA image and API version in staging first. During the production maintenance
+window, pause the outbox worker so queued messages are not sent while the gateway/API versions are
+in transition. Update the GoWA image and `WHATSAPP_GATEWAY_EXPECTED_VERSION` as one deployment
+change, then verify authenticated `/health` and `/app/info`, API `/whatsapp/readyz`, Board account
+status, and device session state. Resume the outbox only after those checks pass. Verify actual
+send/receive behavior with an approved test device and recipient before the maintenance is closed.
+
+For rollback, pause the outbox worker, restore the previous GoWA image and its matching data backup
+if the upgraded version changed its storage format, restore the previous expected-version setting,
+and restart API/outbox worker. Recheck gateway and account status before resuming queued sends. Do
+not downgrade a GoWA binary against data already migrated by a newer release without restoring the
+pre-upgrade backup. Retain the backup until the upgraded device session and message flows have been
+verified. This is a runbook procedure; an actual host image digest, backup restore, and linked-device
+upgrade/rollback have not yet been tested.
+
+## GoWA credential rotation
+
+Store the GoWA Basic Auth username and password in the deployment secret manager when one is
+available. The Compose `.env.prd` file is only a deployment input, not a secret manager: keep it
+outside version control and readable only by the deployment operator. Never put credentials in a
+`curl -u` argument, shell command, ticket, or log.
+
+When rotating credentials, provision the replacement at GoWA first if the provider supports
+overlapping credentials. Update `WHATSAPP_GATEWAY_USERNAME` and `WHATSAPP_GATEWAY_PASSWORD` in the
+deployment secret store, then recreate `api` and `outbox-worker` together so both use the same
+pair. If GoWA allows only one active pair, schedule the provider change and service restart as one
+maintenance action; queued messages remain in PostgreSQL while the worker restarts. Check
+`GET /whatsapp/readyz` from the deployed API and verify account status in Board before revoking the
+old credential. If validation fails, restore the previous pair and recreate both services before
+revoking it. This procedure does not rotate `WHATSAPP_WEBHOOK_SECRET`; webhook key rotation needs a
+coordinated GoWA callback update and is not yet automated.
 
 ## Troubleshooting
 
@@ -231,16 +321,30 @@ actual API origin. The WhatsApp readiness probe validates GoWA reachability and 
 The API readiness probe checks PostgreSQL and attachment storage. Local storage readiness writes,
 syncs, and removes a one-byte probe file; S3 readiness checks the configured bucket. A disconnected
 account alert also fires for intentionally disconnected accounts, so silence it during planned
-unpairing. Rule definitions are not active until loaded and notification routing is tested in the
-deployment.
+unpairing. The rules are checked with the pinned Prometheus 2.55.1 `promtool`; the test fixture
+asserts all seven alerts fire on matching metrics and that stale outbox age without active events
+does not page:
+
+```powershell
+docker run --rm --mount "type=bind,source=$($PWD.Path),target=/src,readonly" --entrypoint=/bin/promtool prom/prometheus:v2.55.1 check rules /src/deploy/monitoring/whatsapp-alerts.yml
+docker run --rm --mount "type=bind,source=$($PWD.Path),target=/src,readonly" --entrypoint=/bin/promtool prom/prometheus:v2.55.1 test rules /src/deploy/monitoring/whatsapp-alerts.test.yml
+```
+
+Rule definitions are not active until loaded and notification routing is tested in the deployment.
 
 ## Verification
 
 - `pnpm test:whatsapp` runs API route tests with a mocked GoWA service and file-signature tests.
 - `pnpm --filter @moonwitness/api build` and `pnpm --filter @moonwitness/board typecheck`
   check the API connector and Board UI.
-- `curl -u "$WHATSAPP_GATEWAY_USERNAME:$WHATSAPP_GATEWAY_PASSWORD" "$WHATSAPP_GATEWAY_URL/app/info"`
-  checks the hosted provider. The app-info response reports its deployed GoWA version.
+- Check the deployed API's configured GoWA authentication, health, and expected version without
+  putting credentials on the command line:
+  - PowerShell: `Invoke-WebRequest "$env:API_ORIGIN/whatsapp/readyz" -UseBasicParsing`
+  - POSIX shell: `curl --fail --silent --show-error "$API_ORIGIN/whatsapp/readyz"`
+- For a direct contract test in a checkout whose `.env` is already loaded, the test output never
+  prints credential values:
+  - PowerShell: `$env:GOWA_CONTRACT_TEST='1'; pnpm --filter @moonwitness/api exec vitest run tests/gowa.contract.test.ts`
+  - POSIX shell: `GOWA_CONTRACT_TEST=1 pnpm --filter @moonwitness/api exec vitest run tests/gowa.contract.test.ts`
 
 The current `/chats` response does not expose an authoritative unread count. With the webhook
 enabled, new message events enter the cache immediately and unread state is derived from cached

@@ -6,7 +6,7 @@ import {
   type ResearchSemanticAnnotation,
   type SemanticSpan,
 } from './semantics.js';
-import type { ResolvedEvidenceReference } from './evidence.js';
+import { isAttestedEvidenceResolution, type ResolvedEvidenceReference } from './evidence.js';
 
 const methodIdentifier = /^mw:asma-method:[a-z0-9][a-z0-9._-]{0,159}$/u;
 const methodVersion = /^\d+\.\d+\.\d+$/u;
@@ -58,7 +58,8 @@ export type AsmaCandidateProjection =
   | { status: 'candidate'; candidate: AsmaAttributeCandidate }
   | {
       status: 'rejected';
-      reason: 'profile_source' | 'semantic_annotation' | 'term_span' | 'method';
+      reason:
+        'evidence_attestation' | 'profile_source' | 'semantic_annotation' | 'term_span' | 'method';
     };
 
 function spanMatchesExcerpt(span: SemanticSpan, excerpt: string): string | undefined {
@@ -95,6 +96,9 @@ function projectWithProfile(
   selectedProfile: AsmaResearchProfile
 ): AsmaCandidateProjection {
   const { annotation, evidence, term_span, method } = input;
+  if (!isAttestedEvidenceResolution(evidence)) {
+    return { status: 'rejected', reason: 'evidence_attestation' };
+  }
   const allowedPassage = selectedProfile.authorized_passages?.find(
     (passage) =>
       passage.source_id === evidence.source_id &&
@@ -187,8 +191,9 @@ function projectWithProfile(
 
 /**
  * Project a separately analyzed, exact source term into a noncanonical Asma candidate.
- * Uses only the fixed passage-specific profile. It does not discover terms, infer
- * morphology, authenticate the resolver, or assert theological truth.
+ * Uses only the fixed passage-specific profile. The evidence reference must be one the
+ * corpus resolver minted. It does not discover terms, infer morphology, or assert
+ * theological truth.
  */
 export function projectAsmaAttributeCandidate(input: AsmaProjectionInput): AsmaCandidateProjection {
   return projectWithProfile(input, profile as AsmaResearchProfile);
