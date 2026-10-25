@@ -1796,8 +1796,8 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             // before deciding to create so an existing device is never duplicated.
             pairingStep = 'device_list';
             const listed = await gowaRequest<
-              | { device_id?: string }[]
-              | { code?: string; results?: { device_id?: string }[] | null }
+              | { device_id?: string; id?: string }[]
+              | { code?: string; results?: { device_id?: string; id?: string }[] | null }
             >('/devices');
             const devices = Array.isArray(listed)
               ? listed
@@ -1807,7 +1807,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
                   ? listed.results
                   : null;
             if (!devices) throw error;
-            createDevice = !devices.some((device) => device.device_id === deviceId);
+            createDevice = !devices.some((device) => (device.device_id ?? device.id) === deviceId);
           } else {
             throw error;
           }

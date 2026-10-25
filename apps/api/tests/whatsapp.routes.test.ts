@@ -78,6 +78,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let schema: string;
   let deviceExists = false;
   let deviceLookupReturnsInternalError = false;
+  let deviceListUsesV96Shape = false;
   let providerConnected = false;
   let providerStatusUnavailable = false;
   let providerStatusMissing = false;
@@ -320,6 +321,7 @@ describe('WhatsApp API GoWA bridge', () => {
     delete process.env.WHATSAPP_WEBHOOK_SECRET;
     deviceExists = false;
     deviceLookupReturnsInternalError = false;
+    deviceListUsesV96Shape = false;
     providerConnected = false;
     providerStatusUnavailable = false;
     providerStatusMissing = false;
@@ -434,6 +436,18 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname === '/devices' && method === 'GET') {
         deviceListCount++;
+        if (deviceListUsesV96Shape)
+          return json(
+            deviceExists
+              ? [
+                  {
+                    id: 'moonwitness-company-' + companyId,
+                    state: 'connected',
+                    jid: 'test@s.whatsapp.net',
+                  },
+                ]
+              : null
+          );
         return json(deviceExists ? [{ device_id: 'moonwitness-company-' + companyId }] : null);
       }
       if (/^\/devices\/[^/]+\/webhook$/u.test(url.pathname) && method === 'PATCH') {
@@ -2050,6 +2064,25 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(response.json().data.status).toBe('qr');
     expect(deviceListCount).toBe(1);
     expect(deviceCreateCount).toBe(1);
+    expect(qrLoginCount).toBe(1);
+  });
+
+  it('recognizes an existing device from the GoWA v9.6 device list response', async () => {
+    deviceExists = true;
+    deviceLookupReturnsInternalError = true;
+    deviceListUsesV96Shape = true;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().data.status).toBe('qr');
+    expect(deviceListCount).toBe(1);
+    expect(deviceCreateCount).toBe(0);
     expect(qrLoginCount).toBe(1);
   });
 
