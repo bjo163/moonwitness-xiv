@@ -1633,13 +1633,23 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
               phoneNumber = null;
               lastError = null;
               await patchIfUnchanged({ status, phone_number: null, last_error: null });
-            } catch {
-              status = 'error';
-              await patchIfUnchanged({
-                status,
-                last_error: 'WhatsApp gateway is temporarily unavailable',
-              });
-              lastError = 'WhatsApp gateway is temporarily unavailable';
+            } catch (qrError) {
+              if (qrError instanceof GowaError && qrError.statusCode === 404) {
+                status = 'qr_expired';
+                await patchIfUnchanged({
+                  status,
+                  qr_code: null,
+                  last_error: 'QR code expired. Request a new code to continue pairing.',
+                });
+                lastError = 'QR code expired. Request a new code to continue pairing.';
+              } else {
+                status = 'error';
+                await patchIfUnchanged({
+                  status,
+                  last_error: 'WhatsApp gateway is temporarily unavailable',
+                });
+                lastError = 'WhatsApp gateway is temporarily unavailable';
+              }
             }
           } else {
             status = 'error';

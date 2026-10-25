@@ -1877,6 +1877,35 @@ describe('WhatsApp API GoWA bridge', () => {
     });
   });
 
+  it('reports an expired QR when status is unavailable and its image has expired', async () => {
+    const connected = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+    expect(connected.statusCode).toBe(202);
+    providerStatusUnavailable = true;
+    qrExpired = true;
+
+    const account = await app.inject({
+      method: 'GET',
+      url: '/whatsapp/account',
+      headers: { authorization: 'Bearer test' },
+    });
+    expect(account.json().data).toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+      last_error: 'QR code expired. Request a new code to continue pairing.',
+    });
+    await expect(
+      db('whatsapp_accounts').where({ company_id: companyId }).first()
+    ).resolves.toMatchObject({
+      status: 'qr_expired',
+      qr_code: null,
+    });
+  });
+
   it('does not let a slow account poll overwrite a newer pairing QR', async () => {
     await db('whatsapp_accounts').insert({
       company_id: companyId,
