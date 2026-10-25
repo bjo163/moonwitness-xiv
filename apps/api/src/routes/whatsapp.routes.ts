@@ -825,6 +825,52 @@ function whatsappGatewayFailure(error: unknown, step: string): string {
   }).`;
 }
 
+interface GoWADeviceStatus {
+  is_connected?: boolean;
+  is_logged_in?: boolean;
+  jid?: string;
+}
+
+const DEVICE_STATUS_JID_RETRY_COOLDOWN_MS = 60_000;
+const deviceStatusJidRetryAfter = new Map<string, number>();
+
+async function gowaDeviceStatus(
+  deviceId: string,
+  knownPhoneNumber?: string | null
+): Promise<GoWADeviceStatus> {
+  const status = await gowaRequest<GoWADeviceStatus>(
+    `/devices/${encodeURIComponent(deviceId)}/status`
+  );
+  if (status.jid) {
+    deviceStatusJidRetryAfter.delete(deviceId);
+    return status;
+  }
+  if (!status.is_logged_in) {
+    deviceStatusJidRetryAfter.delete(deviceId);
+    return status;
+  }
+  if (knownPhoneNumber) return status;
+
+  const now = Date.now();
+  if ((deviceStatusJidRetryAfter.get(deviceId) ?? 0) > now) return status;
+  // This enrichment is optional; suppress repeated failures so polling cannot
+  // open the shared GoWA circuit breaker when account details are unavailable.
+  deviceStatusJidRetryAfter.set(deviceId, now + DEVICE_STATUS_JID_RETRY_COOLDOWN_MS);
+
+  // GoWA v9.6 may omit jid from the device-scoped status endpoint while
+  // /app/status includes it when the device is selected with X-Device-Id.
+  // This lookup is only used to enrich the account phone number; it must not
+  // make a healthy connection appear unavailable if the optional lookup fails.
+  try {
+    const appStatus = await gowaRequest<GoWADeviceStatus>('/app/status', { deviceId });
+    if (!appStatus.jid) return status;
+    deviceStatusJidRetryAfter.delete(deviceId);
+    return { ...status, jid: appStatus.jid };
+  } catch {
+    return status;
+  }
+}
+
 function whatsappPermissions(auth: {
   role: string;
   groupPermissions: readonly { model_name: string; create: boolean; write: boolean }[];
@@ -1605,18 +1651,14 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       await patchIfUnchanged({ status, phone_number: null, qr_code: null, last_error: lastError });
     } else {
       try {
-        const upstream = await gowaRequest<{
-          is_connected?: boolean;
-          is_logged_in?: boolean;
-          jid?: string;
-        }>(`/devices/${encodeURIComponent(account.gateway_device_id)}/status`);
+        const upstream = await gowaDeviceStatus(account.gateway_device_id, account.phone_number);
         status =
           upstream.is_connected && upstream.is_logged_in
             ? 'connected'
             : upstream.is_logged_in
               ? 'reconnecting'
               : 'disconnected';
-        phoneNumber = upstream.jid?.split('@')[0] ?? (upstream.is_logged_in ? phoneNumber : null);
+        phoneNumber = upstream.jid?.split('@')[0] || (upstream.is_logged_in ? phoneNumber : null);
         if (status === 'connected') {
           lastError = null;
           await patchIfUnchanged({
@@ -1759,13 +1801,12 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       if (!account) throw new Error('WhatsApp account could not be created');
       if (account.status === 'qr' && account.qr_code && account.gateway_device_id) {
         try {
-          const gatewayStatus = await gowaRequest<{
-            is_connected?: boolean;
-            is_logged_in?: boolean;
-            jid?: string;
-          }>(`/devices/${encodeURIComponent(account.gateway_device_id ?? '')}/status`);
+          const gatewayStatus = await gowaDeviceStatus(
+            account.gateway_device_id,
+            account.phone_number
+          );
           if (gatewayStatus.is_connected && gatewayStatus.is_logged_in) {
-            const phoneNumber = gatewayStatus.jid?.split('@')[0] ?? account.phone_number;
+            const phoneNumber = gatewayStatus.jid?.split('@')[0] || account.phone_number;
             await WhatsappAccount.query(trx)
               .where({ id: account.id, company_id: companyId })
               .patch({
@@ -1882,13 +1923,9 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           });
         }
         pairingStep = 'device_status';
-        const gatewayStatus = await gowaRequest<{
-          is_connected?: boolean;
-          is_logged_in?: boolean;
-          jid?: string;
-        }>(`/devices/${encodeURIComponent(deviceId)}/status`);
+        const gatewayStatus = await gowaDeviceStatus(deviceId, account.phone_number);
         if (gatewayStatus.is_connected && gatewayStatus.is_logged_in) {
-          const phoneNumber = gatewayStatus.jid?.split('@')[0] ?? account.phone_number;
+          const phoneNumber = gatewayStatus.jid?.split('@')[0] || account.phone_number;
           await WhatsappAccount.query(trx).where({ id: account.id, company_id: companyId }).patch({
             status: 'connected',
             phone_number: phoneNumber,
