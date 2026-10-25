@@ -25,6 +25,7 @@ const publicTaskFields = [
 
 const repositoryBase = process.env.MW_DOCS_BASE_PATH ?? '/moonwitness-xiv/';
 const portalPath = (route: string) => `${repositoryBase}${route.replace(/^\//u, '')}`;
+const uiCatalogPath = `${repositoryBase}components/`;
 
 test('lands in the guide and renders responsive navigation and document content', async ({
   page,
@@ -131,9 +132,9 @@ test('roadmap dashboard lists every milestone and stays reachable by keyboard an
 test('publishes the interactive shared UI catalog from the docs site', async ({ page }) => {
   await page.goto('');
   const catalogLink = page.getByRole('link', { name: 'UI component catalog Design' });
-  await expect(catalogLink).toHaveAttribute('href', '/moonwitness-xiv/components/');
+  await expect(catalogLink).toHaveAttribute('href', uiCatalogPath);
   await catalogLink.click();
-  await expect(page).toHaveURL(/\/moonwitness-xiv\/components\/$/u);
+  await expect(page).toHaveURL(new RegExp(`${uiCatalogPath.replaceAll('/', '\\/')}$`, 'u'));
   await expect(page.getByRole('heading', { name: 'One system. Every screen.' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Use dark theme' })).toBeVisible();
   await page.reload();

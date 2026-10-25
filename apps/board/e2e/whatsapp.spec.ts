@@ -2459,21 +2459,70 @@ test('pauses WhatsApp account polling while the Board tab is hidden', async ({ p
   await expect.poll(() => accountPolls, { timeout: 5000 }).toBeGreaterThan(1);
 });
 
-test('guides the user to connect a WhatsApp account before opening the inbox', async ({
-  page,
-}, testInfo) => {
-  test.setTimeout(90_000);
+test('keeps stale inbox errors out of the WhatsApp pairing state', async ({ page }) => {
+  let accountStatus = 'connected';
   await page.route('**/whatsapp/account', (route) =>
     route.fulfill({
       json: {
         success: true,
         data: {
-          status: 'disconnected',
+          status: accountStatus,
+          qr_code: accountStatus === 'qr' ? 'pairing-test-qr' : null,
+          permissions: { manage: true, createConversation: true, send: true },
+        },
+      },
+    })
+  );
+  await page.route('**/whatsapp/conversations**', (route) =>
+    route.fulfill({ status: 503, json: { success: false, error: 'temporary inbox outage' } })
+  );
+
+  await page.goto('/login');
+  await page.getByLabel('Email or Username').fill('superadmin');
+  await page.getByLabel('Password', { exact: true }).fill(E2E_SUPERADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Enter the Shadow' }).click();
+  await expect(page).toHaveURL(/\/board$/u);
+  await page.goto('/board/whatsapp');
+
+  const refreshError = page
+    .getByRole('alert')
+    .filter({ hasText: 'WhatsApp data could not be refreshed.' });
+  await expect(refreshError).toBeVisible();
+
+  accountStatus = 'qr';
+  await expect(page.getByAltText('WhatsApp connection QR code')).toBeVisible({ timeout: 6000 });
+  await expect(refreshError).toHaveCount(0);
+});
+
+test('guides the user to connect a WhatsApp account before opening the inbox', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  let accountStatus = 'disconnected';
+  let connectRequests = 0;
+  let disconnectRequests = 0;
+  await page.route('**/whatsapp/account', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: accountStatus,
+          qr_code: accountStatus === 'qr' ? 'keyboard-test-qr' : null,
           permissions: { manage: true, createConversation: true, send: false },
         },
       },
     })
   );
+  await page.route('**/whatsapp/connect', (route) => {
+    connectRequests += 1;
+    accountStatus = 'qr';
+    return route.fulfill({ status: 202, json: { success: true } });
+  });
+  await page.route('**/whatsapp/disconnect', (route) => {
+    disconnectRequests += 1;
+    accountStatus = 'disconnected';
+    return route.fulfill({ json: { success: true } });
+  });
 
   await page.goto('/login');
   await page.getByLabel('Email or Username').fill('superadmin');
@@ -2530,4 +2579,50 @@ test('guides the user to connect a WhatsApp account before opening the inbox', a
     expect(buttonBounds.x + buttonBounds.width).toBeLessThanOrEqual(width.viewport);
     await page.screenshot({ path: testInfo.outputPath(`whatsapp-connect-${theme}-320.png`) });
   }
+
+  await page.keyboard.press('Enter');
+  await expect.poll(() => connectRequests).toBe(1);
+  await expect(page.getByAltText('WhatsApp connection QR code')).toBeVisible();
+
+  const cancelConnection = page.getByRole('button', { name: 'Cancel connection' });
+  let cancelButtonReachedByTab = false;
+  for (let index = 0; index < 40; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await cancelConnection.evaluate((element) => element === document.activeElement)) {
+      cancelButtonReachedByTab = true;
+      break;
+    }
+  }
+  expect(cancelButtonReachedByTab, 'Cancel connection must be reachable by keyboard Tab').toBe(
+    true
+  );
+  await page.keyboard.press('Enter');
+  const cancellationDialog = page.getByRole('alertdialog', {
+    name: 'Cancel WhatsApp connection?',
+  });
+  await expect(cancellationDialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(cancellationDialog).toHaveCount(0);
+  expect(disconnectRequests).toBe(0);
+
+  await page.keyboard.press('Enter');
+  await expect(cancellationDialog).toBeVisible();
+  const confirmCancellation = cancellationDialog.getByRole('button', {
+    name: 'Confirm cancellation',
+  });
+  let confirmButtonReachedByTab = false;
+  for (let index = 0; index < 5; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await confirmCancellation.evaluate((element) => element === document.activeElement)) {
+      confirmButtonReachedByTab = true;
+      break;
+    }
+  }
+  expect(
+    confirmButtonReachedByTab,
+    'Confirm cancellation must be reachable inside the dialog with keyboard Tab'
+  ).toBe(true);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => disconnectRequests).toBe(1);
+  await expect(page.getByRole('button', { name: 'Connect WhatsApp' })).toBeVisible();
 });

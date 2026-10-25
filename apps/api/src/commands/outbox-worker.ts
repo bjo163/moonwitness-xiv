@@ -21,7 +21,9 @@ import { whatsappManifest } from '../whatsapp/manifest.js';
 import { registerWhatsAppOutboxConsumer } from '../whatsapp/outbox-consumer.js';
 import { createAttachmentStorage } from '../storage/attachment-storage.js';
 import { closeS3AttachmentStorage, S3AttachmentStorage } from '@moonwitness/orm-storage';
+import { validateWhatsAppProductionConfig } from '../whatsapp/config.js';
 
+validateWhatsAppProductionConfig(process.env);
 const db = createDatabase();
 let workerHealth: Awaited<ReturnType<typeof startWorkerHealthServer>> = null;
 let unregisterNotificationConsumer = () => {};
