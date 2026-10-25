@@ -78,6 +78,7 @@ describe('WhatsApp API GoWA bridge', () => {
   let schema: string;
   let deviceExists = false;
   let deviceLookupReturnsInternalError = false;
+  let deviceListUsesV96Shape = false;
   let providerConnected = false;
   let providerStatusUnavailable = false;
   let providerStatusMissing = false;
@@ -320,6 +321,7 @@ describe('WhatsApp API GoWA bridge', () => {
     delete process.env.WHATSAPP_WEBHOOK_SECRET;
     deviceExists = false;
     deviceLookupReturnsInternalError = false;
+    deviceListUsesV96Shape = false;
     providerConnected = false;
     providerStatusUnavailable = false;
     providerStatusMissing = false;
@@ -434,6 +436,18 @@ describe('WhatsApp API GoWA bridge', () => {
       }
       if (url.pathname === '/devices' && method === 'GET') {
         deviceListCount++;
+        if (deviceListUsesV96Shape)
+          return json(
+            deviceExists
+              ? [
+                  {
+                    id: 'moonwitness-company-' + companyId,
+                    state: 'connected',
+                    jid: 'test@s.whatsapp.net',
+                  },
+                ]
+              : null
+          );
         return json(deviceExists ? [{ device_id: 'moonwitness-company-' + companyId }] : null);
       }
       if (/^\/devices\/[^/]+\/webhook$/u.test(url.pathname) && method === 'PATCH') {
@@ -2050,6 +2064,25 @@ describe('WhatsApp API GoWA bridge', () => {
     expect(response.json().data.status).toBe('qr');
     expect(deviceListCount).toBe(1);
     expect(deviceCreateCount).toBe(1);
+    expect(qrLoginCount).toBe(1);
+  });
+
+  it('recognizes an existing device from the GoWA v9.6 device list response', async () => {
+    deviceExists = true;
+    deviceLookupReturnsInternalError = true;
+    deviceListUsesV96Shape = true;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/whatsapp/connect',
+      headers: { authorization: 'Bearer test' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().data.status).toBe('qr');
+    expect(deviceListCount).toBe(1);
+    expect(deviceCreateCount).toBe(0);
     expect(qrLoginCount).toBe(1);
   });
 
@@ -4201,6 +4234,96 @@ describe('WhatsApp API GoWA bridge', () => {
     });
     expect(repeat.statusCode).toBe(410);
     expect(stored.size).toBe(0);
+  });
+
+  it('redownloads inbound media from GoWA when the cached attachment object is missing', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Missing cached media contact',
+        is_group: false,
+      })
+      .returning(['id']);
+    const missingKey = 'missing-cached-whatsapp-media';
+    const [message] = await db('whatsapp_messages')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        conversation_id: conversation.id,
+        external_id: 'incoming-image-missing-cache',
+        direction: 'inbound',
+        message_type: 'image',
+        content: '',
+        status: 'received',
+        media_key: missingKey,
+        media_mime_type: 'image/png',
+        media_scan_status: 'pending',
+      })
+      .returning(['id']);
+    const expectedBytes = Buffer.from(providerDownloadBytes);
+
+    const media = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/media/${message.id}`,
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(media.statusCode).toBe(200);
+    expect(media.rawPayload).toEqual(expectedBytes);
+    expect(stored.has(missingKey)).toBe(false);
+    expect(stored.size).toBe(1);
+    const refreshed = await db('whatsapp_messages').where({ id: message.id }).first();
+    expect(refreshed).toMatchObject({ media_scan_status: 'clean', media_mime_type: 'image/png' });
+    expect(refreshed.media_key).not.toBe(missingKey);
+  });
+
+  it('keeps inbound media blocked when the cache object exists but malware scanning fails', async () => {
+    const accountId = await connectAndMarkReady();
+    const [conversation] = await db('whatsapp_conversations')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        jid: '628111111111@s.whatsapp.net',
+        name: 'Scanner failure contact',
+        is_group: false,
+      })
+      .returning(['id']);
+    const cachedKey = 'cached-whatsapp-media-scanner-failure';
+    stored.set(cachedKey, Buffer.from(providerDownloadBytes));
+    const [message] = await db('whatsapp_messages')
+      .insert({
+        company_id: companyId,
+        account_id: accountId,
+        conversation_id: conversation.id,
+        external_id: 'incoming-image-scanner-failure',
+        direction: 'inbound',
+        message_type: 'image',
+        content: '',
+        status: 'received',
+        media_key: cachedKey,
+        media_mime_type: 'image/png',
+        media_scan_status: 'pending',
+      })
+      .returning(['id']);
+    scannerUnavailable = true;
+
+    const media = await app.inject({
+      method: 'GET',
+      url: `/whatsapp/media/${message.id}`,
+      headers: { authorization: 'Bearer test' },
+    });
+
+    expect(media.statusCode).toBe(503);
+    expect(media.json().error).toContain('malware scanning');
+    expect(providerDownloadBytes).not.toEqual(media.rawPayload);
+    expect(stored.has(cachedKey)).toBe(true);
+    expect(await db('whatsapp_messages').where({ id: message.id }).first()).toMatchObject({
+      media_key: cachedKey,
+      media_scan_status: 'pending',
+    });
   });
 
   it('creates and caches company-scoped image thumbnails and video posters', async () => {

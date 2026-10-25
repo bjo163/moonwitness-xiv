@@ -1,15 +1,10 @@
 import { spawn } from 'node:child_process';
+import { localServiceScripts } from './local-service-scripts.mjs';
 
 const mode = process.argv[2];
-const scripts = {
-  dev: ['dev', 'jobs:outbox', 'dev'],
-  start: ['start', 'jobs:outbox', 'start'],
-  'start:built': ['start:built', 'jobs:outbox', 'start:built'],
-};
-const selected = scripts[mode];
+const selected = localServiceScripts[mode];
 if (!selected) throw new Error('Expected dev, start, or start:built');
 
-const packages = ['@moonwitness/api', '@moonwitness/api', '@moonwitness/board'];
 const processes = [];
 let stopping = false;
 function stopAll(code = 0) {
@@ -30,9 +25,9 @@ function stopAll(code = 0) {
   process.exitCode = code;
 }
 
-for (let index = 0; index < selected.length; index++) {
+for (const [packageName, script] of selected) {
   const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const child = spawn(command, ['--filter', packages[index], selected[index]], {
+  const child = spawn(command, ['--filter', packageName, script], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
     windowsHide: true,

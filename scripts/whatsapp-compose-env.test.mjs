@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { localServiceScripts } from './local-service-scripts.mjs';
 
 const composeFiles = ['docker-compose.production.yml', 'docker-compose.prd.yml'];
 
@@ -11,6 +12,58 @@ function serviceBlock(source, name) {
   const nextService = remainder.search(/^  [A-Za-z0-9_-]+:\s*$/mu);
   return source.slice(start, nextService === -1 ? undefined : start + 1 + nextService);
 }
+
+test('development Compose runs WhatsApp outbox and attachment cleanup jobs with scoped secrets', () => {
+  const source = readFileSync('docker-compose.development.yml', 'utf8');
+  assert.match(serviceBlock(source, 'outbox-worker'), /WHATSAPP_GATEWAY_USERNAME:/u);
+  assert.match(serviceBlock(source, 'outbox-worker'), /WHATSAPP_GATEWAY_PASSWORD:/u);
+  for (const name of ['jobs-worker', 'jobs-scheduler']) {
+    const block = serviceBlock(source, name);
+    assert.doesNotMatch(block, /WHATSAPP_GATEWAY_(?:USERNAME|PASSWORD)|WHATSAPP_WEBHOOK_SECRET/u);
+    assert.match(block, /whatsapp_dev_attachments:\/var\/lib\/moonwitness\/attachments/u);
+  }
+});
+
+test('local dev and start commands include the API, Board, outbox, jobs worker, and scheduler', () => {
+  const expectedByMode = {
+    dev: ['dev', 'jobs:outbox', 'jobs:worker', 'jobs:scheduler', 'dev'],
+    start: ['start', 'jobs:outbox', 'jobs:worker', 'jobs:scheduler', 'start'],
+    'start:built': [
+      'start:built',
+      'jobs:outbox',
+      'jobs:worker:built',
+      'jobs:scheduler:built',
+      'start:built',
+    ],
+  };
+  for (const [mode, expectedScripts] of Object.entries(expectedByMode)) {
+    assert.deepEqual(
+      localServiceScripts[mode].map(([, script]) => script),
+      expectedScripts,
+      `${mode} must start the WhatsApp outbox and attachment reconciliation scheduler`
+    );
+    assert.deepEqual(localServiceScripts[mode].map(([packageName]) => packageName), [
+      '@moonwitness/api',
+      '@moonwitness/api',
+      '@moonwitness/api',
+      '@moonwitness/api',
+      '@moonwitness/board',
+    ]);
+  }
+});
+
+test('production WhatsApp gateway validation runs only in API and outbox processes', () => {
+  const source = (file) => readFileSync(file, 'utf8');
+  assert.doesNotMatch(source('apps/api/src/config/env.ts'), /validateWhatsAppProductionConfig/u);
+  assert.match(source('apps/api/src/server.ts'), /validateWhatsAppProductionConfig\(process\.env\)/u);
+  assert.match(
+    source('apps/api/src/commands/outbox-worker.ts'),
+    /validateWhatsAppProductionConfig\(process\.env\)/u
+  );
+  for (const file of ['jobs-worker.ts', 'jobs-scheduler.ts']) {
+    assert.doesNotMatch(source(`apps/api/src/commands/${file}`), /validateWhatsAppProductionConfig/u);
+  }
+});
 
 for (const file of composeFiles) {
   test(`${file} scopes WhatsApp gateway and webhook secrets to the required services`, () => {

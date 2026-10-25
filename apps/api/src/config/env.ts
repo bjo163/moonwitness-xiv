@@ -5,13 +5,11 @@ import type { EnvConfig } from '@moonwitness/types';
 import { readLocalAiConfig } from '@moonwitness/local-ai';
 import { requireProductionDatabaseUrl } from './production.js';
 import { readDatabaseRuntimeLimits } from './database-runtime.js';
-import { validateWhatsAppProductionConfig } from '../whatsapp/config.js';
 
 const apiDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(apiDirectory, '../../../../');
 dotenv.config({ path: path.join(repositoryRoot, '.env') });
 requireProductionDatabaseUrl(process.env);
-validateWhatsAppProductionConfig(process.env);
 export const localAiConfig = readLocalAiConfig(process.env);
 
 const nodeEnvironment = process.env.NODE_ENV ?? 'development';
