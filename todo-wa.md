@@ -36,7 +36,7 @@ GET `/devices/moonwitness-company-1/webhook` HTTP 200 menunjukkan `webhook_url` 
 `webhook_events` kosong; `.env` checkout utama juga tidak memiliki webhook URL/secret. QR yang expired sebelumnya berhasil di-refresh dari Board (POST 202). Request
 `/whatsapp/connect` menghasilkan HTTP 502 pada 25 Oktober 2026 00:49:54Z; `/whatsapp/account`
 setelahnya tetap HTTP 200. Log API hanya berisi status request, tanpa tahap pairing atau kode
-upstream, sehingga langkah penyebab tidak dapat dipastikan secara retrospektif. Instrumentasi
+upstream, sehingga langkah penyebab tidak dapat dipastikan secara retrospektif. Regression fix kini mengembalikan kategori error aman beserta tahap pairing dan status HTTP pada respons connect serta `last_error`; tes membuktikan body/error mentah provider tidak bocor untuk 401 maupun timeout. Suite route WhatsApp lulus 79 passed/2 skipped, API build, Board typecheck, Prettier dan `git diff --check` lulus pada Node 24.22.1 (repo meminta Node 22.x). Instrumentasi
 `pairingStep` dan status/kode upstream ditambahkan setelah insiden; API perlu dimulai ulang agar
 proses lama memuat instrumentasi tersebut. Proses API lokal kini sudah dimulai ulang (09:33 WIB)
 dan `/whatsapp/readyz` menjawab HTTP 200 (`reachable`). Pemeriksaan sekarang menunjukkan row akun tersimpan

@@ -1903,17 +1903,36 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
           body: { success: true, data: { id: account.id, status: qrPath ? 'qr' : 'connecting' } },
         };
       } catch (error) {
+        const upstreamStatus = error instanceof GowaError ? error.statusCode : undefined;
+        const upstreamCode = error instanceof GowaError ? error.upstreamCode : undefined;
+        const failureCategory =
+          upstreamStatus === 401 || upstreamStatus === 403
+            ? 'GoWA menolak autentikasi. Periksa username dan password gateway.'
+            : upstreamStatus === 404
+              ? 'Device atau endpoint GoWA tidak ditemukan.'
+              : upstreamStatus === 429
+                ? 'GoWA sedang membatasi permintaan. Coba lagi sebentar.'
+                : upstreamStatus !== undefined && upstreamStatus >= 500
+                  ? 'GoWA mengalami gangguan sementara. Coba lagi sebentar.'
+                  : error instanceof Error && error.name === 'TimeoutError'
+                    ? 'GoWA tidak merespons sebelum batas waktu.'
+                    : upstreamStatus === undefined
+                      ? 'GoWA tidak dapat dijangkau. Periksa URL dan jaringan API.'
+                      : 'Permintaan pairing ditolak GoWA.';
+        const safeFailure = `${failureCategory} (tahap: ${pairingStep}${
+          upstreamStatus === undefined ? '' : `, HTTP ${upstreamStatus}`
+        }${upstreamCode ? `, kode ${upstreamCode}` : ''}).`;
         req.log.warn(
           {
             pairingStep,
-            upstreamStatus: error instanceof GowaError ? error.statusCode : undefined,
-            upstreamCode: error instanceof GowaError ? error.upstreamCode : undefined,
+            upstreamStatus,
+            upstreamCode,
           },
           'WhatsApp pairing failed'
         );
         await WhatsappAccount.query(trx).where({ id: account.id, company_id: companyId }).patch({
           status: 'error',
-          last_error: 'WhatsApp gateway is temporarily unavailable',
+          last_error: safeFailure,
         });
         await recordWhatsAppAudit(
           req,
@@ -1925,7 +1944,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
         );
         return {
           statusCode: 502,
-          body: { success: false, error: 'Could not start WhatsApp pairing' },
+          body: { success: false, error: safeFailure },
         };
       }
     });
