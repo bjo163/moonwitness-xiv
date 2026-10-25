@@ -39,7 +39,12 @@ function makeClient(
 
 describe('MoonWitnessClient', () => {
   it('uploads presigned POSTs directly to storage without API authentication headers', async () => {
-    const requests: Array<{ method: string; url: string; headers: Record<string, string>; body: FormData }> = [];
+    const requests: Array<{
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body: FormData;
+    }> = [];
     class FakeXMLHttpRequest extends EventTarget {
       upload = new EventTarget();
       status = 204;

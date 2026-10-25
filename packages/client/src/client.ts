@@ -546,7 +546,9 @@ export class MoonWitnessClient implements HttpClient {
       };
       xhr.onerror = () => {
         cleanup();
-        reject(new ApiError('Storage upload failed. Check the storage CORS settings.', 0, 'NetworkError'));
+        reject(
+          new ApiError('Storage upload failed. Check the storage CORS settings.', 0, 'NetworkError')
+        );
       };
       xhr.onabort = () => {
         cleanup();

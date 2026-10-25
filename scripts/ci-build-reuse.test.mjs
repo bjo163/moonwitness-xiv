@@ -20,32 +20,35 @@ const docsPlaywrightConfig = await readFile(
 const uiCatalogManifest = JSON.parse(
   await readFile(new URL('../apps/ui-catalog/package.json', import.meta.url), 'utf8')
 );
-const workflow = (
-  await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
-).replace(/\r\n/gu, '\n');
-const quality = workflow.split('  quality:\n')[1]?.split('\n  automation:\n')[0] ?? '';
 const releaseWorkflow = (
   await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
 ).replace(/\r\n/gu, '\n');
+// The build-dependent checks moved out of the removed `ci.yml` quality job into the release
+// workflow's verify lane; this slice is the only place that ordering is asserted.
+const releaseVerification =
+  releaseWorkflow.split('  verify:\n')[1]?.split('\n  publish:\n')[0] ?? '';
 
 test('local and CI unit lanes run the offline knowledge CLI against the existing build', async () => {
   const runner = await readFile(new URL('./run-unit-tests.mjs', import.meta.url), 'utf8');
   assert.equal(
     rootManifest.scripts['test:knowledge-cli:built'],
-    'node --test scripts/knowledge/validate.test.mjs scripts/knowledge/snapshot.test.mjs scripts/knowledge/legacy-inventory.test.mjs scripts/knowledge/ingest.test.mjs scripts/knowledge/revelation-identity.test.mjs scripts/knowledge/rebuild.test.mjs'
+    'node --test scripts/knowledge/validate.test.mjs scripts/knowledge/snapshot.test.mjs scripts/knowledge/legacy-inventory.test.mjs scripts/knowledge/ingest.test.mjs scripts/knowledge/revelation-identity.test.mjs scripts/knowledge/rebuild.test.mjs scripts/knowledge/offline-isolation.test.mjs'
   );
   assert.match(rootManifest.scripts['test:unit:built'], /pnpm test:knowledge-cli:built/u);
   assert.match(runner, /run\(\['run', 'test:knowledge-cli:built'\]/u);
 });
 
-test('CI reuses the validated workspace build only inside its quality job', () => {
-  const qualitySteps = ['pnpm typecheck', 'pnpm architecture:check:built', 'pnpm docs:build:built'];
+test('the release verify lane runs each build-dependent check after the build it reuses', () => {
+  const verifySteps = ['pnpm typecheck', 'pnpm docs:check:built', 'pnpm test:unit:built'];
   let previousIndex = -1;
-  for (const command of qualitySteps) {
-    const currentIndex = quality.indexOf(`run: ${command}`);
+  for (const command of verifySteps) {
+    const currentIndex = releaseVerification.indexOf(`run: ${command}`);
     assert.ok(currentIndex > previousIndex, `${command} must follow the earlier build step`);
     previousIndex = currentIndex;
   }
+  // Diagram generation is a local/repository-verify step, not a release gate; it must not be
+  // assumed to build inside the verify lane.
+  assert.doesNotMatch(releaseVerification, /run: pnpm architecture/u);
 
   assert.match(rootManifest.scripts.typecheck, /pnpm build/u);
   assert.match(rootManifest.scripts['architecture:check'], /--filter @moonwitness\/orm build/u);
@@ -120,8 +123,6 @@ test('built variants consume existing package output without invoking package bu
     rootManifest.scripts['test:integration:built'],
     'node scripts/run-postgres-tests.mjs --built'
   );
-  const releaseVerification =
-    releaseWorkflow.split('  verify:\n')[1]?.split('\n  publish:\n')[0] ?? '';
   assert.match(releaseVerification, /run: pnpm typecheck[\s\S]*run: pnpm docs:check:built/u);
   assert.match(releaseVerification, /run: pnpm docs:check:built[\s\S]*run: pnpm test:unit:built/u);
   assert.match(releaseVerification, /run: pnpm typecheck[\s\S]*run: pnpm test:integration:built/u);

@@ -8,3 +8,13 @@ corpus/** -text
 corpus/manifests/tanzil-quran-text-v1.1-uthmani-q7-46.json text eol=lf
 # The docs generator emits LF and its checker compares raw bytes, so these must check out as LF everywhere.
 docs/guide/reference/** text eol=lf
+# The legacy source inventory is asserted byte-for-byte canonical (LF) by the knowledge CLI test,
+# which otherwise fails on a Windows checkout that converts it to CRLF.
+docs/knowledge/legacy-source-inventory.json text eol=lf
+# The architecture generator writes LF and `architecture:check` compares the worktree bytes, so a
+# CRLF checkout reports every artifact as stale.
+docs/architecture/diagrams/** text eol=lf
+# The asset generator emits LF for the React icon wrappers and the generated favicon, so a CRLF
+# checkout marks every one of them dirty after any workspace build even though the content matches.
+packages/ui/src/icons/** text eol=lf
+apps/board/public/favicon.svg text eol=lf

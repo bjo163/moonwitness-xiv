@@ -123,26 +123,31 @@ export class S3AttachmentStorage implements AttachmentStorage {
     if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/iu.test(contentType)) {
       throw new Error('Invalid attachment content type');
     }
-    if (!Number.isSafeInteger(maxSizeBytes) || maxSizeBytes < 1 || maxSizeBytes > this.maxObjectBytes) {
+    if (
+      !Number.isSafeInteger(maxSizeBytes) ||
+      maxSizeBytes < 1 ||
+      maxSizeBytes > this.maxObjectBytes
+    ) {
       throw new Error('Presigned upload size exceeds the configured storage size limit');
     }
-    if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds < 30 || expiresInSeconds > 900) {
+    if (
+      !Number.isSafeInteger(expiresInSeconds) ||
+      expiresInSeconds < 30 ||
+      expiresInSeconds > 900
+    ) {
       throw new Error('Presigned upload expiry must be between 30 and 900 seconds');
     }
-    const post = await createPresignedPost(
-      this.client,
-      {
-        Bucket: this.bucket,
-        Key: safeKey,
-        Expires: expiresInSeconds,
-        Fields: { 'Content-Type': contentType },
-        Conditions: [
-          ['eq', '$key', safeKey],
-          ['eq', '$Content-Type', contentType],
-          ['content-length-range', 1, maxSizeBytes],
-        ],
-      }
-    );
+    const post = await createPresignedPost(this.client, {
+      Bucket: this.bucket,
+      Key: safeKey,
+      Expires: expiresInSeconds,
+      Fields: { 'Content-Type': contentType },
+      Conditions: [
+        ['eq', '$key', safeKey],
+        ['eq', '$Content-Type', contentType],
+        ['content-length-range', 1, maxSizeBytes],
+      ],
+    });
     return {
       url: post.url,
       method: 'POST',

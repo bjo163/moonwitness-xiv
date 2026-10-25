@@ -10,6 +10,7 @@
     "reset:superadmin-password": "tsx src/commands/reset-superadmin-password.ts",
     "revoke:auth-sessions": "tsx src/commands/revoke-auth-sessions.ts",
     "attachments:reconcile": "tsx src/commands/attachments-reconcile.ts",
+    "attachments:migrate-to-s3": "tsx src/commands/attachments-migrate-to-s3.ts",
     "jobs:worker": "tsx src/commands/jobs-worker.ts",
     "jobs:scheduler": "tsx src/commands/jobs-scheduler.ts",
     "jobs:outbox": "tsx src/commands/outbox-worker.ts",

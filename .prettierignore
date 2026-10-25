@@ -6,3 +6,21 @@ services
 pnpm-lock.yaml
 .env*
 coverage
+# Prettier has no parser for these extension-less Git/config dotfiles or TOML; without them
+# `pnpm format:check` aborts with "Error occurred when checking code style" and hides real findings.
+.gitattributes
+.gitignore
+.dockerignore
+.prettierignore
+.gitleaks.toml
+.editorconfig
+# Git hook scripts are extension-less POSIX shell files and abort the same way.
+.githooks
+# Prettier has no built-in Dockerfile parser, so this file also aborts the whole check.
+Dockerfile
+# Plain-text payloads (legal notices, hash manifests, layout contract snapshots) have no parser
+# in this Prettier version; each one aborts `pnpm format:check` before any finding is reported.
+*.txt
+# The architecture generator owns these bytes and `pnpm architecture:check:built` compares them
+# verbatim, so Prettier must not demand a different markdown layout for its output.
+docs/architecture/diagrams/**

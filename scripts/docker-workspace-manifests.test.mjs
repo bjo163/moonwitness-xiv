@@ -41,10 +41,14 @@ test('native SQLite dependency build installs its compiler toolchain only in the
   );
   assert.match(buildStage, /apt-get install --yes --no-install-recommends python3 make g\+\+/u);
   assert.match(buildStage, /rm -rf \/var\/lib\/apt\/lists\/\*/u);
-  assert.doesNotMatch(
-    dockerfile.slice(dockerfile.indexOf('\nFROM node:22-bookworm-slim AS runtime')),
-    /apt-get install/u
+  // The runtime image installs ffmpeg on purpose for video posters; the guarantee is that the
+  // compiler toolchain used to build native SQLite stays in the build stage.
+  const runtimeStages = dockerfile.slice(
+    dockerfile.indexOf('\nFROM node:22-bookworm-slim AS runtime')
   );
+  assert.doesNotMatch(runtimeStages, /apt-get install[^\n]*\bpython3\b/u);
+  assert.doesNotMatch(runtimeStages, /apt-get install[^\n]*\bg\+\+\b/u);
+  assert.match(runtimeStages, /apt-get install --yes --no-install-recommends ffmpeg/u);
 });
 
 test('runtime image applies current Debian security updates and removes apt indexes', () => {

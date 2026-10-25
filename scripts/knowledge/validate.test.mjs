@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { isolationSkip, permissionDeniesNetwork, permissionFlag } from './offline-isolation.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../..');
@@ -200,53 +201,51 @@ test('reports the same issue order for the same dataset contents', async () => {
   }
 });
 
-const permissionFlag = process.allowedNodeEnvironmentFlags.has('--permission')
-  ? '--permission'
-  : process.allowedNodeEnvironmentFlags.has('--experimental-permission')
-    ? '--experimental-permission'
-    : undefined;
-
-test('validates successfully in an environment with network access denied', async () => {
-  await withFreshDataset((dataset) => {
-    const probe = `import net from 'node:net';
+// Workstations without a real network-denial mechanism skip; CI still fails loudly. The rule and its
+// rationale live in `scripts/knowledge/offline-isolation.mjs`.
+test(
+  'validates successfully in an environment with network access denied',
+  { skip: isolationSkip() },
+  async () => {
+    await withFreshDataset((dataset) => {
+      const probe = `import net from 'node:net';
         try {
           const socket = net.connect({ host: '192.0.2.1', port: 9 });
           socket.on('connect', () => process.exit(1));
           socket.on('error', (error) => process.exit(['ENETUNREACH', 'ERR_ACCESS_DENIED'].includes(error.code) ? 0 : 1));
           socket.setTimeout(2000, () => process.exit(1));
         } catch (error) { process.exit(error.code === 'ERR_ACCESS_DENIED' ? 0 : 1); }`;
-    const permissionDeniesNetwork =
-      permissionFlag && process.allowedNodeEnvironmentFlags.has('--allow-net');
-    let command;
-    let prefix;
-    if (permissionDeniesNetwork) {
-      command = process.execPath;
-      prefix = [permissionFlag, '--allow-fs-read=*'];
-    } else {
+      let command;
+      let prefix;
+      if (permissionDeniesNetwork) {
+        command = process.execPath;
+        prefix = [permissionFlag, '--allow-fs-read=*'];
+      } else {
+        assert.equal(
+          process.platform,
+          'linux',
+          'Network isolation requires Node 25+ or Linux unshare'
+        );
+        command = 'sudo';
+        prefix = ['-n', 'unshare', '--net', '--', process.execPath];
+      }
+      const denied = spawnSync(command, [...prefix, '--input-type=module', '-e', probe], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        timeout: 10000,
+      });
       assert.equal(
-        process.platform,
-        'linux',
-        'Network isolation requires Node 25+ or Linux unshare'
+        denied.status,
+        0,
+        denied.stderr || denied.error?.message || 'Network denial probe failed'
       );
-      command = 'sudo';
-      prefix = ['-n', 'unshare', '--net', '--', process.execPath];
-    }
-    const denied = spawnSync(command, [...prefix, '--input-type=module', '-e', probe], {
-      cwd: repositoryRoot,
-      encoding: 'utf8',
-      timeout: 10000,
+      const result = spawnSync(command, [...prefix, cli, dataset], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        timeout: 10000,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Knowledge dataset valid: 6 records/);
     });
-    assert.equal(
-      denied.status,
-      0,
-      denied.stderr || denied.error?.message || 'Network denial probe failed'
-    );
-    const result = spawnSync(command, [...prefix, cli, dataset], {
-      cwd: repositoryRoot,
-      encoding: 'utf8',
-      timeout: 10000,
-    });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Knowledge dataset valid: 6 records/);
-  });
-});
+  }
+);
