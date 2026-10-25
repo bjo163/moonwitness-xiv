@@ -48,6 +48,16 @@ const MAX_CONTACT_AVATAR_BYTES = 2 * 1024 * 1024;
 const INBOX_SYNC_PAGE_SIZE = 100;
 const INBOX_SYNC_MAX_MESSAGES_PER_POLL = 500;
 
+// Provider-supplied names and topics can carry control characters and Unicode bidi overrides that
+// either break Board rendering or hide a direction change inside a group name. Both patterns are a
+// security boundary, not formatting, so the ranges stay explicit.
+/* eslint-disable no-control-regex -- control and bidi characters are removed deliberately */
+const PROVIDER_SINGLE_LINE_CONTROL_PATTERN =
+  /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+const PROVIDER_MULTI_LINE_CONTROL_PATTERN =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+/* eslint-enable no-control-regex */
+
 type DirectUploadStorage = AttachmentStorage &
   Pick<S3AttachmentStorage, 'createPresignedUpload' | 'head'>;
 
@@ -2801,19 +2811,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             .send({ success: false, error: 'WhatsApp returned invalid group details' });
         const name =
           typeof info.name === 'string'
-            ? info.name
-                .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '')
-                .trim()
-                .slice(0, 255)
+            ? info.name.replace(PROVIDER_SINGLE_LINE_CONTROL_PATTERN, '').trim().slice(0, 255)
             : '';
         const topicValue =
           typeof info.topic === 'string'
-            ? info.topic
-                .replace(
-                  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
-                  ''
-                )
-                .slice(0, 4000)
+            ? info.topic.replace(PROVIDER_MULTI_LINE_CONTROL_PATTERN, '').slice(0, 4000)
             : '';
         const participantCount = Number(info.participant_count);
         return reply.send({
@@ -2959,19 +2961,11 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       const groupJid = typeof info.group_id === 'string' ? info.group_id : '';
       const name =
         typeof info.name === 'string'
-          ? info.name
-              .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '')
-              .trim()
-              .slice(0, 255)
+          ? info.name.replace(PROVIDER_SINGLE_LINE_CONTROL_PATTERN, '').trim().slice(0, 255)
           : 'WhatsApp group';
       const topic =
         typeof info.topic === 'string'
-          ? info.topic
-              .replace(
-                /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
-                ''
-              )
-              .slice(0, 4000)
+          ? info.topic.replace(PROVIDER_MULTI_LINE_CONTROL_PATTERN, '').slice(0, 4000)
           : null;
       const reportedParticipantCount = Number(info.participant_count);
       const participantCount = Number.isSafeInteger(reportedParticipantCount)
@@ -3617,12 +3611,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
       if (!conversation)
         return reply.code(404).send({ success: false, error: 'Group conversation not found' });
       const cleanProviderText = (value: string, max: number) =>
-        value
-          .replace(
-            /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
-            ''
-          )
-          .slice(0, max);
+        value.replace(PROVIDER_MULTI_LINE_CONTROL_PATTERN, '').slice(0, max);
       const account = await WhatsappAccount.query().findOne({ company_id: companyId });
       if (!account?.gateway_device_id)
         return reply.code(503).send({ success: false, error: 'WhatsApp account is unavailable' });
@@ -4056,7 +4045,7 @@ export const whatsappRoutes: FastifyPluginAsync<Options> = async (app, options) 
             .code(409)
             .send({ success: false, error: 'Idempotency-Key was used for a different request' });
         if (existing.status === 'completed') {
-          let results: unknown = [];
+          let results: unknown;
           try {
             results = JSON.parse(existing.result_json ?? '[]');
           } catch {
