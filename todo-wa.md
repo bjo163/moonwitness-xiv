@@ -46,7 +46,7 @@ penyebab awalnya timeout atau respons provider sesaat. API lokal menerima login 
 status akun, dan sinkronisasi percakapan (HTTP 200). Empat ID pesan outbound yang sudah ada cocok
 dengan ID GoWA untuk 2 teks, 1 gambar, dan 1 dokumen; endpoint download API mengembalikan gambar
 68 byte dan dokumen 134 byte (HTTP 200). Riwayat provider dan cache API untuk chat uji tidak
-memuat balasan inbound, sementara callback masih kosong. Tidak ada pesan uji baru yang dikirim.
+memuat balasan inbound, sementara callback masih kosong. Tidak ada pesan uji baru yang dikirim. Probe read-only ulang 25 Oktober 2026 03:03 UTC dari env checkout utama mengonfirmasi GoWA v9.6.0 sehat, satu device `moonwitness-company-1` connected/logged-in, tetapi GET `/devices/moonwitness-company-1/webhook` masih menunjukkan URL dan event kosong. API lokal terautentikasi memberi `/whatsapp/readyz` HTTP 200 dan account `connected`, namun `webhook_configured=false`; deployment publik masih `/health/ready` 200 dan `/whatsapp/readyz` 404. Ini mengonfirmasi sesi GoWA hidup tetapi jalur inbound/receipt tidak dikonfigurasi dan API produksi belum memuat route WhatsApp.
 
 Probe deployment API publik 25 Oktober 2026: `https://api.moonwitness.biz.id/health/ready`
 HTTP 200, tetapi `/whatsapp/account`, `/whatsapp/conversations`, dan `/whatsapp/readyz`
